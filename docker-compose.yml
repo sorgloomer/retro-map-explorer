@@ -1,0 +1,32 @@
+# Dev server behind an nginx reverse proxy.
+#
+#   node scripts/build.mjs        # once, on the host: builds dist/ (needs the local emsdk)
+#   docker compose up -d
+#   docker compose logs dev       # prints the one-time link with ?secret=...
+#
+# Open http://localhost:58080/?dev&secret=<secret> (the link printed by the dev server shows port 8080, which is only the
+# port inside the compose network). The secret comes from RME_SECRET in the environment / a .env file; the project is
+# mounted read-only, so without RME_SECRET the container can only use a ./.dev-secret that already exists on the host
+# (start the dev server once on the host with `node scripts/serve.mjs` to create it).
+services:
+  dev:
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "scripts/serve.mjs", "8080"]
+    environment:
+      RME_SECRET: ${RME_SECRET:-}
+    volumes:
+      - ./:/app:ro    # dist/, assets/, scripts/ and .dev-secret are read from the project
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  proxy:
+    image: nginx:alpine
+    ports:
+      - "58080:58080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - dev
+    restart: unless-stopped

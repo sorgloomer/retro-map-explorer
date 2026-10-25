@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Retro Map Explorer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="canvas" tabindex="0"></canvas>
+
+<aside id="dock">
+  <div class="dockbar">
+    <span>Menu</span>
+    <button id="dockHide" type="button" title="Hide menu" aria-expanded="true">Hide ▴</button>
+  </div>
+
+  <section class="sec" id="secMain">
+    <button class="sechead" type="button" aria-expanded="true"><span>Retro Map Explorer</span><i class="chev"></i></button>
+    <div class="secbody">
+      <button id="shareBtn" type="button" title="Copy a link to this exact view">Share this view</button>
+      <input id="shareUrl" type="text" readonly hidden aria-label="Shareable link">
+      <p id="shareMsg" class="muted"></p>
+      <label>Game
+        <select id="gameSel" disabled><option>No game loaded</option></select>
+      </label>
+      <label>Level
+        <select id="levelSel" disabled><option>—</option></select>
+      </label>
+      <div class="row">
+        <button id="openBtn" type="button">Open game folder…</button>
+        <button id="zipBtn" type="button">Open .zip…</button>
+      </div>
+      <button id="devBtn" type="button" hidden>Dev assets</button>
+      <input id="folderInput" type="file" webkitdirectory multiple hidden>
+      <input id="zipInput" type="file" accept=".zip,application/zip" hidden>
+      <p id="status" class="muted"></p>
+
+      <h3>Camera</h3>
+      <div class="row">
+        <button id="camReset" type="button">Overview</button>
+        <button id="camTop" type="button">Top-down</button>
+        <button id="camStart" type="button">Start</button>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Camera mode">
+        <button id="modeOrbit" type="button" class="on" role="radio" aria-checked="true">Orbital</button>
+        <button id="modeFly" type="button" role="radio" aria-checked="false">Flying</button>
+      </div>
+      <ul class="help kbd" id="helpFly" hidden>
+        <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fly (W goes where you look)</li>
+        <li><kbd>E</kbd>/<kbd>Space</kbd> up &nbsp; <kbd>Q</kbd>/<kbd>C</kbd> down</li>
+        <li>Drag mouse to look around · wheel: dolly</li>
+      </ul>
+      <ul class="help kbd" id="helpOrbit">
+        <li>Left-drag: slide the map under the cursor (height stays)</li>
+        <li>Right-drag: orbit around the point you press on</li>
+        <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp; <kbd>E</kbd>/<kbd>Q</kbd> up/down</li>
+        <li>Wheel: zoom towards the pivot</li>
+      </ul>
+      <ul class="help" id="helpTouch" hidden>
+        <li><b>Touch:</b> one finger drags the map</li>
+        <li>Pinch to zoom · two fingers up/down to tilt</li>
+        <li>Twist two fingers to rotate around the touched point</li>
+        <li>Tap a marker for its label</li>
+      </ul>
+      <ul class="help kbd" id="helpKeys">
+        <li><kbd>Shift</kbd> fast &nbsp; <kbd>Alt</kbd> slow &nbsp; <kbd>V</kbd> switch mode</li>
+        <li><kbd>R</kbd> overview &nbsp; <kbd>T</kbd> start position</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="sec" id="secLevel" hidden>
+    <button class="sechead" type="button" aria-expanded="true"><span id="levelTitle">Level</span><i class="chev"></i></button>
+    <div class="secbody">
+      <p id="levelInfo" class="muted"></p>
+      <h3>Layers</h3>
+      <div id="legend"></div>
+      <details id="dispDetails">
+        <summary>Display</summary>
+        <label class="slider">Brightness <input id="optExposure" type="range" min="0.5" max="3" step="0.05" value="1.35"></label>
+        <label class="slider">Face shading <input id="optShade" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+        <label class="slider">Marker size <input id="optMarker" type="range" min="0.4" max="3" step="0.05" value="1"></label>
+        <label class="slider">Line width <input id="optLine" type="range" min="1" max="8" step="0.5" value="3"></label>
+        <label class="slider">Move speed <input id="optSpeed" type="range" min="0.1" max="4" step="0.05" value="1"></label>
+        <label class="slider" id="optAnimRow">Animation speed <input id="optAnim" type="range" min="0" max="2" step="0.01" value="1"></label>
+        <div class="animline" id="animLine">
+          <span id="animReadout">×1.00 · t = 0.0 s</span>
+          <span class="animbtns">
+            <button type="button" id="animPlay" title="Pause / play animation" aria-label="Pause animation">
+              <svg class="ico-pause" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M3 2h3.5v12H3zM9.5 2H13v12H9.5z"/></svg>
+              <svg class="ico-play" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4 2l10 6-10 6z"/></svg>
+            </button>
+            <button type="button" id="animReset" title="Restart animation from t = 0" aria-label="Restart animation">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 8a5 5 0 1 0 1.8-3.85M3 2.2v3.2h3.2"/></svg>
+            </button>
+          </span>
+        </div>
+        <label class="check" id="optStalksRow"><input id="optStalks" type="checkbox"> Highlight beams above powerups</label>
+        <label class="check" id="optPupMeshRow"><input id="optPupMesh" type="checkbox" checked> In-game powerup meshes</label>
+        <label class="check"><input id="optTex" type="checkbox" checked> Textures</label>
+        <label class="check" id="optSunRow"><input id="optSun" type="checkbox"> Global light (sun + ambient)</label>
+        <label class="check" id="optPointsRow"><input id="optPoints" type="checkbox"> Point lights</label>
+        <label class="check"><input id="optGeo" type="checkbox" checked> Level geometry</label>
+        <label class="check"><input id="optWire" type="checkbox"> Wireframe (level geometry)</label>
+        <label class="check" id="optBackRow"><input id="optBack" type="checkbox"> Render back faces</label>
+        <label class="check"><input id="optXray" type="checkbox" checked> See-through markers</label>
+      </details>
+    </div>
+  </section>
+</aside>
+
+<div id="tip" hidden></div>
+
+<div id="drop" class="overlay">
+  <div class="dropbox">
+    <h2>Drop your game folder here</h2>
+    <p>Drag the installed game's folder onto this window. Files are read locally in your browser and never uploaded.</p>
+    <ul>
+      <li><b>Re-Volt</b> — the folder containing <code>levels/</code></li>
+      <li><b>Carmageddon TDR 2000</b> — the folder containing <code>ASSETS/</code></li>
+    </ul>
+    <p class="touch-only">On a phone or tablet, use the buttons below. A .zip of the game folder also works
+      (store without compression for the fastest loading).</p>
+    <p id="restoreHint" class="muted" hidden></p>
+    <button id="resumeBtn" type="button" hidden></button>
+    <div class="row"><button id="openBtn2" type="button">Choose a folder…</button><button id="zipBtn2" type="button">Choose a .zip…</button></div>
+  </div>
+</div>
+
+<div id="loading" class="overlay" hidden><div class="spinner"></div><p id="loadingText">Loading…</p></div>
+<div id="dropHint" hidden>Drop to load game files</div>
+
+<script src="ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+.idea/
+.tools/
+.dev-secret
+dist/
+assets/
+node_modules/
+.unpacked/
