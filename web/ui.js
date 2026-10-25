@@ -51,6 +51,14 @@
   }
   // The state to return to after the game files are available (consumed by the first level load).
   let restore = parseUrlState(location.search) || readLocalState();
+  // The view parameters of the address bar are only an import format: once they are loaded (or dropped because the visitor
+  // chose something else) they are removed, leaving at most ?dev. The Share button builds a new link on demand.
+  function stripViewFromUrl() {
+    const p = new URLSearchParams(location.search);
+    if (!['g', 'l', 'c', 'v', 's', 't', 'p', 'm', 'h'].some((k) => p.has(k))) return;
+    try { history.replaceState(null, '', location.pathname + (DEV ? '?dev' : '') + location.hash); } catch { /* ignore */ }
+  }
+  function dropRestore() { restore = null; stripViewFromUrl(); }
   let sceneLoaded = false, lastSaved = '';
   let animSpeed = 1, animPaused = false, pupMeshes = true, stalksOn = false;
 
@@ -356,7 +364,7 @@
     setStatus(`${detected.map((g) => g.name).join(' and ')} detected.`);
     $('drop').hidden = true;
     buildLevelSelect();
-    sel.onchange = () => { sel.blur(); restore = null; buildLevelSelect(); };
+    sel.onchange = () => { sel.blur(); dropRestore(); buildLevelSelect(); };
   }
 
   function buildLevelSelect() {
@@ -381,7 +389,7 @@
       const opt = [...sel.options].find((o) => levelKey(o.value).toLowerCase() === want);
       if (opt) sel.value = opt.value;
     }
-    sel.onchange = () => { sel.blur(); restore = null; loadSelected(); };
+    sel.onchange = () => { sel.blur(); dropRestore(); loadSelected(); };
     loadSelected();
   }
 
@@ -426,7 +434,7 @@
   // Applies the saved / shared view once, right after the level it belongs to has loaded.
   function applyRestore(levelId) {
     const st = restore;
-    restore = null;
+    dropRestore();
     {
       const info = JSON.parse(call('rme_scene_info', 'string', [], []));
       info.categories.forEach((c, i) => {
