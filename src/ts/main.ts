@@ -32,12 +32,16 @@ function parseUrlView(search: string): SavedView | null {
   if (p.has('t') && Number.isFinite(Number(p.get('t')))) st.time = Number(p.get('t'));
   if (p.has('p')) st.paused = p.get('p') === '1';
   if (p.has('m')) st.pupMeshes = p.get('m') === '1';
-  if (p.has('h')) st.stalks = p.get('h') !== '0';
+  if (p.has('h')) st.beams = p.get('h') !== '0';
   return st;
 }
 
 /** The state to return to after the game files are available (consumed by the first level load). */
 let restore: SavedView | null = parseUrlView(location.search) || (readLocalView() as SavedView | null);
+{
+  const old = restore as (SavedView & { stalks?: boolean }) | null;  // older versions saved the beams as "stalks"
+  if (old && old.beams === undefined && old.stalks !== undefined) old.beams = old.stalks;
+}
 
 // The view parameters of the address bar are only an import format: once they are loaded (or dropped because the visitor
 // chose something else) they are removed. The Share button builds a new link on demand.
@@ -52,7 +56,7 @@ function dropRestore(): void {
 }
 
 let sceneLoaded = false, lastSaved = '';
-let animSpeed = 1, animPaused = false, pupMeshes = true, stalksOn = false;
+let animSpeed = 1, animPaused = false, pupMeshes = true, beamsOn = false;
 
 // Layers are shown in groups, each with a checkbox that switches the whole group. Only the first group (pickups and
 // powerups) is visible by default; the last one (Misc) also takes every layer that is not listed.
@@ -238,7 +242,7 @@ function applyRestore(levelId: string): void {
     if (typeof st.speed === 'number') setAnimSpeed(st.speed);
     if (typeof st.paused === 'boolean') setAnimPaused(st.paused);
     if (typeof st.pupMeshes === 'boolean') setPupMeshes(st.pupMeshes);
-    if (typeof st.stalks === 'boolean') setStalks(st.stalks);
+    if (typeof st.beams === 'boolean') setBeams(st.beams);
     if (typeof st.time === 'number') call('rme_set_anim_time', null, ['number'], [st.time]);
   }
   sceneLoaded = true;
@@ -261,7 +265,7 @@ function snapshot(): ViewSnapshot | null {
     speed: animSpeed,
     paused: animPaused,
     pupMeshes,
-    stalks: stalksOn,
+    beams: beamsOn,
     time: call('rme_anim_time', 'number', [], []),
   };
 }
@@ -281,14 +285,14 @@ function saveState(force = false): void {
 function writeState(force: boolean): void {
   const st = snapshot();
   if (!st) return;
-  const key = [st.game, st.level, st.cam, st.layers.join(','), st.speed, st.paused, st.pupMeshes, st.stalks, (st.paused || st.speed === 0) ? st.time.toFixed(2) : ''].join('|');
+  const key = [st.game, st.level, st.cam, st.layers.join(','), st.speed, st.paused, st.pupMeshes, st.beams, (st.paused || st.speed === 0) ? st.time.toFixed(2) : ''].join('|');
   if (!force && key === lastSaved) return;
   lastSaved = key;
   lastWrite = performance.now();
   setLayerPrefs(new Set(st.layers), st.allLayers);
   const view: SavedView = {
     game: st.game, level: st.level, cam: st.cam.split(',').map(Number), layers: st.layers, speed: st.speed, paused: st.paused,
-    pupMeshes: st.pupMeshes, stalks: st.stalks, time: st.time,
+    pupMeshes: st.pupMeshes, beams: st.beams, time: st.time,
   };
   store.set(STORE_KEY, JSON.stringify(view));
 }
@@ -308,7 +312,7 @@ function buildShareUrl(): string | null {
     if (st.paused) p.set('p', '1');
   }
   p.set('m', st.pupMeshes ? '1' : '0');
-  p.set('h', st.stalks ? '1' : '0');
+  p.set('h', st.beams ? '1' : '0');
   const query = p.toString().replace(/%2C/g, ',').replace(/%7C/g, '|');
   const secret = storedSecret();
   return location.origin + location.pathname + '?' + query + (secret ? '#secret=' + encodeURIComponent(secret) : '');
@@ -436,10 +440,10 @@ function setAnimSpeed(v: number): void {
   $input('optAnim').value = String(animSpeed);
   applyAnimRate();
 }
-function setStalks(v: boolean): void {
-  stalksOn = !!v;
-  $input('optStalks').checked = stalksOn;
-  call('rme_set_option', null, ['string', 'number'], ['stalks', stalksOn ? 1 : 0]);
+function setBeams(v: boolean): void {
+  beamsOn = !!v;
+  $input('optBeams').checked = beamsOn;
+  call('rme_set_option', null, ['string', 'number'], ['beams', beamsOn ? 1 : 0]);
 }
 function setPupMeshes(v: boolean): void {
   pupMeshes = !!v;
@@ -479,7 +483,7 @@ function bindControls(): void {
     opt(name, v);
   }
   if (typeof prefs.opts.animSpeed === 'number') setAnimSpeed(prefs.opts.animSpeed);
-  if ('stalks' in prefs.opts) setStalks(!!prefs.opts.stalks);
+  if ('beams' in prefs.opts) setBeams(!!prefs.opts.beams);
   if ('pupMeshes' in prefs.opts) setPupMeshes(!!prefs.opts.pupMeshes);
   bindRange('optExposure', 'exposure'); bindRange('optShade', 'shade'); bindRange('optMarker', 'markerScale');
   bindRange('optLine', 'lineWidth'); bindRange('optSpeed', 'speed');
@@ -487,7 +491,7 @@ function bindControls(): void {
   bindCheck('optBack', 'backFaces'); bindCheck('optPoints', 'points'); bindCheck('optXray', 'xray');
   $input('optAnim').oninput = () => { setAnimSpeed(parseFloat($input('optAnim').value)); setOptPref('animSpeed', animSpeed); };
   $('animReset').onclick = () => { call('rme_set_anim_time', null, ['number'], [0]); $('animReset').blur(); };
-  $input('optStalks').onchange = () => { const on = $input('optStalks').checked; setStalks(on); setOptPref('stalks', on ? 1 : 0); $('optStalks').blur(); saveState(); };
+  $input('optBeams').onchange = () => { const on = $input('optBeams').checked; setBeams(on); setOptPref('beams', on ? 1 : 0); $('optBeams').blur(); saveState(); };
   $input('optPupMesh').onchange = () => { const on = $input('optPupMesh').checked; setPupMeshes(on); setOptPref('pupMeshes', on ? 1 : 0); $('optPupMesh').blur(); saveState(); };
   $('animPlay').onclick = () => { setAnimPaused(!animPaused); $('animPlay').blur(); saveState(); };
   $('shareBtn').onclick = () => { void shareView(); };

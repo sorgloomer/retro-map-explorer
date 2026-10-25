@@ -63,6 +63,10 @@ export const prefs: Prefs = { layers: {}, opts: {} };
     prefs.opts = p.opts || {};
   }
 }
+if ('stalks' in prefs.opts) {  // older versions called the beams "stalks"
+  if (!('beams' in prefs.opts)) prefs.opts.beams = prefs.opts.stalks;
+  delete prefs.opts.stalks;
+}
 const savePrefs = () => store.set(PREF_KEY, JSON.stringify(prefs));
 export const setOptPref = (key: string, value: number): void => { prefs.opts[key] = value; savePrefs(); };
 export const setLayerPrefs = (visible: Set<string>, all: string[]): void => {

@@ -392,19 +392,19 @@ void Renderer::setScene(const Scene* s, float radius) {
     glBindBuffer(GL_ARRAY_BUFFER, markerInst);
     glBufferData(GL_ARRAY_BUFFER, inst.size() * 4, inst.empty() ? nullptr : inst.data(), GL_STATIC_DRAW);
 
-    // lines (plus vertical stalks for marker categories that ask for one)
+    // lines (plus vertical beams for marker categories that ask for one)
     std::vector<float> ln;
-    float stalkH = sceneRadius * 0.05f;
+    float beamH = sceneRadius * 0.05f;
     for (size_t c = 0; c < nc; c++) {
         catRanges[c].firstLine = (int)(ln.size() / 6);
         for (const Line& l : s->lines)
             if (l.cat == (int)c) ln.insert(ln.end(), {l.a.x, l.a.y, l.a.z, l.b.x, l.b.y, l.b.z});
         catRanges[c].lineCount = (int)(ln.size() / 6) - catRanges[c].firstLine;
-        catRanges[c].firstStalk = (int)(ln.size() / 6);
-        if (s->cats[c].stalk)
+        catRanges[c].firstBeam = (int)(ln.size() / 6);
+        if (s->cats[c].beam)
             for (const Marker& m : s->markers)
-                if (m.cat == (int)c) ln.insert(ln.end(), {m.pos.x, m.pos.y, m.pos.z, m.pos.x, m.pos.y + stalkH, m.pos.z});
-        catRanges[c].stalkCount = (int)(ln.size() / 6) - catRanges[c].firstStalk;
+                if (m.cat == (int)c) ln.insert(ln.end(), {m.pos.x, m.pos.y, m.pos.z, m.pos.x, m.pos.y + beamH, m.pos.z});
+        catRanges[c].beamCount = (int)(ln.size() / 6) - catRanges[c].firstBeam;
     }
     glBindBuffer(GL_ARRAY_BUFFER, lineVbo);
     glBufferData(GL_ARRAY_BUFFER, ln.size() * 4, ln.empty() ? nullptr : ln.data(), GL_STATIC_DRAW);
@@ -469,9 +469,9 @@ void Renderer::drawLines(const ViewParams& vp, const RenderOptions& opt, bool xr
         glUniform4f(locColor, rr, gg, bb, xrayPass ? 0.3f : 1.0f);
         const CatLines& r = catRanges[c];
         for (int pass = 0; pass < 2; pass++) {
-            if (pass == 1 && !opt.stalks) continue;
-            int first = pass == 0 ? r.firstLine : r.firstStalk;
-            int count = pass == 0 ? r.lineCount : r.stalkCount;
+            if (pass == 1 && !opt.beams) continue;
+            int first = pass == 0 ? r.firstLine : r.firstBeam;
+            int count = pass == 0 ? r.lineCount : r.beamCount;
             if (count == 0) continue;
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)((size_t)first * 24));
             glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)((size_t)first * 24 + 12));

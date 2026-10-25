@@ -16,7 +16,7 @@ struct RenderOptions {
     bool wireframe = false;   // level geometry as lines
     bool backFaces = false;   // draw back faces too (otherwise follow the game and cull them)
     bool pointLights = false;  // in-game point lights when the scene provides them
-    bool stalks = false;         // vertical beams above powerup markers
+    bool beams = false;         // vertical beams above powerup markers
     bool powerupMeshes = true;   // draw powerups with their in-game meshes instead of markers
 };
 
@@ -50,7 +50,7 @@ private:
     };
     struct CatLines {
         int firstLine = 0, lineCount = 0;
-        int firstStalk = 0, stalkCount = 0;
+        int firstBeam = 0, beamCount = 0;
         int firstMarker = 0, markerCount = 0;
     };
 

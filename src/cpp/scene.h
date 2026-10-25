@@ -33,7 +33,7 @@ struct Category {
     uint32_t color = 0xffffff;  // 0xRRGGBB
     MarkerShape shape = SHAPE_DIAMOND;
     float size = 1.0f;       // relative marker size
-    bool stalk = false;      // draw a vertical beam above each marker
+    bool beam = false;      // draw a vertical beam above each marker
     bool visible = true;
     int count = 0;           // number of markers / segments
     bool isLine = false;     // category consists of line segments only
@@ -151,10 +151,10 @@ struct Scene : BatchSet {
     float cameraYaw = 0, cameraPitch = 0;
 
     int addCategory(const std::string& id, const std::string& name, uint32_t color, MarkerShape shape = SHAPE_DIAMOND,
-                    float size = 1.0f, bool stalk = false, bool visible = true, bool isLine = false) {
+                    float size = 1.0f, bool beam = false, bool visible = true, bool isLine = false) {
         Category c;
         c.id = id; c.name = name; c.color = color; c.shape = shape; c.size = size;
-        c.stalk = stalk; c.visible = visible; c.isLine = isLine;
+        c.beam = beam; c.visible = visible; c.isLine = isLine;
         cats.push_back(c);
         return (int)cats.size() - 1;
     }

@@ -561,7 +561,7 @@ EMSCRIPTEN_KEEPALIVE void rme_set_option(const char* name, double v) {
     else if (n == "points") app.opt.pointLights = v != 0;
     else if (n == "powerupMeshes") app.opt.powerupMeshes = v != 0;
     else if (n == "wireframe") app.opt.wireframe = v != 0;
-    else if (n == "stalks") app.opt.stalks = v != 0;
+    else if (n == "beams") app.opt.beams = v != 0;
     else if (n == "backFaces") app.opt.backFaces = v != 0;
     else if (n == "animSpeed") app.animScale = (float)std::max(0.0, v);
     else if (n == "speed") app.speedMul = (float)v;

@@ -36,7 +36,7 @@ export interface SavedView {
   time?: number;
   paused?: boolean;
   pupMeshes?: boolean;
-  stalks?: boolean;
+  beams?: boolean;
 }
 
 /** The current view as collected from the app. */
@@ -50,7 +50,7 @@ export interface ViewSnapshot {
   speed: number;
   paused: boolean;
   pupMeshes: boolean;
-  stalks: boolean;
+  beams: boolean;
   time: number;
 }
 
