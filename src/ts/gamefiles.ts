@@ -1,6 +1,7 @@
 // Where the game files come from: a dropped / chosen folder, a zip file, remembered folder handles (File System Access API)
 // or the encrypted asset archives next to the app. All of them end up as a FileSet that the WebAssembly side reads from.
-import { openRemoteZip, type ByteSource } from './remotezip.ts';
+import { BlobReader, PartsReader, openZip, type ByteSource } from './zip/index.ts';
+import { pushAll } from './utils/arrays.ts';
 
 const SKIP_DIRS = new Set(['fmv', 'music', 'sound', 'wavs', 'miles', '__support', 'gallery', 'times']);
 const skipped = (parts: string[]) => parts.some((x) => SKIP_DIRS.has(x.toLowerCase()));
@@ -48,7 +49,7 @@ async function walkEntry(entry: FileSystemEntry, set: FileSet, prefix: string): 
     for (;;) {
       const batch = await readEntries(reader);
       if (!batch.length) break;
-      children.push(...batch);
+      pushAll(children, batch);
     }
     const dirPrefix = prefix + entry.name + '/';
     for (let i = 0; i < children.length; i += 64)
@@ -138,82 +139,19 @@ export function setFromInput(files: FileList): FileSet {
 }
 
 // ---------------------------------------------------------------- .zip file (for devices that cannot pick folders, e.g. Android)
-// Stored entries are read by range; deflated entries are inflated once with DecompressionStream and cached.
 export async function setFromZip(file: File): Promise<FileSet> {
-  const u16 = (d: DataView, o: number) => d.getUint16(o, true);
-  const u32 = (d: DataView, o: number) => d.getUint32(o, true);
-  const u64 = (d: DataView, o: number) => Number(d.getBigUint64(o, true));
-  const tailLen = Math.min(file.size, 65557 + 22);
-  const tail = new DataView(await file.slice(file.size - tailLen).arrayBuffer());
-  let eocd = -1;
-  for (let i = tailLen - 22; i >= 0; i--) if (u32(tail, i) === 0x06054b50) { eocd = i; break; }
-  if (eocd < 0) throw new Error('not a zip file');
-  let cdSize = u32(tail, eocd + 12), cdOff = u32(tail, eocd + 16);
-  const count = u16(tail, eocd + 10);
-  if ((count === 0xffff || cdOff === 0xffffffff) && eocd >= 20 && u32(tail, eocd - 20) === 0x07064b50) {
-    const z64Off = u64(tail, eocd - 20 + 8);
-    const z = new DataView(await file.slice(z64Off, z64Off + 56).arrayBuffer());
-    cdSize = u64(z, 40); cdOff = u64(z, 48);
-  }
-  const cd = new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
-  const bytes = new Uint8Array(cd.buffer);
-  const dec = new TextDecoder();
   const set = new FileSet();
-  let p = 0;
-  while (p + 46 <= cd.byteLength && u32(cd, p) === 0x02014b50) {
-    const method = u16(cd, p + 10);
-    let csize = u32(cd, p + 20), size = u32(cd, p + 24);
-    const nameLen = u16(cd, p + 28), extraLen = u16(cd, p + 30), commentLen = u16(cd, p + 32);
-    let local = u32(cd, p + 42);
-    const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen)).replace(/\\/g, '/');
-    for (let x = p + 46 + nameLen, end = x + extraLen; x + 4 <= end;) {  // zip64 extra field
-      const id = u16(cd, x), len = u16(cd, x + 2);
-      if (id === 1) {
-        let q = x + 4;
-        if (size === 0xffffffff) { size = u64(cd, q); q += 8; }
-        if (csize === 0xffffffff) { csize = u64(cd, q); q += 8; }
-        if (local === 0xffffffff) { local = u64(cd, q); }
-      }
-      x += 4 + len;
-    }
-    p += 46 + nameLen + extraLen + commentLen;
-    if (name.endsWith('/') || skipped(name.split('/'))) continue;
-    set.add(name, size, makeZipEntry(file, method, local, csize));
-  }
+  for (const e of await openZip(new BlobReader(file))) if (!skipped(e.name.split('/'))) set.add(e.name, e.size, e.source);
   return set;
-}
-
-function makeZipEntry(file: File, method: number, local: number, csize: number): ByteSource {
-  let dataStart = -1;
-  let cache: ArrayBuffer | null = null;
-  const start = async () => {
-    if (dataStart < 0) {
-      const h = new DataView(await file.slice(local, local + 30).arrayBuffer());
-      dataStart = local + 30 + h.getUint16(26, true) + h.getUint16(28, true);
-    }
-    return dataStart;
-  };
-  return {
-    async read(off, len) {
-      const s = await start();
-      if (method === 0) return file.slice(s + off, s + off + len).arrayBuffer();
-      if (method !== 8) throw new Error('unsupported zip compression method ' + method);
-      if (!cache) {
-        const stream = file.slice(s, s + csize).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-        cache = await new Response(stream).arrayBuffer();
-      }
-      return cache.slice(off, off + len);
-    },
-  };
 }
 
 // ---------------------------------------------------------------- the encrypted asset archives
 // AES-encrypted zip archives next to the app. Only the directory and the parts that are needed are downloaded (see
-// remotezip.ts); the secret from localStorage is the password.
+// zip/); the secret from localStorage is the password.
 const ASSET_ARCHIVES: [url: string, prefix: string][] = [['assets/ctdr2k.zip', 'Carmageddon TDR2K/'], ['assets/rvlt.zip', 'Re-Volt/']];
 
 export async function setFromAssetArchives(secret: string): Promise<FileSet> {
-  const lists = await Promise.all(ASSET_ARCHIVES.map(([url, prefix]) => openRemoteZip('/' + url, secret, prefix)));
+  const lists = await Promise.all(ASSET_ARCHIVES.map(async ([url, prefix]) => openZip(await PartsReader.open('/' + url + '.parts'), { password: secret, prefix })));
   const set = new FileSet();
   for (const list of lists)
     for (const e of list) {

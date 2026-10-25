@@ -64,7 +64,7 @@ without Range or ETag support: run `python scripts/chunk_assets.py` to (re)creat
 (`meta.json` with the etag, chunk size, total size and part count; `parts.json` with the name and SHA-256 of every part; and the part files themselves, named after the archive (`ctdr2k000.bin`, `ctdr2k001.bin`, ...), 4 MiB each).
 Open the app once as `http://localhost:8080/#secret=<password>`: the secret is moved into localStorage (and removed from the
 address bar). With a stored secret the app skips the drop dialog and loads the game files from the encrypted archives right away.
-`src/ts/remotezip.ts` downloads only the parts it needs (checking each against its SHA-256), decrypts in the browser and caches
+`src/ts/zip/` downloads only the parts it needs (checking each against its SHA-256), decrypts in the browser and caches
 the parts in IndexedDB; a cached part is reused while its hash matches `parts.json`, so after an archive changed only the
 parts that differ are downloaded again. Share links include `#secret=...` when a secret is stored, so only share them with
 people who may see your assets.
@@ -87,9 +87,16 @@ src/cpp/app.cpp        camera, input, main loop, JS-facing API
 src/web/index.html     the page (copied to dist/)
 src/web/style.css      its styles (copied to dist/)
 src/ts/main.ts         entry point: UI, state, controls, wasm boot (bundled into dist/app.js)
-src/ts/files.ts        file sources: folders, zip files, remembered handles, the encrypted asset archives
-src/ts/remotezip.ts    AES zip reader over a folder of parts (chunking, hash check, IndexedDB cache)
+src/ts/gamefiles.ts    where the game files come from: folders, zip files, remembered handles, the encrypted asset archives
+src/ts/zip/            one zip reader for a file on the device and for the encrypted remote archives:
+  index.ts             openZip(ByteReader): the zip directory and entries (stored by range, deflated as a whole, WinZip AES)
+  types.ts             ByteReader (where bytes come from) and ArchiveEntry (what comes out)
+  blobreader.ts        ByteReader over a File on the device
+  partsreader.ts       ByteReader over a remote folder of parts (download, SHA-256 check, memory cache)
+  cache.ts             the persistent IndexedDB cache of the parts
+  zipaes.ts            WinZip AES: cipher, key derivation, authentication
 src/ts/storage.ts      localStorage: saved view, preferences, secret
+src/ts/utils/arrays.ts  array helpers (pushAll)
 src/ts/types.ts, dom.ts, globals.d.ts   shared types, typed element lookup, browser API declarations
 scripts/               build.mjs, serve.mjs, chunk_assets.py
 ```

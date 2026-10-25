@@ -1,5 +1,5 @@
 // Shapes shared between the modules and with the WebAssembly side (JSON returned by the C++ exports, the JS API it calls).
-import type { FileSet } from './files.ts';
+import type { FileSet } from './gamefiles.ts';
 
 /** A layer of the level (markers / lines of one kind), as reported by `rme_scene_info`. */
 export interface LayerInfo {

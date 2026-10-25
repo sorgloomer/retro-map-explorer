@@ -4,7 +4,7 @@ import { $, $input } from './dom.ts';
 import {
   FileSet, fsAccess, handles, idbGet, rememberHandle, setFromAssetArchives, setFromEntries, setFromHandles, setFromInput,
   setFromZip, setHandles,
-} from './files.ts';
+} from './gamefiles.ts';
 import {
   MODE_KEY, STORE_KEY, absorbSecretFromHash, folds, prefs, readLocalView, saveFolds, setLayerPrefs, setOptPref,
   store, storedSecret,
