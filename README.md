@@ -43,41 +43,62 @@ so a refresh can reopen it; the browser may ask for permission again.
 
 ## Build
 
-Requires Node.js and the Emscripten SDK (installed locally, nothing global):
+Requires Node.js (with `npm install` for the page's build tools: TypeScript and rolldown) and the Emscripten SDK (installed locally, nothing global):
 
 ```sh
 git clone --depth 1 https://github.com/emscripten-core/emsdk .tools/emsdk
 .tools/emsdk/emsdk install latest
 .tools/emsdk/emsdk activate latest
-node scripts/build.mjs          # -> dist/   (node scripts/build.mjs --debug for an unoptimised build)
+npm install
+node scripts/build.mjs          # -> dist/   (--debug: unoptimised wasm, unminified bundle with a source map; --web-only: skip the wasm)
 node scripts/serve.mjs 8080     # http://localhost:8080
 ```
 
-`scripts/serve.mjs` also serves `./assets` (put test copies of the games there) and exposes a **Dev assets** button
-(or open `http://localhost:8080/?dev`) so you can try the app without dragging folders in.
-Assets are only served to browsers holding the shared secret (cookie `rme_secret`). The server prints a link ending in `?secret=...` (secret from `RME_SECRET` or the generated, git-ignored `.dev-secret`); open it once and the app keeps the secret in a cookie. Share links include the secret when the browser has it, so only share them with people who may see your assets.
+The page is written in TypeScript (`src/ts/*.ts`). The build type-checks it with `tsc` (`npm run typecheck` does only that), then
+rolldown compiles, bundles and minifies it into the single script `dist/app.js`. `dist/` only receives `app.js`, `index.html`,
+`style.css` and the wasm files: the TypeScript sources are never published.
+
+`scripts/serve.mjs` serves `dist/` and `./assets` as plain static files (no Range, no ETag, no authentication). The test games
+live in `./assets` as AES-encrypted zip archives (`ctdr2k.zip`, `rvlt.zip`) that are split into fixed-size parts for hosts
+without Range or ETag support: run `python scripts/chunk_assets.py` to (re)create `ctdr2k.zip.parts/` and `rvlt.zip.parts/`
+(`meta.json` with the etag, chunk size, total size and part count; `parts.json` with the name and SHA-256 of every part; and the part files themselves, named after the archive (`ctdr2k000.bin`, `ctdr2k001.bin`, ...), 4 MiB each).
+Open the app once as `http://localhost:8080/#secret=<password>`: the secret is moved into localStorage (and removed from the
+address bar). With a stored secret the app skips the drop dialog and loads the game files from the encrypted archives right away.
+`src/ts/remotezip.ts` downloads only the parts it needs (checking each against its SHA-256), decrypts in the browser and caches
+the parts in IndexedDB; a cached part is reused while its hash matches `parts.json`, so after an archive changed only the
+parts that differ are downloaded again. Share links include `#secret=...` when a secret is stored, so only share them with
+people who may see your assets.
 `dist/` contains only the app and can be hosted on any static server.
 
 ## Layout
 
 ```
-src/vmath.h        vector / matrix math
-src/inflate.*      DEFLATE/zlib decoder (no zlib dependency)
-src/image.*        BMP + TGA decoders
-src/vfs.*          file system over the dropped files (JS: list + ranged read, via Asyncify)
-src/scene.h        game independent scene: triangle batches, textures, markers, lines
-src/revolt.cpp     Re-Volt loader (.w .prm .fin .inf .fob .pan .taz .tri .lit .fld .rim)
-src/carma.cpp      Carmageddon TDR 2000 loader (.dir/.pak archives, .hie, .mshs, .tga, .lins, .pup, .scol)
-src/renderer.*     WebGL2 renderer (textured geometry, instanced markers, screen-space line ribbons)
-src/app.cpp        camera, input, main loop, JS-facing API
-web/               index.html, style.css, ui.js
+src/cpp/vmath.h        vector / matrix math
+src/cpp/inflate.*      DEFLATE/zlib decoder (no zlib dependency)
+src/cpp/image.*        BMP + TGA decoders
+src/cpp/vfs.*          file system over the dropped files (JS: list + ranged read, via Asyncify)
+src/cpp/scene.h        game independent scene: triangle batches, textures, markers, lines
+src/cpp/revolt.cpp     Re-Volt loader (.w .prm .fin .inf .fob .pan .taz .tri .lit .fld .rim)
+src/cpp/carma.cpp      Carmageddon TDR 2000 loader (.dir/.pak archives, .hie, .mshs, .tga, .lins, .pup, .scol)
+src/cpp/renderer.*     WebGL2 renderer (textured geometry, instanced markers, screen-space line ribbons)
+src/cpp/raycast.*      view rays and picking against the level geometry
+src/cpp/pan.*          the surface the camera slides on while panning
+src/cpp/app.cpp        camera, input, main loop, JS-facing API
+src/web/index.html     the page (copied to dist/)
+src/web/style.css      its styles (copied to dist/)
+src/ts/main.ts         entry point: UI, state, controls, wasm boot (bundled into dist/app.js)
+src/ts/files.ts        file sources: folders, zip files, remembered handles, the encrypted asset archives
+src/ts/remotezip.ts    AES zip reader over a folder of parts (chunking, hash check, IndexedDB cache)
+src/ts/storage.ts      localStorage: saved view, preferences, secret
+src/ts/types.ts, dom.ts, globals.d.ts   shared types, typed element lookup, browser API declarations
+scripts/               build.mjs, serve.mjs, chunk_assets.py
 ```
 
 ## Adding a game
 
-Implement `Game` (see `src/game.h`): `detect()`, `listLevels()` and `load()` which fills a `Scene`
+Implement `Game` (see `src/cpp/game.h`): `detect()`, `listLevels()` and `load()` which fills a `Scene`
 (add triangles with `addTriangle` / `addIndexed`, annotations with `addCategory` + `addMarker` / `addLine` / `addBox`)
-and register it in `initGames()` in `src/app.cpp`.
+and register it in `initGames()` in `src/cpp/app.cpp`.
 
 ## Known gaps
 

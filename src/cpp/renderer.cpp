@@ -682,7 +682,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         }
         // "See-through markers" also covers the in-game powerup meshes: a faint copy where the level hides them
         if (opt.xray && opt.powerupMeshes) {
-            glUniform1f(locFade, 0.2f);
+            glUniform1f(locFade, 0.15f);
             glEnable(GL_BLEND);
             glDepthMask(GL_FALSE);
             glDepthFunc(GL_GREATER);

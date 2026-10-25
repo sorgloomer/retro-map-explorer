@@ -7,6 +7,12 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:debug": "node scripts/build.mjs --debug",
+    "build:web": "node scripts/build.mjs --web-only",
+    "typecheck": "tsc -p tsconfig.json",
     "serve": "node scripts/serve.mjs 8080"
+  },
+  "devDependencies": {
+    "rolldown": "^1.2.15",
+    "typescript": "^7.0.2"
   }
 }
