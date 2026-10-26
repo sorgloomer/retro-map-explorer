@@ -621,14 +621,14 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             shown[i] = 1;
         }
 
-        auto drawSet = [&](const std::vector<GpuBatch>& set, int pass, const Mat4& model, bool cullable) {
+        auto drawSet = [&](const std::vector<GpuBatch>& set, int pass, const Mat4& model) {
             glUniformMatrix4fv(locModel, 1, GL_FALSE, model.m);
             glUniform1f(locWire, 0.f);
             for (const GpuBatch& b : set) {
                 bool blended = b.blend == BLEND_ALPHA || b.blend == BLEND_ADD;
                 if (blended != (pass == 1)) continue;
                 if (cull) {
-                    if (cullable && !b.twoSided) glEnable(GL_CULL_FACE);
+                    if (!b.twoSided) glEnable(GL_CULL_FACE);
                     else glDisable(GL_CULL_FACE);
                 }
                 if (b.blend == BLEND_ADD) glBlendFunc(GL_SRC_ALPHA, GL_ONE);
@@ -679,10 +679,10 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 glDepthMask(GL_FALSE);
             }
             if (opt.wireframe) { if (pass == 0) drawWire(); }
-            else drawSet(batches, pass, Mat4::identity(), true);
+            else drawSet(batches, pass, Mat4::identity());
             for (size_t i = 0; i < scene->movers.size(); i++) {
                 if (!shown[i]) continue;
-                drawSet(geomGpu[scene->movers[i].geom], pass, models[i], !scene->movers[i].powerupMesh);
+                drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
             }
         }
         // "See-through markers" also covers the in-game powerup meshes: a faint copy where the level hides them
@@ -693,7 +693,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             glDepthFunc(GL_GREATER);
             for (int pass = 0; pass < 2; pass++)
                 for (size_t i = 0; i < scene->movers.size(); i++)
-                    if (shown[i] && scene->movers[i].powerupMesh) drawSet(geomGpu[scene->movers[i].geom], pass, models[i], false);
+                    if (shown[i] && scene->movers[i].powerupMesh) drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
             glDepthFunc(GL_LEQUAL);
             glUniform1f(locFade, 1.0f);
         }
