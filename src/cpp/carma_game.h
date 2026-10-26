@@ -67,6 +67,7 @@ public:
 
     // ---- file resolution
     std::unordered_map<std::string, std::vector<int>> byBase;
+    size_t byBaseFiles = 0;  // number of files the index was built from
     void indexBases();
     // Finds loose file `name`, preferring files under `first`, then `second`.
     int locate(const std::string& name, const std::string& first, const std::string& second);
@@ -193,6 +194,10 @@ public:
 
     // ---- level assembly: load() runs these in order
     bool load(const std::string& levelId, Scene& out, std::string& err) override;
+    // driving minigame (minigame01/eagle_loader.cpp)
+    bool canDrive() override;
+    bool featuredCar() const override { return true; }  // the Eagle drives in Re-Volt levels too
+    bool loadCarModel(Scene& scene, minigame01::CarModel& out) override;
     void beginLoad(const std::string& levelId, Scene& out);  // resets the per-load state, finds the base track
     void readTexAnims(const KeyFile& kf);  // TEXTURE_ANIM_DESCRIPTOR and the .anm scripts it lists
     void openArchives();                                       // track, base track and shared sub folders

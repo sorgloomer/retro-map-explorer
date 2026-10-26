@@ -33,7 +33,7 @@ function buildWasm() {
   const env = { ...process.env, EMSDK: emsdk, EMSDK_QUIET: '1', EM_CONFIG: path.join(emsdk, '.emscripten') };
   env.PATH = [emscriptenDir, path.join(emsdk, 'upstream', 'bin'), process.env.PATH].join(path.delimiter);
 
-  const sources = fs.readdirSync(path.join(root, 'src', 'cpp')).filter((f) => f.endsWith('.cpp')).map((f) => path.join(root, 'src', 'cpp', f));
+  const sources = fs.readdirSync(path.join(root, 'src', 'cpp'), { recursive: true }).filter((f) => f.endsWith('.cpp')).map((f) => path.join(root, 'src', 'cpp', f));
   const args = [
     ...(debug ? ['-O0', '-g', '-sASSERTIONS=1'] : ['-O2']),
     '-std=c++17', '-Wall', '-Wno-unused-function',

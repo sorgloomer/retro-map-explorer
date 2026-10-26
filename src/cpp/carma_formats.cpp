@@ -131,6 +131,13 @@ bool parseMshs(const std::vector<uint8_t>& data, std::vector<CMesh>& out) {
                 }
             }
             out.push_back(std::move(m));
+            // Car files hold many meshes back to back; single-mesh files (gorilla, sharks) may carry other data after the triangles.
+            size_t next = h0 + need;
+            uint32_t nextHdr;
+            if (next + 24 <= data.size() && (memcpy(&nextHdr, data.data() + next, 4), nextHdr >> 16) == (hdr >> 16)) {
+                r.pos = next;
+                continue;
+            }
             return true;
         }
         CMesh m;

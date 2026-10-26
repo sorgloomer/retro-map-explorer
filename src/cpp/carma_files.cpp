@@ -122,7 +122,9 @@ std::vector<LevelInfo> CarmaGame::listLevels() {
 }
 
 void CarmaGame::indexBases() {
-    if (!byBase.empty()) return;
+    if (!byBase.empty() && byBaseFiles == vfs::files().size()) return;  // rebuilt when files were added
+    byBase.clear();
+    byBaseFiles = vfs::files().size();
     for (size_t i = 0; i < vfs::files().size(); i++) byBase[vfs::lower(vfs::baseOf(vfs::files()[i].path))].push_back((int)i);
 }
 

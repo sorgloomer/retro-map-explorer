@@ -113,6 +113,9 @@ struct Mover {
     std::vector<AnimKey> keys; // looping keyframes of an animated prop
     Vec3 pivot;                // keyframe rotations turn about this point
     bool staticModel = false;  // geometry is already in world space (merged props): draw with an identity transform
+    bool external = false;     // `model` is set from outside every frame (the minigame's car); `cat` may be -1
+    bool hidden = false;       // not drawn (collected pickups, the parked car)
+    Mat4 model = Mat4::identity();
 
     void finish() {
         cum.assign(path.size(), 0.0f);

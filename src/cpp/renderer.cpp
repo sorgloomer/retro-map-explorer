@@ -543,8 +543,10 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         std::vector<char> shown(scene->movers.size(), 0);
         for (size_t i = 0; i < scene->movers.size(); i++) {
             const Mover& m = scene->movers[i];
-            if (!scene->cats[m.cat].visible || m.geom >= (int)geomGpu.size()) continue;
+            if (m.hidden || m.geom >= (int)geomGpu.size()) continue;
+            if (m.cat >= 0 && !scene->cats[m.cat].visible) continue;
             if (m.powerupMesh && !opt.powerupMeshes) continue;
+            if (m.external) { models[i] = m.model; shown[i] = 1; continue; }
             if (m.staticModel) { shown[i] = 1; continue; }
             if (m.billboard) {  // the halo of a powerup icon turns towards the camera, as in the game
                 float sc = iconScale(m);

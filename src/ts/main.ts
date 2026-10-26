@@ -92,6 +92,32 @@ const RME: RmeApi = (window.RME = {
     $('helpOrbit').hidden = mode !== 1;
   },
   onTouchMode() { showTouchUi(); },
+  onGameMode(on) {
+    document.body.classList.toggle('playing', !!on);
+    $('gameHud').hidden = !on;
+    $('ghOver').hidden = true;
+    $('ghMsg').style.opacity = '0';
+    (document.activeElement as HTMLElement | null)?.blur();
+    $('canvas').focus();
+  },
+  onGameHud(speedKmh, score, drift, timeLeft, collected, total, state, message, messageAge) {
+    const t = Math.max(0, Math.ceil(timeLeft));
+    $('ghSpeed').textContent = String(Math.round(speedKmh));
+    $('ghScore').textContent = String(score);
+    $('ghDrift').textContent = String(drift);
+    $('ghPups').textContent = `${collected} / ${total}`;
+    $('ghTime').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    $('ghTime').style.color = state === 0 && t <= 10 ? '#ff6b6b' : '';
+    const msg = $('ghMsg');
+    msg.textContent = message;
+    msg.style.opacity = message && messageAge < 2.2 ? '1' : '0';
+    $('ghOver').hidden = state === 0 || state === 3;
+    if (state === 3) $('ghTime').textContent = '∞';
+    if (state === 1 || state === 2) {
+      $('ghOverTitle').textContent = state === 2 ? 'All powerups collected!' : 'Time is up!';
+      $('ghOverText').textContent = `Score ${score}  ·  ${collected} / ${total} powerups  ·  drift ${drift}`;
+    }
+  },
   onFatal(msg) { setStatus(msg, true); },
   onHover(text, cat, x, y) {
     const tip = $('tip');
@@ -337,8 +363,24 @@ async function shareView(): Promise<void> {
 setInterval(() => saveState(), SAVE_INTERVAL_MS);
 window.addEventListener('pagehide', () => saveState(true));
 
+/** Drops the player into the level with the driving minigame (the C++ side takes over the keyboard and gamepad). */
+async function startGame(mode: number): Promise<void> {
+  busy(true, 'Loading the car…');
+  await paint();
+  let ok = 0;
+  try {
+    ok = await call('rme_game_start', 'number', ['number'], [mode], true);
+  } catch (e) {
+    console.error(e);
+    setStatus('Could not start the game: ' + errorMessage(e), true);
+  }
+  busy(false);
+  if (!ok) setStatus('Could not start the game: ' + call('rme_last_error', 'string', [], []), true);
+}
+
 function showSceneInfo(seconds: string): void {
   const info = sceneInfo();
+  $('playRow').hidden = !call('rme_game_can_play', 'number', [], []);
   $('secLevel').hidden = false;
   $('levelTitle').textContent = info.title;
   for (const id of ['optSun', 'optPoints']) {
@@ -501,6 +543,9 @@ function bindControls(): void {
   $('camTop').onclick = () => { M._rme_camera_command(2); $('canvas').focus(); };
   $('modeFly').onclick = () => { M._rme_set_camera_mode(0); $('canvas').focus(); };
   $('modeOrbit').onclick = () => { M._rme_set_camera_mode(1); $('canvas').focus(); };
+  $('playBtn').onclick = () => { void startGame(0); };
+  $('freeBtn').onclick = () => { void startGame(1); };
+  $('gameBack').onclick = () => { call('rme_game_stop', null, [], []); $('canvas').focus(); };
 }
 
 // ---------------------------------------------------------------- touch

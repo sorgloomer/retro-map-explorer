@@ -8,6 +8,7 @@
 #include <sstream>
 #include "binio.h"
 #include "game.h"
+#include "minigame01/revolt_car.h"
 #include "vfs.h"
 
 namespace {
@@ -186,6 +187,9 @@ public:
     const char* id() const override { return "revolt"; }
     const char* name() const override { return "Re-Volt"; }
     const char* dropHint() const override { return "Re-Volt game folder (the one containing levels/)"; }
+    bool canDrive() override { return minigame01::revoltCanDrive(); }
+    float unitsPerMetre() const override { return 28.6f; }  // an Adeon is 123 units long: about 4.3 m
+    bool loadCarModel(Scene& scene, minigame01::CarModel& out) override { return minigame01::loadRevoltCar(scene, out); }
 
     // Level directories: <anything>/levels/<x>/<x>.w
     std::vector<std::string> levelDirs() {

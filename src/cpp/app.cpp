@@ -10,6 +10,7 @@
 #include <vector>
 #include "camera.h"
 #include "game.h"
+#include "minigame01/minigame.h"
 #include "pan.h"
 #include "raycast.h"
 #include "renderer.h"
@@ -52,6 +53,14 @@ struct App {
     int canvasW = 0, canvasH = 0;
     double lastTime = 0;
     int hoverShown = -2;
+    // driving minigame (src/cpp/minigame01)
+    minigame01::MiniGame mg;
+    bool gameMode = false;
+    Game* currentGame = nullptr;  // the game of the loaded level
+    RenderOptions viewerOpt;      // options and camera of the viewer, restored when the minigame ends
+    Camera viewerCam;
+    int viewerCamMode = 0;
+    int hudTick = 0;
 } app;
 
 enum Key { K_W, K_A, K_S, K_D, K_UP, K_DOWN, K_FAST, K_SLOW, K_COUNT };
@@ -237,6 +246,25 @@ void updateHover(const ViewParams& vp) {
     }
 }
 
+void stopGame() {
+    if (!app.gameMode) return;
+    if (app.scene) app.mg.stop(*app.scene);
+    app.gameMode = false;
+    app.opt = app.viewerOpt;
+    app.cam = app.viewerCam;
+    app.camMode = app.viewerCamMode;
+    for (bool& k : app.keys) k = false;
+    EM_ASM({ if (window.RME && window.RME.onGameMode) window.RME.onGameMode(0); });
+}
+
+// Sends the minigame's heads-up display values to the page.
+void pushGameHud() {
+    const minigame01::Hud& h = app.mg.hud();
+    EM_ASM({
+        if (window.RME && window.RME.onGameHud) window.RME.onGameHud($0, $1, $2, $3, $4, $5, $6, UTF8ToString($7), $8);
+    }, (double)h.speedKmh, h.score, h.driftScore, (double)h.timeLeft, h.collected, h.total, h.state, h.message, (double)h.messageAge);
+}
+
 void frame() {
     double now = emscripten_get_now();
     float dt = app.lastTime > 0 ? (float)std::min(0.1, (now - app.lastTime) / 1000.0) : 0.016f;
@@ -252,6 +280,16 @@ void frame() {
     app.canvasW = (int)cw;
     app.canvasH = (int)ch;
 
+    if (app.gameMode) {
+        minigame01::Controls ctl = app.mg.inputRef().update(dt);
+        if (app.mg.inputRef().exitRequested()) stopGame();
+        else if (app.scene) {
+            app.mg.update(dt, ctl, *app.scene);
+            app.cam = app.mg.camera();
+            if (++app.hudTick % 3 == 0) pushGameHud();
+        }
+    }
+
     // movement
     float speed = app.sceneRadius * 0.3f * app.speedMul;
     if (app.keys[K_FAST]) speed *= 4.0f;
@@ -259,6 +297,7 @@ void frame() {
     Vec3 f(std::sin(app.cam.yaw), 0, std::cos(app.cam.yaw));
     Vec3 r(std::cos(app.cam.yaw), 0, -std::sin(app.cam.yaw));
     Vec3 mv;
+    if (app.gameMode) { app.keys[K_W] = app.keys[K_A] = app.keys[K_S] = app.keys[K_D] = app.keys[K_UP] = app.keys[K_DOWN] = false; }
     // Fly mode: W/S follow the view direction (changes height); orbit mode: horizontal like a walking pan.
     Vec3 fwdMove = app.camMode == 0 ? app.cam.forward() : f;
     if (app.keys[K_W]) mv += fwdMove;
@@ -280,15 +319,20 @@ void frame() {
     vp.pivot = app.pivot;
     vp.eye = app.cam.pos;
     vp.view = Mat4::lookAt(app.cam.pos, app.cam.forward(), Vec3(0, 1, 0));
-    vp.proj = Mat4::perspective(vp.fovY, (float)w / (float)h, nearPlane(app.sceneRadius), app.farDist);
+    // the chase camera sits close to the car: a much nearer clipping plane than the viewer's
+    float zNear = app.gameMode ? 0.4f * app.mg.unitsPerMetre() : nearPlane(app.sceneRadius);
+    float zFar = app.gameMode ? std::min(app.farDist, 12000.0f * app.mg.unitsPerMetre()) : app.farDist;
+    vp.proj = Mat4::perspective(vp.fovY, (float)w / (float)h, zNear, zFar);
     vp.viewProj = Mat4::mul(vp.proj, vp.view);
-    updateHover(vp);
+    if (app.gameMode) app.hover = -1;
+    else updateHover(vp);
     app.renderer.render(vp, app.opt, app.hover);
 }
 
 // ----- input
 EM_BOOL onKey(int type, const EmscriptenKeyboardEvent* e, void*) {
     if (e->ctrlKey || e->metaKey) return EM_FALSE;
+    if (app.gameMode) return app.mg.inputRef().key(e->code, type == EMSCRIPTEN_EVENT_KEYDOWN, e->repeat != 0) ? EM_TRUE : EM_FALSE;
     int k = keyFromCode(e->code);
     bool down = type == EMSCRIPTEN_EVENT_KEYDOWN;
     if (k >= 0) {
@@ -309,6 +353,7 @@ EM_BOOL onBlur(int, const EmscriptenFocusEvent*, void*) {
 }
 
 EM_BOOL onMouseDown(int, const EmscriptenMouseEvent* e, void*) {
+    if (app.gameMode) return EM_FALSE;
     app.touchMode = false;
     app.dragging = true;
     app.dragButton = e->button;
@@ -326,6 +371,7 @@ EM_BOOL onMouseUp(int, const EmscriptenMouseEvent*, void*) {
     return EM_FALSE;
 }
 EM_BOOL onMouseMove(int, const EmscriptenMouseEvent* e, void*) {
+    if (app.gameMode) return EM_FALSE;
     // Never preventDefault here: the browser needs mouse moves to drag the page's sliders.
     if (app.touchMode && e->movementX == 0 && e->movementY == 0) return EM_FALSE;
     app.touchMode = false;
@@ -346,6 +392,7 @@ EM_BOOL onMouseLeave(int, const EmscriptenMouseEvent*, void*) {
     return EM_FALSE;
 }
 EM_BOOL onWheel(int, const EmscriptenWheelEvent* e, void*) {
+    if (app.gameMode) return EM_FALSE;
     float amount = e->deltaY > 0 ? -1.0f : 1.0f;  // wheel up = forward / closer
     if (app.camMode == 1) {
         // Zoom towards whatever is under the cursor right now (not the last clicked pivot).
@@ -391,6 +438,7 @@ void beginGesture() {
 }
 
 EM_BOOL onTouch(int type, const EmscriptenTouchEvent* e, void*) {
+    if (app.gameMode) return EM_FALSE;
     if (!app.touchMode) {
         app.touchMode = true;
         EM_ASM({ if (window.RME && window.RME.onTouchMode) window.RME.onTouchMode(); });
@@ -500,6 +548,9 @@ EMSCRIPTEN_KEEPALIVE int rme_load(const char* gameId, const char* levelId) {
         app.lastError = err.empty() ? "failed to load level" : err;
         return 0;
     }
+    stopGame();
+    app.mg.forget();
+    app.currentGame = game;
     app.retired = std::move(app.scene);
     app.scene = std::move(s);
     frameCamera();
@@ -509,6 +560,50 @@ EMSCRIPTEN_KEEPALIVE int rme_load(const char* gameId, const char* levelId) {
     app.hoverShown = -2;
     return 1;
 }
+
+// ---- driving minigame (see src/cpp/minigame01)
+// The game whose car the minigame prefers (any game's levels can be driven with it), else null.
+Game* featuredCarGame() {
+    for (auto& g : app.games)
+        if (g->featuredCar() && g->canDrive()) return g.get();
+    return nullptr;
+}
+
+// 1 when the loaded level can be played: a car is available, the featured one from any game or the level's own.
+EMSCRIPTEN_KEEPALIVE int rme_game_can_play() { return app.scene && app.currentGame && (featuredCarGame() || app.currentGame->canDrive()) ? 1 : 0; }
+
+// Starts the minigame in the loaded level; returns 1 on success. Suspends while the car is read.
+// mode 0 = Powerup Rush (timed), 1 = free drive.
+EMSCRIPTEN_KEEPALIVE int rme_game_start(int mode) {
+    if (!app.scene || !app.currentGame) { app.lastError = "no level loaded"; return 0; }
+    if (app.gameMode) return 1;
+    if (!app.mg.prepared()) {
+        minigame01::CarModel car;
+        Game* provider = featuredCarGame();
+        if (!provider) provider = app.currentGame;
+        if (!provider->loadCarModel(*app.scene, car)) { app.lastError = "cannot load the car"; return 0; }
+        if (provider != app.currentGame) car.unitsPerMetre = app.currentGame->unitsPerMetre();  // fit the car to this game's scale
+        if (!app.mg.prepare(*app.scene, car)) { app.lastError = "this level has no solid ground to drive on"; return 0; }
+        app.renderer.setScene(app.scene.get(), app.sceneRadius);  // uploads the car
+    }
+    app.viewerOpt = app.opt;
+    app.viewerCam = app.cam;
+    app.viewerCamMode = app.camMode;
+    app.opt.powerupMeshes = true;   // the pickups are the in-game meshes
+    app.opt.wireframe = false;
+    app.opt.showGeometry = true;
+    app.opt.textured = true;
+    app.dragging = false;
+    app.mg.start(*app.scene, app.sceneCenter, mode == 1);
+    app.gameMode = true;
+    app.hoverShown = -2;
+    notifyHover(nullptr, nullptr, 0, 0);
+    EM_ASM({ if (window.RME && window.RME.onGameMode) window.RME.onGameMode(1); });
+    pushGameHud();
+    return 1;
+}
+
+EMSCRIPTEN_KEEPALIVE void rme_game_stop() { stopGame(); }
 
 EMSCRIPTEN_KEEPALIVE const char* rme_last_error() { return app.lastError.c_str(); }
 
@@ -522,7 +617,7 @@ EMSCRIPTEN_KEEPALIVE const char* rme_scene_info() {
         for (const Category& c : s->cats) pm |= c.hasMesh;
         j += std::string("\"canCull\":") + (s->cullBackfaces ? "true" : "false") + ",";
         bool animated = false;
-        for (const Mover& mv : s->movers) animated |= !mv.staticModel;
+        for (const Mover& mv : s->movers) animated |= !mv.staticModel && !mv.external;
         j += std::string("\"hasMovers\":") + (animated ? "true" : "false") + ",";
         j += std::string("\"hasPowerupMeshes\":") + (pm ? "true" : "false") + ",";
         j += "\"title\":\"" + jsonEscape(s->title) + "\",\"info\":\"" + jsonEscape(s->info) + "\",\"categories\":[";

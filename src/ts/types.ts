@@ -78,6 +78,8 @@ export interface RmeApi {
   onReady(): void;
   onCameraMode(mode: number): void;
   onTouchMode(): void;
+  onGameMode(on: number): void;
+  onGameHud(speedKmh: number, score: number, drift: number, timeLeft: number, collected: number, total: number, state: number, message: string, messageAge: number): void;
   onFatal(message: string): void;
   onHover(text: string | null, category: string | null, x: number, y: number): void;
 }

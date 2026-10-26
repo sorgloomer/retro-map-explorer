@@ -31,6 +31,23 @@ touched midpoint (vertical axis). Tap a marker for its label.
 Loading game files: drop the game folder on the page, or use **Open game folder** / **Open .zip**. Browsers on Android cannot pick
 folders, so zip the game folder (store without compression for the fastest loading) and open the zip instead.
 
+## Minigame: Powerup Rush
+
+Press **▶ Play** (Carmageddon levels) to drop the Eagle into the level you are viewing and collect its powerups before
+the 90 second clock runs out. Time bonuses add 15 s, upgrades and credits are worth the most, sliding earns drift points,
+and the water is a hazard. The level's own triangles are the road (a raycast vehicle with spring / damper wheels, a friction
+circle for the tyres and sphere probes around the hull for walls). All of it lives in `src/cpp/minigame01/`.
+
+| | Keyboard | Gamepad |
+|---|---|---|
+| Accelerate / brake and reverse | `W` `S` or arrows | RT / LT |
+| Steer | `A` `D` or arrows | left stick, d-pad |
+| Handbrake | `Space` | A |
+| Put the car upright | `R` | Y |
+| Camera | `C` | X |
+| New round | `Enter` | Start |
+| Back to the viewer | `Esc` or the Back button | Back |
+
 ## Saved view and sharing
 
 The current view (game, level, camera position and angles, visible layers, moving-objects switch, animation speed and the
@@ -84,6 +101,7 @@ src/cpp/carma*.cpp     Carmageddon TDR 2000 loader (.dir/.pak archives, .hie, .m
                         carma_geometry (hierarchies to meshes), carma_movers (followers, animated props), carma_level
                         (the steps of load), carma_pak / carma_formats / carma_text / carma_powerups / carma_paths
 src/cpp/renderer.*     WebGL2 renderer (textured geometry, instanced markers, screen-space line ribbons)
+src/cpp/minigame01/    Driving minigame "Powerup Rush": vehicle physics, level collision, input, game rules, and the Eagle loader
 src/cpp/raycast.*      view rays and picking against the level geometry
 src/cpp/pan.*          the surface the camera slides on while panning
 src/cpp/app.cpp        camera, input, main loop, JS-facing API

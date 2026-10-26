@@ -27,6 +27,10 @@
       <label>Level
         <select id="levelSel" disabled><option>—</option></select>
       </label>
+      <div class="row" id="playRow" hidden>
+        <button id="playBtn" class="play" type="button" title="Drive the Eagle through this level and collect the powerups before time runs out">▶ Powerup Rush</button>
+        <button id="freeBtn" class="play alt" type="button" title="Drive the Eagle around this level with no time limit">Free drive</button>
+      </div>
       <div class="row">
         <button id="openBtn" type="button">Open game folder…</button>
         <button id="zipBtn" type="button">Open .zip…</button>
@@ -108,6 +112,27 @@
     </div>
   </section>
 </aside>
+
+<div id="gameHud" hidden>
+  <button id="gameBack" type="button" title="Back to the viewer (Esc)">← Back</button>
+  <div class="gh-stats">
+    <div><span>Score</span><b id="ghScore">0</b></div>
+    <div><span>Time</span><b id="ghTime">1:30</b></div>
+    <div><span>Powerups</span><b id="ghPups">0 / 0</b></div>
+    <div><span>Drift</span><b id="ghDrift">0</b></div>
+  </div>
+  <div id="ghMsg"></div>
+  <div class="gh-speed"><b id="ghSpeed">0</b><span>km/h</span></div>
+  <div id="ghOver" hidden>
+    <h2 id="ghOverTitle">Time is up!</h2>
+    <p id="ghOverText"></p>
+    <p class="muted"><kbd>Enter</kbd> new round &nbsp; <kbd>Esc</kbd> back to the viewer</p>
+  </div>
+  <p class="gh-help">
+    <kbd>W</kbd><kbd>S</kbd> gas / brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>R</kbd> upright ·
+    <kbd>C</kbd> camera · <kbd>Esc</kbd> exit — or use a gamepad (RT / LT, left stick, A, Y, Back)
+  </p>
+</div>
 
 <div id="tip" hidden></div>
 

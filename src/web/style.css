@@ -130,3 +130,31 @@ button, select, summary, .item { touch-action: manipulation; }
   font-size: 11px; text-transform: uppercase; letter-spacing: .08em; border-top: 1px solid var(--border); cursor: pointer; user-select: none; }
 #legend .lgroup:first-child { border-top: 0; padding-top: 2px; }
 #legend .item { padding-left: 12px; }
+
+/* ---- driving minigame */
+button.play { background: #2b7de0; border-color: #4da3ff; font-weight: 600; letter-spacing: .02em; }
+button.play:hover { background: #3a8cf0; }
+button.play.alt { background: #1b212c; border-color: var(--border); font-weight: 500; }
+button.play.alt:hover { border-color: var(--accent); background: #232b38; }
+body.playing #dock, body.playing #tip { display: none !important; }
+body.playing #canvas { cursor: default; }
+#gameHud { position: fixed; inset: 0; z-index: 5; pointer-events: none; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }
+#gameHud[hidden] { display: none; }
+#gameHud button { pointer-events: auto; width: auto; position: absolute; top: 12px; left: 12px; margin: 0; padding: 8px 14px;
+  background: rgba(18, 22, 30, .8); backdrop-filter: blur(6px); }
+.gh-stats { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 22px; padding: 8px 18px;
+  background: rgba(18, 22, 30, .6); border: 1px solid var(--border); border-radius: 10px; backdrop-filter: blur(6px); }
+.gh-stats div { text-align: center; min-width: 64px; }
+.gh-stats span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.gh-stats b { font-size: 20px; font-variant-numeric: tabular-nums; }
+#ghMsg { position: absolute; top: 25%; left: 0; right: 0; text-align: center; font-size: 26px; font-weight: 700; opacity: 0; transition: opacity .25s; }
+.gh-speed { position: absolute; right: 24px; bottom: 56px; text-align: right; }
+.gh-speed b { font-size: 54px; font-variant-numeric: tabular-nums; line-height: 1; }
+.gh-speed span { margin-left: 6px; color: var(--muted); font-size: 14px; }
+#ghOver { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: 22px 34px;
+  background: rgba(18, 22, 30, .82); border: 1px solid var(--border); border-radius: 14px; backdrop-filter: blur(8px); }
+#ghOver[hidden] { display: none; }
+#ghOver h2 { margin: 0 0 6px; font-size: 30px; }
+#ghOver p { margin: 4px 0; font-size: 16px; }
+.gh-help { position: absolute; left: 12px; right: 12px; bottom: 12px; margin: 0; text-align: center; color: rgba(255, 255, 255, .7); font-size: 12px; }
+@media (max-width: 700px) { .gh-stats { gap: 10px; padding: 6px 10px; } .gh-stats b { font-size: 16px; } .gh-speed b { font-size: 38px; } .gh-help { display: none; } }
