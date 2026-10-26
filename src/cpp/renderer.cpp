@@ -281,6 +281,7 @@ void Renderer::clearScene() {
     geomGpu.clear();
     for (unsigned t : textures) glDeleteTextures(1, &t);
     textures.clear();
+    texFrame.clear();
     catRanges.clear();
     if (lightTex) glDeleteTextures(1, &lightTex);
     lightTex = 0;
@@ -339,6 +340,7 @@ void Renderer::setScene(const Scene* s, float radius) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         textures.push_back(t);
+        texFrame.push_back((int)textures.size() - 1);
     }
     // point lights as a 2-row float texture: row 0 = position + outer radius, row 1 = colour + inner radius
     {
@@ -533,6 +535,9 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             float dist = length(m.path[0] - vp.eye);
             return std::max(1.0f, 16.0f * opt.markerScale * dist * pixelWorld / geomRadius[g]);
         };
+        for (const TexAnim& a : scene->texAnims)
+            if (a.texture >= 0 && a.texture < (int)texFrame.size() && !a.frames.empty() && a.fps > 0)
+                texFrame[a.texture] = a.frames[(size_t)std::floor(vp.time * a.fps) % a.frames.size()];
         // model matrices of the moving objects at the current time
         std::vector<Mat4> models(scene->movers.size(), Mat4::identity());
         std::vector<char> shown(scene->movers.size(), 0);
@@ -637,7 +642,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 glUniform1f(locLighting, b.blend == BLEND_ADD ? 0.f : lightOn);  // emissive surfaces are not lit
                 if (hasTex) {
                     glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_2D, textures[b.tex]);
+                    glBindTexture(GL_TEXTURE_2D, textures[texFrame[b.tex]]);
                 }
                 glBindVertexArray(b.vao);
                 glDrawElements(GL_TRIANGLES, b.count, GL_UNSIGNED_INT, nullptr);

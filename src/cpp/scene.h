@@ -25,6 +25,14 @@ struct Batch {
     std::vector<uint32_t> idx;
 };
 
+// A texture whose image changes over time (the games' texture animation scripts). Batches keep using `texture`; the renderer
+// shows frames[floor(time * fps) % frames.size()], all indices into Scene::textures.
+struct TexAnim {
+    int texture = -1;
+    std::vector<int> frames;
+    float fps = 30;
+};
+
 enum MarkerShape : uint8_t { SHAPE_DIAMOND = 0, SHAPE_ARROW = 1, SHAPE_CUBE = 2, SHAPE_SPHERE = 3 };
 
 struct Category {
@@ -142,6 +150,7 @@ struct Scene : BatchSet {
     std::string info;                 // short multi-line description shown in the UI
     Vec3 background{0.08f, 0.1f, 0.14f};
     std::vector<Image> textures;
+    std::vector<TexAnim> texAnims;
     std::vector<Category> cats;
     std::vector<Marker> markers;
     std::vector<Line> lines;

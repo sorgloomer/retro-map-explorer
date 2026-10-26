@@ -79,7 +79,10 @@ src/cpp/image.*        BMP + TGA decoders
 src/cpp/vfs.*          file system over the dropped files (JS: list + ranged read, via Asyncify)
 src/cpp/scene.h        game independent scene: triangle batches, textures, markers, lines
 src/cpp/revolt.cpp     Re-Volt loader (.w .prm .fin .inf .fob .pan .taz .tri .lit .fld .rim)
-src/cpp/carma.cpp      Carmageddon TDR 2000 loader (.dir/.pak archives, .hie, .mshs, .tga, .lins, .pup, .scol)
+src/cpp/carma*.cpp     Carmageddon TDR 2000 loader (.dir/.pak archives, .hie, .mshs, .tga, .lins, .pup, .scol)
+                        Carmageddon loader: carma_game.h (class + format notes), carma_files (file lookup, races.txt),
+                        carma_geometry (hierarchies to meshes), carma_movers (followers, animated props), carma_level
+                        (the steps of load), carma_pak / carma_formats / carma_text / carma_powerups / carma_paths
 src/cpp/renderer.*     WebGL2 renderer (textured geometry, instanced markers, screen-space line ribbons)
 src/cpp/raycast.*      view rays and picking against the level geometry
 src/cpp/pan.*          the surface the camera slides on while panning

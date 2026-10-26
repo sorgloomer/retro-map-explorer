@@ -73,6 +73,7 @@ private:
     std::vector<float> geomRadius;                 // bounding radius around the origin per Scene::moverGeoms entry
     std::vector<std::vector<GpuBatch>> geomGpu;  // one per Scene::moverGeoms entry
     std::vector<unsigned> textures;
+    std::vector<int> texFrame;  // texture shown for each scene texture: itself, or the current frame of its animation
 
     // marker meshes
     struct Shape { unsigned vao = 0, vbo = 0; int count = 0; unsigned wvao = 0, wvbo = 0; int wcount = 0; };  // w*: triangle edges as lines
