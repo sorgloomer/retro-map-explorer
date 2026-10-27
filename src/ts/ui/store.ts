@@ -18,7 +18,6 @@ export interface LayerGroup { title: string; rows: LayerRow[] }
 export interface SceneView {
   title: string;
   info: string;
-  lighting: boolean;
   canCull: boolean;
   hasPowerupMeshes: boolean;
   hasMovers: boolean;

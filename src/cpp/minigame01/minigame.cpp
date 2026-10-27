@@ -104,7 +104,7 @@ void MiniGame::newRound(Scene& scene) {
         p.pos = m.path[0] * (1.0f / scale);
         const std::string& id = scene.cats[m.cat].id;
         p.points = 50;
-        if (id == "special" || id == "missionitem") { p.points = 150; p.label = id == "special" ? "Special powerup" : "Mission item"; }
+        if (id == "notable" || id == "missionitem") { p.points = 150; p.label = id == "notable" ? "Notable powerup" : "Mission item"; }
         else if (id == "timepowerup") { p.points = 50; p.seconds = 15; p.label = "Time bonus"; }
         else if (id == "upgrade") { p.points = 500; p.label = "Upgrade"; }
         else if (id == "credit") { p.points = 300; p.label = "Credits"; }

@@ -58,7 +58,7 @@ let sceneLoaded = false, lastSaved = '';
 // Layers are shown in groups, each with a checkbox that switches the whole group. Only the first group (pickups and
 // powerups) is visible by default; the last one (Misc) also takes every layer that is not listed.
 const LAYER_GROUPS: { title: string; ids: string[] }[] = [
-  { title: 'Pickups & powerups', ids: ['powerup', 'timepowerup', 'special', 'pedpowerup', 'upgrade', 'credit', 'pickup', 'star'] },
+  { title: 'Pickups & powerups', ids: ['powerup', 'timepowerup', 'notable', 'pedpowerup', 'upgrade', 'credit', 'pickup', 'star'] },
   { title: 'Course & paths', ids: ['start', 'checkpoint', 'raceline', 'startline', 'aipath', 'path', 'zone', 'trigger'] },
   { title: 'Mission', ids: ['missionitem', 'mission', 'ped'] },
   { title: 'Misc', ids: ['props', 'movers', 'drone', 'followerpath', 'animpath'] },  // listed first, in this order; then everything else
@@ -285,7 +285,6 @@ function showSceneInfo(seconds: string): void {
     scene: {
       title: info.title,
       info: `${info.info} · loaded in ${seconds}s`,
-      lighting: info.lighting,
       canCull: info.canCull,
       hasPowerupMeshes: info.hasPowerupMeshes,
       hasMovers: !!info.hasMovers,
@@ -413,6 +412,15 @@ export async function startGame(mode: number): Promise<void> {
   }
   busy(false);
   if (!ok) setStatus('Could not start the game: ' + call('rme_last_error', 'string', [], []), true);
+}
+/** Controls of the on-screen buttons; the numbers are minigame01::Input::Touch. */
+export const TOUCH = { handbrake: 0, reset: 1, camera: 2, restart: 3, exit: 4 } as const;
+/** The on-screen stick: x steers (-1 left .. 1 right), y is the throttle (1 gas .. -1 brake / reverse). */
+export function gameStick(x: number, y: number): void {
+  call('rme_game_stick', null, ['number', 'number'], [x, y]);
+}
+export function gameTouch(control: number, down: boolean): void {
+  call('rme_game_touch', null, ['number', 'number'], [control, down ? 1 : 0]);
 }
 export function stopGame(): void {
   call('rme_game_stop', null, [], []);

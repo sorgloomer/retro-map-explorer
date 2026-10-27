@@ -28,7 +28,7 @@ namespace carma {
 
 // Category ids of the marker layers of one level.
 struct Cats {
-    int start, pup, special, pedPup, time, upgrade, credit, missionItem, mission, check, race, startLine, ai, drone, ped, respawn;
+    int start, pup, notable, pedPup, time, upgrade, credit, missionItem, mission, check, race, startLine, ai, drone, ped, respawn;
 };
 
 // A powerup placed in the level (id < 0: a mission objective marker without an in-game mesh).
@@ -213,7 +213,7 @@ public:
     void addMovers(const KeyFile& kf, Scene& out);                          // path followers, animated props
     void addPeds(const KeyFile& kf, Scene& out, const Cats& c);
     void addRespawns(const KeyFile& kf, const std::string& name, Scene& out, const Cats& c);
-    void addLighting(const KeyFile& kf, Scene& out);
+    void addLightMarkers(const KeyFile& kf, Scene& out);
     void addProps(const KeyFile& kf, Scene& out);                           // breakables and movable objects
     std::string summary(const Scene& out, int meshCount) const;
 };

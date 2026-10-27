@@ -499,6 +499,16 @@ EMSCRIPTEN_KEEPALIVE int rme_game_start(int mode) {
 
 EMSCRIPTEN_KEEPALIVE void rme_game_stop() { stopGame(); }
 
+// The on-screen stick of the minigame: x steers, y is the throttle (see minigame01::Input::touchStick).
+EMSCRIPTEN_KEEPALIVE void rme_game_stick(float x, float y) {
+    if (app.gameMode) app.mg.inputRef().touchStick(x, y);
+}
+
+// An on-screen button of the minigame went down / up (control = minigame01::Input::Touch).
+EMSCRIPTEN_KEEPALIVE void rme_game_touch(int control, int down) {
+    if (app.gameMode) app.mg.inputRef().touch(control, down != 0);
+}
+
 EMSCRIPTEN_KEEPALIVE const char* rme_last_error() { return app.lastError.c_str(); }
 
 // JSON: {"title","info","categories":[{"name","color","count","visible","line"}]}
@@ -506,7 +516,6 @@ EMSCRIPTEN_KEEPALIVE const char* rme_scene_info() {
     Scene* s = app.scene.get();
     std::string j = "{";
     if (s) {
-        j += std::string("\"lighting\":") + (s->hasLighting ? "true" : "false") + ",";
         bool pm = false;
         for (const Category& c : s->cats) pm |= c.hasMesh;
         j += std::string("\"canCull\":") + (s->cullBackfaces ? "true" : "false") + ",";
@@ -546,8 +555,6 @@ EMSCRIPTEN_KEEPALIVE void rme_set_option(const char* name, double v) {
     else if (n == "lineWidth") app.ui.lineWidth = (float)v;
     else if (n == "xrayStrength") app.ui.xrayStrength = (float)v;
     else if (n == "geometry") app.ui.showGeometry = v != 0;
-    else if (n == "sun") app.ui.sunLight = v != 0;
-    else if (n == "points") app.ui.pointLights = v != 0;
     else if (n == "powerupMeshes") app.ui.powerupMeshes = v != 0;
     else if (n == "wireframe") app.ui.wireframe = v != 0;
     else if (n == "beams") app.ui.beams = v != 0;

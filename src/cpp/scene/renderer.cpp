@@ -12,19 +12,16 @@ layout(location=1) in vec4 aCol;
 layout(location=2) in vec2 aUV;
 uniform mat4 uVP;
 uniform mat4 uModel;
-out vec4 vCol; out vec2 vUV; out vec3 vWorld;
-void main(){ vCol=aCol; vUV=aUV; vec4 w = uModel*vec4(aPos,1.0); vWorld=w.xyz; gl_Position=uVP*w; }
+out vec4 vCol; out vec2 vUV;
+void main(){ vCol=aCol; vUV=aUV; gl_Position=uVP*(uModel*vec4(aPos,1.0)); }
 )";
 
 const char* kWorldFS = R"(#version 300 es
 precision highp float;
-in vec4 vCol; in vec2 vUV; in vec3 vWorld;
+in vec4 vCol; in vec2 vUV;
 uniform sampler2D uTex;
 uniform float uTextured, uCutout, uExposure, uWire, uFade;
 uniform float uBlendAdd;
-uniform vec3 uCam;
-uniform int uNumLights;
-uniform highp sampler2D uLights;
 out vec4 o;
 void main(){
   vec4 t = uTextured > 0.5 ? texture(uTex, vUV) : vec4(0.8,0.8,0.8,1.0);
@@ -264,9 +261,6 @@ void Renderer::clearScene() {
     textures.clear();
     texFrame.clear();
     catRanges.clear();
-    if (lightTex) glDeleteTextures(1, &lightTex);
-    lightTex = 0;
-    numLights = 0;
 }
 
 void Renderer::freeSet(std::vector<GpuBatch>& set) {
@@ -322,22 +316,6 @@ void Renderer::setScene(const Scene* s, float radius) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         textures.push_back(t);
         texFrame.push_back((int)textures.size() - 1);
-    }
-    // point lights as a 2-row float texture: row 0 = position + outer radius, row 1 = colour + inner radius
-    {
-        std::vector<float> ld;
-        int n = std::min<int>((int)s->lights.size(), 4096);
-        for (int i = 0; i < n; i++) ld.insert(ld.end(), {s->lights[i].pos.x, s->lights[i].pos.y, s->lights[i].pos.z, s->lights[i].outer});
-        for (int i = 0; i < n; i++) ld.insert(ld.end(), {s->lights[i].color.x, s->lights[i].color.y, s->lights[i].color.z, s->lights[i].inner});
-        numLights = n;
-        if (n == 0) ld.assign(8, 0.0f);
-        glGenTextures(1, &lightTex);
-        glBindTexture(GL_TEXTURE_2D, lightTex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, std::max(n, 1), 2, 0, GL_RGBA, GL_FLOAT, ld.data());
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     // geometry batches (level + moving objects)
     uploadSet(s->batches, batches);
@@ -509,12 +487,6 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
 
         glUniformMatrix4fv(glGetUniformLocation(progWorld, "uVP"), 1, GL_FALSE, vp.viewProj.m);
         glUniform1i(glGetUniformLocation(progWorld, "uTex"), 0);
-        glUniform3f(glGetUniformLocation(progWorld, "uCam"), vp.eye.x, vp.eye.y, vp.eye.z);
-        glUniform1i(glGetUniformLocation(progWorld, "uNumLights"), opt.pointLights ? numLights : 0);
-        glUniform1i(glGetUniformLocation(progWorld, "uLights"), 1);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, lightTex);
-        glActiveTexture(GL_TEXTURE0);
 
         GLint locExposure = glGetUniformLocation(progWorld, "uExposure");
         GLint locBlendAdd = glGetUniformLocation(progWorld, "uBlendAdd");

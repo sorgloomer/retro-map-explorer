@@ -102,7 +102,7 @@ Cats CarmaGame::addCategories(Scene& out) {
     Cats c;
     c.start = out.addCategory("start", "Start position", rgb(0x39ff7a), SHAPE_ARROW, 2.0f, true);
     c.pup = out.addCategory("powerup", "Powerups", rgb(0xffb870), SHAPE_DIAMOND, 1.0f, true);
-    c.special = out.addCategory("special", "Special powerups", rgb(0xe07b00), SHAPE_DIAMOND, 1.15f, true);
+    c.notable = out.addCategory("notable", "Notable powerups", rgb(0xe07b00), SHAPE_DIAMOND, 1.15f, true);
     c.pedPup = out.addCategory("pedpowerup", "Pedestrian powerups", rgb(0xffe600), SHAPE_DIAMOND, 1.0f, true);
     c.time = out.addCategory("timepowerup", "Time bonuses", rgb(0x8fd8ff), SHAPE_DIAMOND, 1.0f, true);
     c.upgrade = out.addCategory("upgrade", "Permanent Upgrades", rgb(0xff2a2a), SHAPE_DIAMOND, 1.2f, true);
@@ -148,7 +148,7 @@ void CarmaGame::readPupFile(const std::string& pt, Scene& out, const Cats& c, st
             std::string lb = label.empty() ? "Powerup" : label;
             int cat = c.pup;
             switch (pupTable.classify(id, lb)) {
-                case 1: cat = c.special; break;
+                case 1: cat = c.notable; break;
                 case 2: cat = c.pedPup; break;
                 case 3: cat = c.upgrade; break;
                 case 4: cat = c.credit; break;
@@ -369,12 +369,7 @@ void CarmaGame::addRespawns(const KeyFile& kf, const std::string& name, Scene& o
     }
 }
 
-void CarmaGame::addLighting(const KeyFile& kf, Scene& out) {
-    float amb, sun[3], sc3[3];
-    out.hasLighting = true;
-    if (kf.nums("AMBIENT_LIGHT", &amb, 1)) out.ambient = amb;
-    if (kf.nums("SUN_VECTOR", sun, 3)) out.sunDir = normalize(fixX(Vec3f(-sun[0], -sun[1], -sun[2])));
-    if (kf.nums("SUN_LIGHT_COLOUR", sc3, 3)) out.sunColor = {sc3[0], sc3[1], sc3[2]};
+void CarmaGame::addLightMarkers(const KeyFile& kf, Scene& out) {
     int cLight = out.addCategory("light", "Lights (in-game)", rgb(0xfff3a0), SHAPE_DIAMOND, 0.7f, false, true);
     std::string lname = kf.str("LIGHTS_DESCRIPTOR"), lt;
     if (!lname.empty() && readNamedText(lname, lt)) {
@@ -387,15 +382,9 @@ void CarmaGame::addLighting(const KeyFile& kf, Scene& out) {
             std::string col;
             if (!(is >> x >> y >> z >> r0 >> r1 >> col)) continue;
             uint32_t c = (uint32_t)strtoul(col.c_str(), nullptr, 16);
-            PointLight pl;
-            pl.pos = fixX({x, y, z});
-            pl.inner = r0;
-            pl.outer = std::max(r1, r0 + 0.01f);
-            pl.color = {((c >> 16) & 255) / 255.f, ((c >> 8) & 255) / 255.f, (c & 255) / 255.f};
-            out.lights.push_back(pl);
             char hex[16];
             snprintf(hex, sizeof hex, "#%06x", c & 0xffffff);
-            out.addMarker(cLight, pl.pos, 0, std::string("Light ") + hex + " (radius " + std::to_string((int)r0) + "-" + std::to_string((int)r1) + ")");
+            out.addMarker(cLight, fixX({x, y, z}), 0, std::string("Light ") + hex + " (radius " + std::to_string((int)r0) + "-" + std::to_string((int)r1) + ")");
         }
     }
 }

@@ -70,12 +70,6 @@ struct Line {
     Vec3f a, b;
 };
 
-struct PointLight {
-    Vec3f pos;
-    float inner = 0, outer = 1;  // full intensity up to `inner`, fading to zero at `outer`
-    Vec3f color{1, 1, 1};
-};
-
 // A set of batches keyed by (texture, blend mode).
 struct BatchSet {
     std::vector<Batch> batches;
@@ -157,12 +151,6 @@ struct Scene : BatchSet {
     float pickupBottomY = 0.0f;  // height of its bottom above its origin: the point icons grow from when they are scaled up
     std::vector<BatchSet> moverGeoms;
     std::vector<Mover> movers;
-    // In-game lighting (optional): ambient + sun + point lights
-    bool hasLighting = false;
-    float ambient = 0.3f;
-    Vec3f sunDir{0.3f, 0.8f, 0.5f};    // unit vector pointing towards the sun
-    Vec3f sunColor{1, 1, 1};
-    std::vector<PointLight> lights;
     std::string title;
     std::string info;                 // short multi-line description shown in the UI
     Vec3f background{0.08f, 0.1f, 0.14f};

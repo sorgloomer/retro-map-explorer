@@ -12,10 +12,8 @@ struct UiOptions {
     float lineWidth = 3.0f;
     float xrayStrength = 1.0f;
     bool showGeometry = true;
-    bool sunLight = false;
     bool wireframe = false;
     bool backFaces = false;
-    bool pointLights = false;
     bool beams = false;
     bool powerupMeshes = true;
 
@@ -28,10 +26,8 @@ struct UiOptions {
         r.lineWidth = lineWidth;
         r.xrayStrength = xrayStrength;
         r.showGeometry = showGeometry;
-        r.sunLight = sunLight;
         r.wireframe = wireframe;
         r.backFaces = backFaces;
-        r.pointLights = pointLights;
         r.beams = beams;
         r.powerupMeshes = powerupMeshes;
         return r;

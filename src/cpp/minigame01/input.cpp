@@ -38,8 +38,26 @@ bool Input::key(const char* code, bool down, bool repeat) {
     return false;
 }
 
+void Input::touchStick(float x, float y) {
+    touchSteer = std::max(-1.0f, std::min(1.0f, x));
+    touchThrottle = std::max(-1.0f, std::min(1.0f, y));
+}
+
+void Input::touch(int control, bool down) {
+    switch (control) {
+        case T_HANDBRAKE: touchHandbrake = down; break;
+        case T_RESET: if (down) edgeReset = true; break;
+        case T_CAMERA: if (down) edgeCamera = true; break;
+        case T_RESTART: if (down) edgeRestart = true; break;
+        case T_EXIT: if (down) exitFlag = true; break;
+        default: break;
+    }
+}
+
 void Input::releaseAll() {
     std::memset(held, 0, sizeof held);
+    touchSteer = touchThrottle = 0;
+    touchHandbrake = false;
     kbSteer = kbAccel = kbBrake = 0;
 }
 
@@ -59,7 +77,12 @@ Controls Input::update(float dt) {
     c.steer = kbSteer;
     c.accel = kbAccel;
     c.brake = kbBrake;
-    c.handbrake = held[H_HAND] ? 1.0f : 0.0f;
+    c.handbrake = (held[H_HAND] || touchHandbrake) ? 1.0f : 0.0f;
+    // touch stick: analog, so a small push is a gentle input
+    float ts = deadzone(touchSteer, 0.08f);
+    if (std::fabs(ts) > std::fabs(c.steer)) c.steer = ts;
+    c.accel = std::max(c.accel, deadzone(std::max(touchThrottle, 0.0f), 0.08f));
+    c.brake = std::max(c.brake, deadzone(std::max(-touchThrottle, 0.0f), 0.08f));
     c.reset = edgeReset;
     c.restart = edgeRestart;
     c.toggleCamera = edgeCamera;

@@ -14,7 +14,6 @@ export interface LayerInfo {
 export interface SceneInfo {
   title: string;
   info: string;
-  lighting: boolean;
   canCull: boolean;
   hasPowerupMeshes: boolean;
   hasMovers: boolean;
