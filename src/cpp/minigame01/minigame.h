@@ -3,12 +3,12 @@
 // The level's own triangles are the road (CollisionWorld), the car is a raycast vehicle (Vehicle).
 #pragma once
 #include <vector>
-#include "../camera.h"
-#include "../scene.h"
-#include "car_model.h"
-#include "collision_world.h"
-#include "input.h"
-#include "vehicle.h"
+#include "../scene/camera.h"
+#include "../scene/scene.h"
+#include "minigame01/car_model.h"
+#include "minigame01/collision_world.h"
+#include "minigame01/input.h"
+#include "minigame01/vehicle.h"
 
 namespace minigame01 {
 

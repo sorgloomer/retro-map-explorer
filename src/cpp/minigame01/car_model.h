@@ -3,7 +3,7 @@
 // The meshes are in metres; the minigame scales them by unitsPerMetre when it draws them in the level.
 #pragma once
 #include <string>
-#include "../scene.h"
+#include "../scene/scene.h"
 
 namespace minigame01 {
 

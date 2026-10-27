@@ -1,7 +1,7 @@
-#include "carma_pak.h"
+#include "carma/carma_pak.h"
 #include <algorithm>
-#include "carma_text.h"
-#include "inflate.h"
+#include "carma/carma_text.h"
+#include "loader/inflate.h"
 #include "vfs.h"
 
 namespace carma {

@@ -1,4 +1,4 @@
-#include "input.h"
+#include "minigame01/input.h"
 #include <emscripten/html5.h>
 #include <algorithm>
 #include <cmath>

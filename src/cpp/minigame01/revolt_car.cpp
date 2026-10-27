@@ -1,9 +1,9 @@
-#include "revolt_car.h"
+#include "minigame01/revolt_car.h"
 #include <algorithm>
 #include <cmath>
 #include <sstream>
-#include "../binio.h"
-#include "../vfs.h"
+#include "loader/binio.h"
+#include "vfs.h"
 
 namespace minigame01 {
 

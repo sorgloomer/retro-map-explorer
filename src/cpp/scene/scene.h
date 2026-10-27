@@ -2,12 +2,11 @@
 // markers (starts, pickups, paths, zones...). Loaders fill it, the renderer draws it.
 #pragma once
 #include <cmath>
-#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "image.h"
-#include "vmath.h"
+#include "../loader/image.h"
+#include "../math/vmath.h"
 
 struct SceneVertex {
     float x, y, z;

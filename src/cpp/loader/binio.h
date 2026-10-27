@@ -4,7 +4,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
-#include "vmath.h"
+#include "math/vmath.h"
 
 struct Reader {
     const uint8_t* p;

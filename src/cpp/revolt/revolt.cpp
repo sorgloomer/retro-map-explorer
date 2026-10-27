@@ -6,7 +6,7 @@
 #include <map>
 #include <memory>
 #include <sstream>
-#include "binio.h"
+#include "loader/binio.h"
 #include "game.h"
 #include "minigame01/revolt_car.h"
 #include "vfs.h"

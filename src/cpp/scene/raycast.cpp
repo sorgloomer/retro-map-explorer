@@ -4,9 +4,9 @@
 
 float nearPlane(float sceneRadius) { return sceneRadius * 0.0012f; }
 
-Vec3 viewRay(const Camera& cam, int canvasW, int canvasH, int mx, int my) {
-    float w = (float)std::max(1, canvasW), h = (float)std::max(1, canvasH);
-    float nx = (2.0f * mx / w - 1.0f), ny = (1.0f - 2.0f * my / h);
+Vec3 viewRay(const Camera& cam, VecI2 canvas, VecI2 at) {
+    float w = (float)std::max(1, canvas.x), h = (float)std::max(1, canvas.y);
+    float nx = (2.0f * at.x / w - 1.0f), ny = (1.0f - 2.0f * at.y / h);
     float t = std::tan(kFovY * 0.5f);
     Vec3 f = cam.forward();
     Vec3 r = normalize(cross(Vec3(0, 1, 0), f));
@@ -46,10 +46,10 @@ bool raycastScene(const Scene& s, bool cullBackfaces, const Vec3& o, const Vec3&
     return best < 1e29f;
 }
 
-PivotPick pickPivotPoint(const Scene* scene, bool cullBackfaces, const Camera& cam, int canvasW, int canvasH, int mx, int my,
+PivotPick pickPivotPoint(const Scene* scene, bool cullBackfaces, const Camera& cam, VecI2 canvas, VecI2 at,
                          const Vec3& sceneCenter, float sceneRadius) {
     PivotPick pick;
-    Vec3 d = viewRay(cam, canvasW, canvasH, mx, my);
+    Vec3 d = viewRay(cam, canvas, at);
     float t0 = nearPlane(sceneRadius) / std::max(1e-3f, dot(d, cam.forward()));
     Vec3 origin = cam.pos + d * t0;
     float t;

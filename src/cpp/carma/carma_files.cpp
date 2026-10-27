@@ -4,9 +4,9 @@
 #include <map>
 #include <set>
 #include <sstream>
-#include "binio.h"
-#include "carma_game.h"
-#include "inflate.h"
+#include "loader/binio.h"
+#include "carma/carma_game.h"
+#include "loader/inflate.h"
 #include "vfs.h"
 
 namespace carma {

@@ -36,7 +36,7 @@ function buildWasm() {
   const sources = fs.readdirSync(path.join(root, 'src', 'cpp'), { recursive: true }).filter((f) => f.endsWith('.cpp')).map((f) => path.join(root, 'src', 'cpp', f));
   const args = [
     ...(debug ? ['-O0', '-g', '-sASSERTIONS=1'] : ['-O2']),
-    '-std=c++17', '-Wall', '-Wno-unused-function',
+    '-std=c++17', '-Wall', '-Wno-unused-function', '-I' + path.join(root, 'src', 'cpp'),  // includes are relative to src/cpp
     '-sMIN_WEBGL_VERSION=2', '-sMAX_WEBGL_VERSION=2',
     '-sASYNCIFY', '-sASYNCIFY_STACK_SIZE=131072',
     '-sALLOW_MEMORY_GROWTH=1', '-sINITIAL_MEMORY=256MB', '-sMAXIMUM_MEMORY=2GB', '-sSTACK_SIZE=2MB',

@@ -1,4 +1,4 @@
-#include "minigame.h"
+#include "minigame01/minigame.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

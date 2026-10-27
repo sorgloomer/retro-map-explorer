@@ -1,4 +1,4 @@
-#include "inflate.h"
+#include "./inflate.h"
 
 namespace {
 

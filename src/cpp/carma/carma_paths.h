@@ -2,7 +2,7 @@
 #pragma once
 #include <string>
 #include <vector>
-#include "scene.h"
+#include "../scene/scene.h"
 
 namespace carma {
 

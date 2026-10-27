@@ -1,6 +1,6 @@
 // The minigame's car for Re-Volt: a car folder (cars/<name>/Parameters.txt, body and wheel .prm models, car bitmap).
 #pragma once
-#include "car_model.h"
+#include "minigame01/car_model.h"
 
 namespace minigame01 {
 

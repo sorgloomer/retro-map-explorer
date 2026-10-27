@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include "vmath.h"
+#include "math/vmath.h"
 
 namespace carma {
 

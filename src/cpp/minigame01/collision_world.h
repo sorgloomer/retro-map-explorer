@@ -1,7 +1,7 @@
 // Static triangle collision for the minigame: a uniform grid over the level's solid triangles.
 #pragma once
 #include <vector>
-#include "../scene.h"
+#include "../scene/scene.h"
 
 namespace minigame01 {
 

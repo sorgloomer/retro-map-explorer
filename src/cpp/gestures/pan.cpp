@@ -1,4 +1,4 @@
-#include "pan.h"
+#include "gestures/pan.h"
 #include <algorithm>
 #include <cmath>
 

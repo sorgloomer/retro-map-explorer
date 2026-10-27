@@ -5,8 +5,8 @@
 #include <cstring>
 #include <functional>
 #include <sstream>
-#include "../carma_game.h"
-#include "../vfs.h"
+#include "carma/carma_game.h"
+#include "vfs.h"
 
 namespace carma {
 

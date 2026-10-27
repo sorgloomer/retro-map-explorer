@@ -2,7 +2,7 @@
 #pragma once
 #include <vector>
 #include "scene.h"
-#include "vmath.h"
+#include "../math/vmath.h"
 
 struct RenderOptions {
     float exposure = 1.35f;

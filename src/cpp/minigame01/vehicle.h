@@ -3,8 +3,8 @@
 // walls, ceilings and the ground when the chassis bottoms out.
 #pragma once
 #include <vector>
-#include "car_model.h"
-#include "collision_world.h"
+#include "minigame01/car_model.h"
+#include "minigame01/collision_world.h"
 
 namespace minigame01 {
 

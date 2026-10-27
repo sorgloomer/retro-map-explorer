@@ -1,5 +1,5 @@
-#include "carma_powerups.h"
-#include "carma_text.h"
+#include "carma/carma_powerups.h"
+#include "carma/carma_text.h"
 #include "vfs.h"
 
 namespace carma {

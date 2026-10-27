@@ -17,11 +17,11 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "carma_formats.h"
-#include "carma_pak.h"
-#include "carma_paths.h"
-#include "carma_powerups.h"
-#include "carma_text.h"
+#include "carma/carma_formats.h"
+#include "carma/carma_pak.h"
+#include "carma/carma_paths.h"
+#include "carma/carma_powerups.h"
+#include "carma/carma_text.h"
 #include "game.h"
 
 namespace carma {

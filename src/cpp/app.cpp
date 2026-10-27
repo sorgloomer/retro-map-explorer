@@ -8,12 +8,13 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "camera.h"
+#include "scene/camera.h"
 #include "game.h"
+#include "gestures/gestures.h"
 #include "minigame01/minigame.h"
-#include "pan.h"
-#include "raycast.h"
-#include "renderer.h"
+#include "gestures/pan.h"
+#include "scene/raycast.h"
+#include "scene/renderer.h"
 #include "vfs.h"
 
 namespace {
@@ -31,24 +32,11 @@ struct App {
     float farDist = 30000.0f;
     Vec3 sceneCenter;
     bool keys[256] = {};  // indexed by our own key enum
-    bool dragging = false;
-    int mouseX = -1, mouseY = -1;  // CSS pixels
     int hover = -1;
-    bool pointerLocked = false;
     int camMode = 0;  // 0 = fly, 1 = orbit around a clicked pivot
     Vec3 pivot;
-    int dragButton = -1;     // mouse button that started the current drag
     float pivotNormalY = 1.0f;  // |y| of the unit normal of the surface the pivot was picked on (1 = floor, 0 = wall)
     Vec3 panStart;  // camera position when the current pan gesture began
-    bool touchMode = false;  // last input came from a touch screen
-    struct TouchPt { int id; float x, y; };
-    std::vector<TouchPt> touches;
-    float gestureDist = 0, gestureAngle = 0;
-    float gestureCx = 0, gestureCy = 0;
-    float touchTravel = 0;
-    double touchStart = 0;
-    int firstTouchId = -1;       // finger that started the current touch gesture
-    bool pivotOnFirst = false;   // two-finger gesture pivots on the first finger (the second one came late)
     Vec3 orbitOff;  // pivot position in camera space (right, up, forward) - keeps it fixed on screen while orbiting
     std::string json;  // return buffer for strings handed to JS
     std::string lastError;
@@ -155,12 +143,14 @@ void orbitReposition() {
 }
 
 // Ray through a canvas pixel (CSS coordinates).
-Vec3 mouseRay(int mx, int my) { return viewRay(app.cam, app.canvasW, app.canvasH, mx, my); }
+VecI2 canvasSize() { return {app.canvasW, app.canvasH}; }
+VecI2 canvasCenter() { return {app.canvasW / 2, app.canvasH / 2}; }
+Vec3 mouseRay(VecI2 at) { return viewRay(app.cam, canvasSize(), at); }
 
 // Sets the orbit pivot to what is under (mx, my); falls back to the ground below the cursor / scene centre.
-void pickPivot(int mx, int my) {
+void pickPivot(VecI2 at) {
     bool culling = app.scene && app.scene->cullBackfaces && !app.opt.backFaces && !app.opt.wireframe;
-    PivotPick pick = pickPivotPoint(app.scene.get(), culling, app.cam, app.canvasW, app.canvasH, mx, my, app.sceneCenter, app.sceneRadius);
+    PivotPick pick = pickPivotPoint(app.scene.get(), culling, app.cam, canvasSize(), at, app.sceneCenter, app.sceneRadius);
     app.pivot = pick.point;
     app.pivotNormalY = pick.normalY;
     Basis b = camBasis();
@@ -183,17 +173,13 @@ void beginPan() {
     panSurf = computePanSurface(app.cam, app.pivot, app.pivotNormalY, app.sceneRadius);
 }
 
-void panTo(int mx, int my) {
-    app.cam.pos = panCameraPosition(panSurf, app.cam, app.panStart, app.pivot, mouseRay(mx, my));
+void panTo(VecI2 at) {
+    app.cam.pos = panCameraPosition(panSurf, app.cam, app.panStart, app.pivot, mouseRay(at));
     refreshOrbitOffset();
 }
 
 // Pitch limit of the camera in radians (a little short of straight up / down), for the mouse and for touch tilting alike.
 constexpr float kMaxPitch = 1.55f;
-
-// Two-finger gestures normally pivot on the midpoint between the fingers. When the second finger touches down at least this
-// long after the first one, the first finger (which was already holding a spot on the map) is the pivot instead.
-constexpr double kFirstFingerPivotDelayMs = 500.0;
 
 void rotateView(float dx, float dy) {
     app.cam.yaw += dx;
@@ -202,21 +188,51 @@ void rotateView(float dx, float dy) {
 
 void setCameraMode(int mode) {
     app.camMode = mode;
-    if (mode == 1) pickPivot(app.canvasW / 2, app.canvasH / 2);
+    if (mode == 1) pickPivot(canvasCenter());
     EM_ASM({ if (window.RME && window.RME.onCameraMode) window.RME.onCameraMode($0); }, mode);
 }
 
-void notifyHover(const char* text, const char* cat, int x, int y) {
+// What the mouse / touch gestures do to the camera (see gestures.h).
+struct CameraGestures : GestureTarget {
+    bool enabled() const override { return !app.gameMode; }
+    bool orbitMode() const override { return app.camMode == 1; }
+    void pickPivot(VecI2 at) override { ::pickPivot(at); }
+    void beginPan() override { ::beginPan(); }
+    void panTo(VecI2 at) override { ::panTo(at); }
+    void rotateView(Vec2 angles) override { ::rotateView(angles.x, angles.y); }
+    void orbitReposition() override { ::orbitReposition(); }
+    void wheelZoom(VecI2 at, float amount) override {
+        if (app.camMode == 1) {
+            // Zoom towards whatever is under the cursor right now (not the last clicked pivot).
+            ::pickPivot(at);
+            float k = amount > 0 ? 0.88f : 1.0f / 0.88f;
+            if (app.orbitOff.z * k >= app.sceneRadius * 0.002f || k > 1.0f) app.orbitOff = app.orbitOff * k;
+            ::orbitReposition();
+        } else {
+            app.cam.pos += app.cam.forward() * (amount * app.sceneRadius * 0.06f * app.speedMul);
+        }
+    }
+    void pinchTilt(float dYaw, float dPitch, float zoom) override {
+        app.cam.yaw += dYaw;
+        app.cam.pitch = std::max(-kMaxPitch, std::min(kMaxPitch, app.cam.pitch + dPitch));
+        Vec3 off = app.orbitOff * (1.0f / zoom);
+        if (off.z >= app.sceneRadius * 0.002f || zoom < 1.0f) app.orbitOff = off;
+        ::orbitReposition();
+    }
+} cameraGestures;
+GestureHandler gestures(cameraGestures);
+
+void notifyHover(const char* text, const char* cat, VecI2 at) {
     EM_ASM({
         if (window.RME && window.RME.onHover) window.RME.onHover($0 ? UTF8ToString($0) : null, $1 ? UTF8ToString($1) : null, $2, $3);
-    }, text, cat, x, y);
+    }, text, cat, at.x, at.y);
 }
 
 void updateHover(const ViewParams& vp) {
     Scene* s = app.scene.get();
     int best = -1;
-    if (s && app.mouseX >= 0 && !app.dragging) {
-        float pickR = app.touchMode ? 30.0f : 14.0f;
+    if (s && gestures.hasPointer() && !gestures.dragging()) {
+        float pickR = gestures.touchMode() ? 30.0f : 14.0f;
         float bestScore = 1e30f;
         float pixW = 2.0f * std::tan(0.525f) / (float)std::max(1, app.canvasH);  // world units per pixel at distance 1
         float sx = (float)vp.width / (float)std::max(1, app.canvasW), sy = (float)vp.height / (float)std::max(1, app.canvasH);
@@ -231,7 +247,8 @@ void updateHover(const ViewParams& vp) {
             if (w <= 0.01f) continue;
             float px = (x / w * 0.5f + 0.5f) * (float)app.canvasW;
             float py = (1.0f - (y / w * 0.5f + 0.5f)) * (float)app.canvasH;
-            float dx = px - app.mouseX, dy = py - app.mouseY;
+            Vec2 mouse = (Vec2)gestures.pointer();
+            float dx = px - mouse.x, dy = py - mouse.y;
             float d = dx * dx + dy * dy;
             // Hit radius follows the drawn size: close up (world-sized markers / meshes) it grows with the zoom.
             const Category& cat = s->cats[m.cat];
@@ -247,8 +264,8 @@ void updateHover(const ViewParams& vp) {
     app.hover = best;
     if (best != app.hoverShown) {
         app.hoverShown = best;
-        if (best < 0) notifyHover(nullptr, nullptr, 0, 0);
-        else notifyHover(s->markers[best].label.c_str(), s->cats[s->markers[best].cat].name.c_str(), app.mouseX, app.mouseY - (app.touchMode ? 70 : 0));
+        if (best < 0) notifyHover(nullptr, nullptr, {});
+        else notifyHover(s->markers[best].label.c_str(), s->cats[s->markers[best].cat].name.c_str(), gestures.pointer() - VecI2(0, gestures.touchMode() ? 70 : 0));
     }
 }
 
@@ -321,7 +338,7 @@ void frame() {
     vp.fovY = kFovY;
     app.animTime += dt * app.animScale;
     vp.time = (float)std::fmod(app.animTime, 100000.0);
-    vp.showPivot = app.dragging && (app.camMode == 1 || app.touchMode);
+    vp.showPivot = gestures.dragging() && (app.camMode == 1 || gestures.touchMode());
     vp.pivot = app.pivot;
     vp.eye = app.cam.pos;
     vp.view = Mat4::lookAt(app.cam.pos, app.cam.forward(), Vec3(0, 1, 0));
@@ -346,7 +363,7 @@ EM_BOOL onKey(int type, const EmscriptenKeyboardEvent* e, void*) {
         return EM_TRUE;
     }
     if (down && !e->repeat) {
-        if (!strcmp(e->code, "KeyR")) { frameCamera(); if (app.camMode == 1) pickPivot(app.canvasW / 2, app.canvasH / 2); return EM_TRUE; }
+        if (!strcmp(e->code, "KeyR")) { frameCamera(); if (app.camMode == 1) pickPivot(canvasCenter()); return EM_TRUE; }
         if (!strcmp(e->code, "KeyT")) { jumpToStart(); return EM_TRUE; }
         if (!strcmp(e->code, "KeyV")) { setCameraMode(1 - app.camMode); return EM_TRUE; }
     }
@@ -356,163 +373,6 @@ EM_BOOL onKey(int type, const EmscriptenKeyboardEvent* e, void*) {
 EM_BOOL onBlur(int, const EmscriptenFocusEvent*, void*) {
     for (bool& k : app.keys) k = false;
     return EM_FALSE;
-}
-
-EM_BOOL onMouseDown(int, const EmscriptenMouseEvent* e, void*) {
-    if (app.gameMode) return EM_FALSE;
-    app.touchMode = false;
-    app.dragging = true;
-    app.dragButton = e->button;
-    app.mouseX = e->clientX;
-    app.mouseY = e->clientY;
-    if (app.camMode == 1) {
-        pickPivot(e->clientX, e->clientY);
-        beginPan();
-    }
-    return EM_TRUE;
-}
-EM_BOOL onMouseUp(int, const EmscriptenMouseEvent*, void*) {
-    app.dragging = false;
-    app.dragButton = -1;
-    return EM_FALSE;
-}
-EM_BOOL onMouseMove(int, const EmscriptenMouseEvent* e, void*) {
-    if (app.gameMode) return EM_FALSE;
-    // Never preventDefault here: the browser needs mouse moves to drag the page's sliders.
-    if (app.touchMode && e->movementX == 0 && e->movementY == 0) return EM_FALSE;
-    app.touchMode = false;
-    app.mouseX = e->clientX;  // the canvas fills the window, so client == canvas CSS coordinates
-    app.mouseY = e->clientY;
-    if (app.dragging || app.pointerLocked) {
-        if (app.camMode == 1 && app.dragButton == 0) {
-            panTo(e->clientX, e->clientY);  // left drag: grab the ground and slide it
-        } else {
-            rotateView((float)e->movementX * 0.0035f, (float)e->movementY * 0.0035f);
-            if (app.camMode == 1) orbitReposition();  // right drag: orbit around the pivot
-        }
-    }
-    return EM_FALSE;
-}
-EM_BOOL onMouseLeave(int, const EmscriptenMouseEvent*, void*) {
-    app.mouseX = -1;
-    return EM_FALSE;
-}
-EM_BOOL onWheel(int, const EmscriptenWheelEvent* e, void*) {
-    if (app.gameMode) return EM_FALSE;
-    float amount = e->deltaY > 0 ? -1.0f : 1.0f;  // wheel up = forward / closer
-    if (app.camMode == 1) {
-        // Zoom towards whatever is under the cursor right now (not the last clicked pivot).
-        int mx = e->mouse.clientX, my = e->mouse.clientY;
-        app.mouseX = mx;
-        app.mouseY = my;
-        pickPivot(mx, my);
-        float k = amount > 0 ? 0.88f : 1.0f / 0.88f;
-        if (app.orbitOff.z * k >= app.sceneRadius * 0.002f || k > 1.0f) app.orbitOff = app.orbitOff * k;
-        orbitReposition();
-    } else {
-        app.cam.pos += app.cam.forward() * (amount * app.sceneRadius * 0.06f * app.speedMul);
-    }
-    return EM_TRUE;
-}
-// ---- touch: 1 finger = look (fly) / pan (orbit); 2 fingers = pinch zoom + drag (orbit: rotate, fly: slide)
-void collectTouches(const EmscriptenTouchEvent* e, bool ending) {
-    app.touches.clear();
-    for (int i = 0; i < e->numTouches; i++) {
-        const EmscriptenTouchPoint& t = e->touches[i];
-        if (ending && t.isChanged) continue;
-        app.touches.push_back({t.identifier, (float)t.clientX, (float)t.clientY});
-    }
-}
-
-void beginGesture() {
-    size_t n = app.touches.size();
-    app.dragging = n > 0;
-    if (n == 0) return;
-    float cx = 0, cy = 0;
-    for (auto& t : app.touches) { cx += t.x; cy += t.y; }
-    cx /= n; cy /= n;
-    app.gestureCx = cx;
-    app.gestureCy = cy;
-    if (n >= 2) {
-        app.gestureDist = std::max(1.0f, std::hypot(app.touches[0].x - app.touches[1].x, app.touches[0].y - app.touches[1].y));
-        app.gestureAngle = std::atan2(app.touches[1].y - app.touches[0].y, app.touches[1].x - app.touches[0].x);
-    }
-    float px = cx, py = cy;  // where the pivot is picked
-    if (n >= 2 && app.pivotOnFirst)
-        for (auto& t : app.touches)
-            if (t.id == app.firstTouchId) { px = t.x; py = t.y; }
-    app.mouseX = (int)cx;
-    app.mouseY = (int)cy;
-    pickPivot((int)px, (int)py);
-    beginPan();
-}
-
-EM_BOOL onTouch(int type, const EmscriptenTouchEvent* e, void*) {
-    if (app.gameMode) return EM_FALSE;
-    if (!app.touchMode) {
-        app.touchMode = true;
-        EM_ASM({ if (window.RME && window.RME.onTouchMode) window.RME.onTouchMode(); });
-    }
-    if (type == EMSCRIPTEN_EVENT_TOUCHSTART) {
-        if (e->numTouches == 1) {
-            app.touchStart = emscripten_get_now();
-            app.touchTravel = 0;
-            app.firstTouchId = e->touches[0].identifier;
-            app.pivotOnFirst = false;
-        } else if (e->numTouches == 2) {
-            app.pivotOnFirst = emscripten_get_now() - app.touchStart >= kFirstFingerPivotDelayMs;
-        }
-        collectTouches(e, false);
-        beginGesture();
-    } else if (type == EMSCRIPTEN_EVENT_TOUCHMOVE) {
-        size_t n = app.touches.size();
-        std::vector<App::TouchPt> cur;
-        for (int i = 0; i < e->numTouches; i++)
-            cur.push_back({e->touches[i].identifier, (float)e->touches[i].clientX, (float)e->touches[i].clientY});
-        if (cur.size() != n || n == 0) { collectTouches(e, false); beginGesture(); return EM_TRUE; }
-        if (n == 1) {
-            // one finger: drag the ground under the finger (horizontal pan, height unchanged)
-            app.touchTravel += std::fabs(cur[0].x - app.touches[0].x) + std::fabs(cur[0].y - app.touches[0].y);
-            panTo((int)cur[0].x, (int)cur[0].y);
-            app.mouseX = (int)cur[0].x;
-            app.mouseY = (int)cur[0].y;
-        } else {
-            // two fingers (like Google Earth): pinch = zoom, vertical drag = tilt, twist = rotate around the
-            // vertical axis through the touched midpoint. The pivot keeps its on-screen position throughout.
-            float cx = (cur[0].x + cur[1].x) * 0.5f, cy = (cur[0].y + cur[1].y) * 0.5f;
-            float dist = std::max(1.0f, std::hypot(cur[0].x - cur[1].x, cur[0].y - cur[1].y));
-            float angle = std::atan2(cur[1].y - cur[0].y, cur[1].x - cur[0].x);
-            float dAngle = angle - app.gestureAngle;
-            const float pi = 3.14159265f;
-            if (dAngle > pi) dAngle -= 2 * pi;
-            if (dAngle < -pi) dAngle += 2 * pi;
-            float dy = cy - app.gestureCy;
-            app.touchTravel += std::fabs(cx - app.gestureCx) + std::fabs(dy);
-            app.cam.yaw -= dAngle;  // map follows the fingers
-            app.cam.pitch = std::max(-kMaxPitch, std::min(kMaxPitch, app.cam.pitch - dy * 0.005f));  // swipe up = towards the horizon and beyond
-            float zoom = std::max(0.5f, std::min(2.0f, dist / app.gestureDist));  // spreading fingers = closer
-            Vec3 off = app.orbitOff * (1.0f / zoom);
-            if (off.z >= app.sceneRadius * 0.002f || zoom < 1.0f) app.orbitOff = off;
-            orbitReposition();
-            app.gestureCx = cx;
-            app.gestureCy = cy;
-            app.gestureDist = dist;
-            app.gestureAngle = angle;
-        }
-        app.touches = cur;
-    } else {  // end / cancel
-        bool tap = type == EMSCRIPTEN_EVENT_TOUCHEND && app.touches.size() == 1 && e->numTouches == 1 && app.touchTravel < 12.0f &&
-                   emscripten_get_now() - app.touchStart < 400.0;
-        double lastX = app.touches.empty() ? -1 : app.touches[0].x, lastY = app.touches.empty() ? -1 : app.touches[0].y;
-        collectTouches(e, true);
-        beginGesture();
-        if (app.touches.empty()) {
-            app.dragging = false;
-            if (tap) { app.mouseX = (int)lastX; app.mouseY = (int)lastY; }
-            else { app.mouseX = -1; }
-        }
-    }
-    return EM_TRUE;
 }
 
 EM_BOOL onContextMenu(int, const EmscriptenMouseEvent*, void*) { return EM_TRUE; }
@@ -571,7 +431,7 @@ EMSCRIPTEN_KEEPALIVE int rme_load(const char* gameId, const char* levelId) {
     app.retired = std::move(app.scene);
     app.scene = std::move(s);
     frameCamera();
-    if (app.camMode == 1) pickPivot(app.canvasW / 2, app.canvasH / 2);
+    if (app.camMode == 1) pickPivot(canvasCenter());
     app.renderer.setScene(app.scene.get(), app.sceneRadius);
     app.retired.reset();
     app.hoverShown = -2;
@@ -610,11 +470,11 @@ EMSCRIPTEN_KEEPALIVE int rme_game_start(int mode) {
     app.opt.wireframe = false;
     app.opt.showGeometry = true;
     app.opt.textured = true;
-    app.dragging = false;
+    gestures.cancelDrag();
     app.mg.start(*app.scene, app.sceneCenter, mode == 1);
     app.gameMode = true;
     app.hoverShown = -2;
-    notifyHover(nullptr, nullptr, 0, 0);
+    notifyHover(nullptr, nullptr, {});
     EM_ASM({ if (window.RME && window.RME.onGameMode) window.RME.onGameMode(1); });
     pushGameHud();
     return 1;
@@ -687,7 +547,7 @@ EMSCRIPTEN_KEEPALIVE void rme_camera_command(int cmd) {
         app.cam.pos = app.sceneCenter + Vec3(0, app.sceneRadius * 1.6f, 0);
         app.cam.pitch = -kMaxPitch;
     }
-    if (app.camMode == 1) pickPivot(app.canvasW / 2, app.canvasH / 2);
+    if (app.camMode == 1) pickPivot(canvasCenter());
 }
 
 EMSCRIPTEN_KEEPALIVE void rme_set_camera_mode(int mode) { setCameraMode(mode ? 1 : 0); }
@@ -697,7 +557,7 @@ EMSCRIPTEN_KEEPALIVE void rme_set_camera(double x, double y, double z, double ya
     app.cam.pos = Vec3((float)x, (float)y, (float)z);
     app.cam.yaw = (float)yaw;
     app.cam.pitch = (float)pitch;
-    if (app.camMode == 1) pickPivot(app.canvasW / 2, app.canvasH / 2);
+    if (app.camMode == 1) pickPivot(canvasCenter());
 }
 
 EMSCRIPTEN_KEEPALIVE double rme_anim_time() { return app.animTime; }
@@ -722,15 +582,7 @@ int main() {
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, onKey);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, onKey);
     emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, onBlur);
-    emscripten_set_mousedown_callback("#canvas", nullptr, EM_TRUE, onMouseDown);
-    emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, onMouseUp);
-    emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, onMouseMove);
-    emscripten_set_mouseleave_callback("#canvas", nullptr, EM_TRUE, onMouseLeave);
-    emscripten_set_wheel_callback("#canvas", nullptr, EM_TRUE, onWheel);
-    emscripten_set_touchstart_callback("#canvas", nullptr, EM_TRUE, onTouch);
-    emscripten_set_touchmove_callback("#canvas", nullptr, EM_TRUE, onTouch);
-    emscripten_set_touchend_callback("#canvas", nullptr, EM_TRUE, onTouch);
-    emscripten_set_touchcancel_callback("#canvas", nullptr, EM_TRUE, onTouch);
+    gestures.install();
     EM_ASM({ if (window.RME && window.RME.onReady) window.RME.onReady(); });
     emscripten_set_main_loop(frame, 0, 1);
     return 0;

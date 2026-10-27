@@ -1,5 +1,5 @@
 // Carmageddon TDR 2000: the load() sequence. The format notes are in carma_game.h, the steps in carma_level.cpp.
-#include "carma_game.h"
+#include "carma/carma_game.h"
 #include "vfs.h"
 
 using namespace carma;

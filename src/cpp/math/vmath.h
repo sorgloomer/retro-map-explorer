@@ -5,7 +5,7 @@
 
 struct Vec3 {
     float x = 0, y = 0, z = 0;
-    Vec3() {}
+    Vec3() = default;
     Vec3(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
     Vec3 operator+(const Vec3& o) const { return {x + o.x, y + o.y, z + o.z}; }
     Vec3 operator-(const Vec3& o) const { return {x - o.x, y - o.y, z - o.z}; }
@@ -26,13 +26,14 @@ inline Vec3 vmax(const Vec3& a, const Vec3& b) { return {std::max(a.x, b.x), std
 
 struct Mat4 {
     float m[16];  // m[col * 4 + row]
+
     static Mat4 identity() {
-        Mat4 r;
+        Mat4 r{};
         for (int i = 0; i < 16; i++) r.m[i] = (i % 5 == 0) ? 1.0f : 0.0f;
         return r;
     }
     static Mat4 mul(const Mat4& a, const Mat4& b) {  // a * b
-        Mat4 r;
+        Mat4 r{};
         for (int c = 0; c < 4; c++)
             for (int rr = 0; rr < 4; rr++) {
                 float s = 0;
@@ -48,7 +49,7 @@ struct Mat4 {
     }
     // Left-handed perspective, clip z in [-1, 1].
     static Mat4 perspective(float fovY, float aspect, float zn, float zf) {
-        Mat4 r;
+        Mat4 r{};
         for (float& v : r.m) v = 0;
         float f = 1.0f / std::tan(fovY * 0.5f);
         r.m[0] = f / aspect;

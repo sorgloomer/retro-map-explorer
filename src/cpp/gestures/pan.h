@@ -1,6 +1,6 @@
 // Panning in orbit mode: the surface the camera slides on while a pan gesture grabs a point.
 #pragma once
-#include "camera.h"
+#include "../scene/camera.h"
 
 // Panning model. A pan gesture grabs the point P (the pivot). While the button is down the camera only translates, so its
 // orientation is constant, and the camera position is computed backwards: the mouse position gives the direction d of

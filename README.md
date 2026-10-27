@@ -90,21 +90,21 @@ people who may see your assets.
 ## Layout
 
 ```
-src/cpp/vmath.h        vector / matrix math
-src/cpp/inflate.*      DEFLATE/zlib decoder (no zlib dependency)
+src/cpp/math/          vmath.h (Vec3, Mat4) and vec2.h (Vec2 float, VecI2 integer: pixel positions and sizes)
+src/cpp/loader/        inflate.* (DEFLATE/zlib decoder, no zlib dependency) and binio.h (binary reader)
 src/cpp/image.*        BMP + TGA decoders
 src/cpp/vfs.*          file system over the dropped files (JS: list + ranged read, via Asyncify)
 src/cpp/scene.h        game independent scene: triangle batches, textures, markers, lines
-src/cpp/revolt.cpp     Re-Volt loader (.w .prm .fin .inf .fob .pan .taz .tri .lit .fld .rim)
-src/cpp/carma*.cpp     Carmageddon TDR 2000 loader (.dir/.pak archives, .hie, .mshs, .tga, .lins, .pup, .scol)
-                        Carmageddon loader: carma_game.h (class + format notes), carma_files (file lookup, races.txt),
+src/cpp/revolt/        Re-Volt loader (.w .prm .fin .inf .fob .pan .taz .tri .lit .fld .rim)
+src/cpp/carma/         Carmageddon TDR 2000 loader (.dir/.pak archives, .hie, .mshs, .tga, .lins, .pup, .scol)
+                        carma_game.h (class + format notes), carma_files (file lookup, races.txt),
                         carma_geometry (hierarchies to meshes), carma_movers (followers, animated props), carma_level
                         (the steps of load), carma_pak / carma_formats / carma_text / carma_powerups / carma_paths
 src/cpp/renderer.*     WebGL2 renderer (textured geometry, instanced markers, screen-space line ribbons)
 src/cpp/minigame01/    Driving minigame "Powerup Rush": vehicle physics, level collision, input, game rules, and the Eagle loader
 src/cpp/raycast.*      view rays and picking against the level geometry
-src/cpp/pan.*          the surface the camera slides on while panning
-src/cpp/app.cpp        camera, input, main loop, JS-facing API
+src/cpp/gestures/      mouse / wheel / touch gestures (GestureHandler, steering the camera through a GestureTarget) and pan.* (the surface the camera slides on)
+src/cpp/app.cpp        camera, keyboard, main loop, JS-facing API; all C++ includes are relative to src/cpp
 src/web/index.html     the page (copied to dist/)
 src/web/style.css      its styles (copied to dist/)
 src/ts/main.ts         entry point: UI, state, controls, wasm boot (bundled into dist/app.js)
