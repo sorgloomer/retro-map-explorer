@@ -59,7 +59,7 @@ layout(location=1) in vec3 aNrm;
 layout(location=2) in vec4 aInst;
 uniform mat4 uVP;
 uniform vec3 uCam;
-uniform float uBase, uPix, uSize, uLift;
+uniform float uBase, uPix, uSize, uLift, uRaise;  // uRaise: fixed lift in world units
 out vec3 vN;
 void main(){
   float d = distance(aInst.xyz, uCam);
@@ -67,7 +67,7 @@ void main(){
   float c = cos(aInst.w), si = sin(aInst.w);
   vec3 p = vec3(c*aPos.x + si*aPos.z, aPos.y, -si*aPos.x + c*aPos.z);
   vN = vec3(c*aNrm.x + si*aNrm.z, aNrm.y, -si*aNrm.x + c*aNrm.z);
-  gl_Position = uVP * vec4(aInst.xyz + p * s + vec3(0.0, s * uLift, 0.0), 1.0);
+  gl_Position = uVP * vec4(aInst.xyz + p * s + vec3(0.0, s * uLift + uRaise, 0.0), 1.0);
 }
 )";
 
@@ -358,14 +358,7 @@ void Renderer::setScene(const Scene* s, float radius) {
     // geometry batches (level + moving objects)
     uploadSet(s->batches, batches);
     geomGpu.resize(s->moverGeoms.size());
-    geomRadius.assign(s->moverGeoms.size(), 1.0f);
-    for (size_t i = 0; i < s->moverGeoms.size(); i++) {
-        uploadSet(s->moverGeoms[i].batches, geomGpu[i]);
-        float r2 = 0;
-        for (const Batch& b : s->moverGeoms[i].batches)
-            for (const SceneVertex& v : b.verts) r2 = std::max(r2, v.x * v.x + v.y * v.y + v.z * v.z);
-        geomRadius[i] = std::max(std::sqrt(r2), 0.01f);
-    }
+    for (size_t i = 0; i < s->moverGeoms.size(); i++) uploadSet(s->moverGeoms[i].batches, geomGpu[i]);
     glBindVertexArray(0);
 
     sceneRadius = std::max(1.0f, radius);
@@ -409,6 +402,13 @@ void Renderer::setScene(const Scene* s, float radius) {
     glBufferData(GL_ARRAY_BUFFER, ln.size() * 4, ln.empty() ? nullptr : ln.data(), GL_STATIC_DRAW);
 }
 
+// Powerup scale factor: 1 (the exact in-game size) up close; far away an icon grows so that it keeps a minimum size on screen.
+// Meshes and diamonds both use it, so their sizes do not depend on which of them is drawn.
+float Renderer::iconScale(const Vec3& at, const ViewParams& vp, const RenderOptions& opt) const {
+    float pixelWorld = 2.0f * std::tan(vp.fovY * 0.5f) / (float)vp.height;  // world units per pixel at distance 1
+    return std::max(1.0f, 16.0f * opt.powerupScale * length(at - vp.eye) * pixelWorld / scene->pickupRadius);
+}
+
 void Renderer::drawMarkers(const ViewParams& vp, const RenderOptions& opt, bool xrayPass, int highlight) {
     glUseProgram(progMarker);
     glUniformMatrix4fv(glGetUniformLocation(progMarker, "uVP"), 1, GL_FALSE, vp.viewProj.m);
@@ -418,7 +418,25 @@ void Renderer::drawMarkers(const ViewParams& vp, const RenderOptions& opt, bool 
     glUniform1f(glGetUniformLocation(progMarker, "uPix"), pixelWorld * 7.0f * opt.markerScale);
     GLint locSize = glGetUniformLocation(progMarker, "uSize");
     GLint locColor = glGetUniformLocation(progMarker, "uColor");
-    glUniform1f(glGetUniformLocation(progMarker, "uLift"), 0.6f);
+    GLint locLift = glGetUniformLocation(progMarker, "uLift"), locRaise = glGetUniformLocation(progMarker, "uRaise");
+    GLint locBase = glGetUniformLocation(progMarker, "uBase"), locPix = glGetUniformLocation(progMarker, "uPix");
+    // Powerup diamonds are drawn like the in-game icon meshes (see iconScale): a diamond whose half width is kDiamond of the mesh's
+    // bounding radius, centred where the mesh is centred. Like the meshes, it grows from the bottom of the powerup.
+    const float kDiamond = 0.585f;
+    const float baseBase = markerBase * opt.markerScale, basePix = pixelWorld * 7.0f * opt.markerScale;
+    auto powerupSize = [&](float k) {
+        glUniform1f(locBase, kDiamond * scene->pickupRadius * k);
+        glUniform1f(locPix, pixelWorld * 16.0f * opt.powerupScale * kDiamond * k);
+        // the height of the centre above the bottom grows with the size; the bottom stays put
+        glUniform1f(locLift, (scene->pickupCentreY - scene->pickupBottomY) / (kDiamond * scene->pickupRadius * k));
+        glUniform1f(locRaise, scene->pickupBottomY);
+    };
+    auto plainSize = [&]() {
+        glUniform1f(locBase, baseBase);
+        glUniform1f(locPix, basePix);
+        glUniform1f(locLift, 0.6f);
+        glUniform1f(locRaise, 0.0f);
+    };
     glBindBuffer(GL_ARRAY_BUFFER, markerInst);
     for (size_t c = 0; c < scene->cats.size(); c++) {
         const Category& cat = scene->cats[c];
@@ -428,7 +446,8 @@ void Renderer::drawMarkers(const ViewParams& vp, const RenderOptions& opt, bool 
         if (r.markerCount == 0) continue;
         float rr = ((cat.color >> 16) & 255) / 255.f, gg = ((cat.color >> 8) & 255) / 255.f, bb = (cat.color & 255) / 255.f;
         glUniform4f(locColor, rr, gg, bb, xrayPass ? opt.xrayStrength : 1.0f);
-        glUniform1f(locSize, cat.size * (cat.isLine ? 0.5f : 1.0f));
+        if (cat.hasMesh) { powerupSize(1.0f); glUniform1f(locSize, 1.0f); }
+        else { plainSize(); glUniform1f(locSize, cat.size * (cat.isLine ? 0.5f : 1.0f)); }
         Shape& s = shapes[cat.shape];
         glBindVertexArray(s.vao);
         glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 16, (void*)((size_t)r.firstMarker * 16));
@@ -438,9 +457,15 @@ void Renderer::drawMarkers(const ViewParams& vp, const RenderOptions& opt, bool 
         const Marker& m = scene->markers[highlight];
         const Category& cat = scene->cats[m.cat];
         glUniform4f(locColor, 1, 1, 1, 1);
-        glUniform1f(locSize, cat.size * 1.6f * (cat.isLine ? 0.5f : 1.0f));
-        // next to an in-game powerup mesh the highlight may shrink much closer
-        if (cat.hasMesh && opt.powerupMeshes) glUniform1f(glGetUniformLocation(progMarker, "uBase"), markerBase * opt.markerScale * 0.33f);
+        // The wireframe is concentric with what it marks and a little larger. A powerup keeps the size and centre of its
+        // diamond / in-game mesh; other markers are scaled about the diamond's lift of 0.6, which needs a lift of 0.6 / k.
+        const float kHighlight = 1.15f;
+        if (cat.hasMesh) { powerupSize(kHighlight); glUniform1f(locSize, 1.0f); }
+        else {
+            plainSize();
+            glUniform1f(locSize, cat.size * kHighlight * (cat.isLine ? 0.5f : 1.0f));
+            glUniform1f(locLift, 0.6f / kHighlight);
+        }
         Shape& s = shapes[cat.shape];
         glBindVertexArray(s.wvao);  // wireframe: see-through
         glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 16, (void*)((size_t)markerSlot[highlight] * 16));
@@ -522,14 +547,6 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         if (cull) { glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CW); }
         float lightOn = ((opt.sunLight || opt.pointLights) && scene->hasLighting) ? 1.f : 0.f;
 
-        float pixelWorld = 2.0f * std::tan(vp.fovY * 0.5f) / (float)vp.height;  // world units per pixel at distance 1
-        // exact in-game scale up close; far away an icon grows so that it keeps a minimum size on screen
-        auto iconScale = [&](const Mover& m) {
-            int g = m.scaleGeom >= 0 ? m.scaleGeom : m.geom;
-            if (!m.powerupMesh || g >= (int)geomRadius.size()) return 1.0f;
-            float dist = length(m.path[0] - vp.eye);
-            return std::max(1.0f, 16.0f * opt.markerScale * dist * pixelWorld / geomRadius[g]);
-        };
         for (const TexAnim& a : scene->texAnims)
             if (a.texture >= 0 && a.texture < (int)texFrame.size() && !a.frames.empty() && a.fps > 0)
                 texFrame[a.texture] = a.frames[(size_t)std::floor(vp.time * a.fps) % a.frames.size()];
@@ -544,8 +561,8 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             if (m.external) { models[i] = m.model; shown[i] = 1; continue; }
             if (m.staticModel) { shown[i] = 1; continue; }
             if (m.billboard) {  // the halo of a powerup icon turns towards the camera, as in the game
-                float sc = iconScale(m);
-                Vec3 c = m.path[0] + m.anchor * sc;
+                float sc = iconScale(m.path[0], vp, opt);
+                Vec3 c = m.path[0] + Vec3(0, scene->pickupBottomY * (1.0f - sc), 0) + m.anchor * sc;  // scaled from the icon's bottom
                 Vec3 z = normalize(vp.eye - c);
                 Vec3 upv = std::fabs(z.y) > 0.999f ? Vec3(0, 0, 1) : Vec3(0, 1, 0);
                 Vec3 r = normalize(cross(upv, z));
@@ -592,11 +609,11 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 float a = vp.time * 1.4f + m.phase;
                 Mat4& M = models[i];
                 // exact in-game scale up close; far away it grows so that it keeps a minimum size on screen
-                float sc = iconScale(m);
+                float sc = iconScale(m.path[0], vp, opt);  // grows from the icon's bottom, which stays where it is
                 M.m[0] = std::cos(a) * sc; M.m[2] = -std::sin(a) * sc;
                 M.m[5] = sc;
                 M.m[8] = std::sin(a) * sc; M.m[10] = std::cos(a) * sc;
-                M.m[12] = m.path[0].x; M.m[13] = m.path[0].y; M.m[14] = m.path[0].z;
+                M.m[12] = m.path[0].x; M.m[13] = m.path[0].y + scene->pickupBottomY * (1.0f - sc); M.m[14] = m.path[0].z;
                 shown[i] = 1;
                 continue;
             }
@@ -670,22 +687,14 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             }
             glUniform1f(locWire, 0.f);
         };
-        for (int pass = 0; pass < 2; pass++) {
-            if (pass == 1) {
-                glEnable(GL_BLEND);
-                glDepthMask(GL_FALSE);
-            }
-            glUniform1f(locExposure, opt.exposure);  // the movers below change it: reset for the level in every pass
-            if (opt.wireframe) { if (pass == 0) drawWire(); }
-            else drawSet(batches, pass, Mat4::identity());
-            for (size_t i = 0; i < scene->movers.size(); i++) {
-                if (!shown[i]) continue;
-                glUniform1f(locExposure, scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
-                drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
-            }
-        }
-        // See-through strength also covers the in-game powerup meshes: a faint copy where the level hides them
-        if (opt.xrayEnabled() && opt.powerupMeshes) {
+        // See-through strength also covers the in-game powerup meshes: a faint copy where the level hides them. It is drawn
+        // before the solid meshes, so it is tested against the level alone: it never shows through the powerup itself.
+        auto drawPowerupGhosts = [&]() {
+            // back faces are culled here whatever the game does for its level (Re-Volt draws double sided): they would show
+            // as a second, mirrored layer inside the faint copy
+            const bool levelCull = cull;
+            cull = !opt.backFaces && !opt.wireframe;
+            if (cull) { glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CW); }
             glUniform1f(locFade, opt.xrayStrength);
             glEnable(GL_BLEND);
             glDepthMask(GL_FALSE);
@@ -697,9 +706,28 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                         drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
                     }
             glDepthFunc(GL_LEQUAL);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
             glUniform1f(locFade, 1.0f);
-            glUniform1f(locExposure, opt.exposure);
+            cull = levelCull;
+            if (!cull) glDisable(GL_CULL_FACE);
+        };
+        for (int pass = 0; pass < 2; pass++) {
+            if (pass == 1) {
+                glEnable(GL_BLEND);
+                glDepthMask(GL_FALSE);
+            }
+            glUniform1f(locExposure, opt.exposure);  // the movers below change it: reset for the level in every pass
+            if (opt.wireframe) { if (pass == 0) drawWire(); }
+            else drawSet(batches, pass, Mat4::identity());
+            if (pass == 0 && opt.xrayEnabled() && opt.powerupMeshes) drawPowerupGhosts();
+            for (size_t i = 0; i < scene->movers.size(); i++) {
+                if (!shown[i]) continue;
+                glUniform1f(locExposure, scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
+                drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
+            }
         }
+        glUniform1f(locExposure, opt.exposure);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
         glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);

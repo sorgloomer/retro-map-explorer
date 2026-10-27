@@ -140,6 +140,10 @@ struct Mover {
 
 struct Scene : BatchSet {
     bool cullBackfaces = false;  // the game draws single-sided faces (back faces are culled)
+    // Powerup icons are all about the same size, so the viewer does not measure the meshes: hardcoded per game (model units).
+    float pickupRadius = 1.5f;   // bounding sphere of an icon mesh around its origin
+    float pickupCentreY = 1.0f;  // height of the icon's visual centre above its origin
+    float pickupBottomY = 0.0f;  // height of its bottom above its origin: the point icons grow from when they are scaled up
     std::vector<BatchSet> moverGeoms;
     std::vector<Mover> movers;
     // In-game lighting (optional): ambient + sun + point lights

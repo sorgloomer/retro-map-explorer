@@ -8,7 +8,8 @@ struct RenderOptions {
     float exposure = 1.35f;
     float haloExposure = 1.35f;  // brightness of the powerup halos (camera-facing billboards), separate from the level's
     bool textured = true;
-    float markerScale = 1.0f;
+    float markerScale = 1.0f;   // size of the plain markers (not the powerups)
+    float powerupScale = 1.0f;  // size factor of the powerups: their meshes and their diamonds
     float lineWidth = 3.0f;
     float xrayStrength = 1.0f;  // see-through strength: how visible occluded markers / lines / powerup meshes are
     bool showGeometry = true;
@@ -65,6 +66,7 @@ private:
     unsigned compile(const char* vs, const char* fs);
     void drawMarkers(const ViewParams& vp, const RenderOptions& opt, bool xrayPass, int highlight);
     void drawLines(const ViewParams& vp, const RenderOptions& opt, bool xrayPass);
+    float iconScale(const Vec3& at, const ViewParams& vp, const RenderOptions& opt) const;
 
     const Scene* scene = nullptr;
     int lost = 0;
@@ -72,7 +74,6 @@ private:
     unsigned lightTex = 0;
     int numLights = 0;
     std::vector<GpuBatch> batches;
-    std::vector<float> geomRadius;                 // bounding radius around the origin per Scene::moverGeoms entry
     std::vector<std::vector<GpuBatch>> geomGpu;  // one per Scene::moverGeoms entry
     std::vector<unsigned> textures;
     std::vector<int> texFrame;  // texture shown for each scene texture: itself, or the current frame of its animation

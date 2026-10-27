@@ -512,7 +512,7 @@ const bindCheck = (id: string, name: string) => {
   el.onchange = () => { const v = el.checked ? 1 : 0; opt(name, v); setOptPref(id, v); el.blur(); };
 };
 const SIMPLE_OPTS: Record<string, string> = {
-  optExposure: 'exposure', optPupExposure: 'haloExposure', optMarker: 'markerScale', optLine: 'lineWidth', optXray: 'xrayStrength', optSpeed: 'speed',
+  optExposure: 'exposure', optPupExposure: 'haloExposure', optPupScale: 'powerupScale', optLine: 'lineWidth', optXray: 'xrayStrength', optSpeed: 'speed',
   optTex: 'textured', optGeo: 'geometry', optSun: 'sun', optWire: 'wireframe', optBack: 'backFaces', optPoints: 'points',
 };
 
@@ -527,7 +527,7 @@ function bindControls(): void {
   if (typeof prefs.opts.animSpeed === 'number') setAnimSpeed(prefs.opts.animSpeed);
   if ('beams' in prefs.opts) setBeams(!!prefs.opts.beams);
   if ('pupMeshes' in prefs.opts) setPupMeshes(!!prefs.opts.pupMeshes);
-  bindRange('optExposure', 'exposure'); bindRange('optPupExposure', 'haloExposure'); bindRange('optMarker', 'markerScale');
+  bindRange('optExposure', 'exposure'); bindRange('optPupExposure', 'haloExposure'); bindRange('optPupScale', 'powerupScale');
   bindRange('optLine', 'lineWidth'); bindRange('optXray', 'xrayStrength'); bindRange('optSpeed', 'speed');
   bindCheck('optTex', 'textured'); bindCheck('optGeo', 'geometry'); bindCheck('optSun', 'sun'); bindCheck('optWire', 'wireframe');
   bindCheck('optBack', 'backFaces'); bindCheck('optPoints', 'points');

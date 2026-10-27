@@ -15,6 +15,7 @@
 #include "gestures/pan.h"
 #include "scene/raycast.h"
 #include "scene/renderer.h"
+#include "scene/ui_options.h"
 #include "vfs.h"
 
 namespace {
@@ -24,6 +25,7 @@ struct App {
     std::vector<std::unique_ptr<Game>> games;
     std::unique_ptr<Scene> scene, retired;
     Camera cam;
+    UiOptions ui;                 // what the page's controls set; mapped to `opt` by applyUiOptions()
     RenderOptions opt;
     float speedMul = 1.0f;
     double animTime = 0;      // seconds of animation time
@@ -255,7 +257,7 @@ void updateHover(const ViewParams& vp) {
             float cd = std::max(1e-3f, length(m.pos - app.cam.pos));
             float sizeW = std::max(app.sceneRadius * 0.0035f * app.opt.markerScale, cd * pixW * 7.0f * app.opt.markerScale) *
                           cat.size * (cat.isLine ? 0.5f : 1.0f);
-            if (cat.hasMesh && app.opt.powerupMeshes) sizeW = std::max(sizeW, 4.0f);
+            if (cat.hasMesh) sizeW = std::max(s->pickupRadius, cd * pixW * 16.0f * app.opt.powerupScale);  // as the meshes / diamonds are drawn
             float r = std::max(pickR, sizeW / (cd * pixW) * 1.4f);
             float score = d / (r * r);
             if (score < 1.0f && score < bestScore) { bestScore = score; best = (int)i; }
@@ -267,6 +269,24 @@ void updateHover(const ViewParams& vp) {
         if (best < 0) notifyHover(nullptr, nullptr, {});
         else notifyHover(s->markers[best].label.c_str(), s->cats[s->markers[best].cat].name.c_str(), gestures.pointer() - VecI2(0, gestures.touchMode() ? 70 : 0));
     }
+}
+
+// The minigame draws the level plainly, with the in-game pickup meshes.
+void applyGameOptions(RenderOptions& o) {
+    o.powerupMeshes = true;
+    o.wireframe = false;
+    o.showGeometry = true;
+    o.textured = true;
+}
+
+// Maps the page's options to the renderer's; the viewer's options are kept aside while the minigame runs.
+void applyUiOptions() {
+    RenderOptions r = app.ui.toRender();
+    if (app.gameMode) {
+        app.viewerOpt = r;
+        applyGameOptions(r);
+    }
+    app.opt = r;
 }
 
 void stopGame() {
@@ -466,10 +486,7 @@ EMSCRIPTEN_KEEPALIVE int rme_game_start(int mode) {
     app.viewerOpt = app.opt;
     app.viewerCam = app.cam;
     app.viewerCamMode = app.camMode;
-    app.opt.powerupMeshes = true;   // the pickups are the in-game meshes
-    app.opt.wireframe = false;
-    app.opt.showGeometry = true;
-    app.opt.textured = true;
+    applyGameOptions(app.opt);
     gestures.cancelDrag();
     app.mg.start(*app.scene, app.sceneCenter, mode == 1);
     app.gameMode = true;
@@ -522,21 +539,22 @@ EMSCRIPTEN_KEEPALIVE void rme_set_category_visible(int cat, int visible) {
 
 EMSCRIPTEN_KEEPALIVE void rme_set_option(const char* name, double v) {
     std::string n = name;
-    if (n == "exposure") app.opt.exposure = (float)v;
-    else if (n == "haloExposure") app.opt.haloExposure = (float)v;
-    else if (n == "textured") app.opt.textured = v != 0;
-    else if (n == "markerScale") app.opt.markerScale = (float)v;
-    else if (n == "lineWidth") app.opt.lineWidth = (float)v;
-    else if (n == "xrayStrength") app.opt.xrayStrength = (float)v;
-    else if (n == "geometry") app.opt.showGeometry = v != 0;
-    else if (n == "sun") app.opt.sunLight = v != 0;
-    else if (n == "points") app.opt.pointLights = v != 0;
-    else if (n == "powerupMeshes") app.opt.powerupMeshes = v != 0;
-    else if (n == "wireframe") app.opt.wireframe = v != 0;
-    else if (n == "beams") app.opt.beams = v != 0;
-    else if (n == "backFaces") app.opt.backFaces = v != 0;
+    if (n == "exposure") app.ui.exposure = (float)v;
+    else if (n == "haloExposure") app.ui.haloExposure = (float)v;
+    else if (n == "textured") app.ui.textured = v != 0;
+    else if (n == "powerupScale") app.ui.powerupScale = (float)v;
+    else if (n == "lineWidth") app.ui.lineWidth = (float)v;
+    else if (n == "xrayStrength") app.ui.xrayStrength = (float)v;
+    else if (n == "geometry") app.ui.showGeometry = v != 0;
+    else if (n == "sun") app.ui.sunLight = v != 0;
+    else if (n == "points") app.ui.pointLights = v != 0;
+    else if (n == "powerupMeshes") app.ui.powerupMeshes = v != 0;
+    else if (n == "wireframe") app.ui.wireframe = v != 0;
+    else if (n == "beams") app.ui.beams = v != 0;
+    else if (n == "backFaces") app.ui.backFaces = v != 0;
     else if (n == "animSpeed") app.animScale = (float)std::max(0.0, v);
     else if (n == "speed") app.speedMul = (float)v;
+    applyUiOptions();
 }
 
 EMSCRIPTEN_KEEPALIVE void rme_camera_command(int cmd) {

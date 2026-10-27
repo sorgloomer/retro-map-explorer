@@ -445,6 +445,9 @@ public:
         }
 
         // In-game pickup / star models: models/pickup.m and star.m have the same layout as a .prm.
+        sc.pickupRadius = 46.0f;  // both models measure about this around their origin, centred on it
+        sc.pickupCentreY = 0.0f;
+        sc.pickupBottomY = -38.0f;  // the pickup reaches down to -42, the star to -35
         {
             std::string models = vfs::dirOf(vfs::dirOf(L.dir)) + "/models/";
             auto loadModel = [&](const char* file) {
