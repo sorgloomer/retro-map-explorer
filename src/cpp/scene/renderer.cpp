@@ -21,32 +21,16 @@ precision highp float;
 in vec4 vCol; in vec2 vUV; in vec3 vWorld;
 uniform sampler2D uTex;
 uniform float uTextured, uCutout, uExposure, uWire, uFade;
-uniform float uLighting, uAmbient, uSunOn;
-uniform vec3 uSunDir, uSunColor, uCam;
+uniform float uBlendAdd;
+uniform vec3 uCam;
 uniform int uNumLights;
 uniform highp sampler2D uLights;
 out vec4 o;
 void main(){
   vec4 t = uTextured > 0.5 ? texture(uTex, vUV) : vec4(0.8,0.8,0.8,1.0);
-  if (uWire > 0.5) { o = vec4(0.78, 0.9, 1.0, 1.0); return; }
   if (uCutout > 0.5 && t.a < 0.02) discard;  // partial alpha is handled by alpha-to-coverage
-  vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
-  if (uLighting > 0.5) {
-    if (dot(n, uCam - vWorld) < 0.0) n = -n;  // face the viewer
-    vec3 lit = uSunOn > 0.5 ? vec3(uAmbient) + (1.0 - uAmbient) * max(dot(n, uSunDir), 0.0) * uSunColor : vec3(1.0);
-    vec3 add = vec3(0.0);
-    for (int i = 0; i < uNumLights; i++) {
-      vec4 a = texelFetch(uLights, ivec2(i, 0), 0);
-      vec4 b = texelFetch(uLights, ivec2(i, 1), 0);
-      vec3 d = a.xyz - vWorld;
-      float dist = length(d);
-      if (dist < a.w) {
-        float f = clamp(1.0 - dist / a.w, 0.0, 1.0);
-        f *= f;
-        add += b.rgb * (0.55 * f) * (0.35 + 0.65 * max(dot(n, d / max(dist, 1e-3)), 0.0));
-      }
-    }
-    o = vec4(t.rgb * (vCol.rgb * lit + add) * uExposure, vCol.a * t.a * uFade);
+  if (uBlendAdd > 0.5) {
+    o = vec4(t.rgb * vCol.rgb * (uExposure * vCol.a * t.a * uFade), 1.0);
   } else {
     o = vec4(t.rgb * vCol.rgb * uExposure, vCol.a * t.a * uFade);
   }
@@ -522,30 +506,29 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
 
     if (opt.showGeometry) {
         glUseProgram(progWorld);
+
         glUniformMatrix4fv(glGetUniformLocation(progWorld, "uVP"), 1, GL_FALSE, vp.viewProj.m);
-        glUniform1f(glGetUniformLocation(progWorld, "uExposure"), opt.exposure);
         glUniform1i(glGetUniformLocation(progWorld, "uTex"), 0);
-        glUniform1f(glGetUniformLocation(progWorld, "uLighting"), ((opt.sunLight || opt.pointLights) && scene->hasLighting) ? 1.f : 0.f);
-        glUniform1f(glGetUniformLocation(progWorld, "uSunOn"), opt.sunLight ? 1.f : 0.f);
-        glUniform1f(glGetUniformLocation(progWorld, "uAmbient"), scene->ambient);
-        glUniform3f(glGetUniformLocation(progWorld, "uSunDir"), scene->sunDir.x, scene->sunDir.y, scene->sunDir.z);
-        glUniform3f(glGetUniformLocation(progWorld, "uSunColor"), scene->sunColor.x, scene->sunColor.y, scene->sunColor.z);
         glUniform3f(glGetUniformLocation(progWorld, "uCam"), vp.eye.x, vp.eye.y, vp.eye.z);
         glUniform1i(glGetUniformLocation(progWorld, "uNumLights"), opt.pointLights ? numLights : 0);
         glUniform1i(glGetUniformLocation(progWorld, "uLights"), 1);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, lightTex);
         glActiveTexture(GL_TEXTURE0);
+
+        GLint locExposure = glGetUniformLocation(progWorld, "uExposure");
+        GLint locBlendAdd = glGetUniformLocation(progWorld, "uBlendAdd");
         GLint locTextured = glGetUniformLocation(progWorld, "uTextured");
         GLint locCutout = glGetUniformLocation(progWorld, "uCutout");
         GLint locModel = glGetUniformLocation(progWorld, "uModel");
-        GLint locLighting = glGetUniformLocation(progWorld, "uLighting");
         GLint locWire = glGetUniformLocation(progWorld, "uWire");
         GLint locFade = glGetUniformLocation(progWorld, "uFade");
-        GLint locExposure = glGetUniformLocation(progWorld, "uExposure");
+
         glUniform1f(locFade, 1.0f);
+        glUniform1f(locExposure, opt.exposure);
+        glUniform1f(locBlendAdd, 0.0f);
+
         if (cull) { glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CW); }
-        float lightOn = ((opt.sunLight || opt.pointLights) && scene->hasLighting) ? 1.f : 0.f;
 
         for (const TexAnim& a : scene->texAnims)
             if (a.texture >= 0 && a.texture < (int)texFrame.size() && !a.frames.empty() && a.fps > 0)
@@ -648,12 +631,12 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 if (b.blend == BLEND_ADD) glBlendFunc(GL_SRC_ALPHA, GL_ONE);
                 else glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
                 bool hasTex = opt.textured && b.tex >= 0;
+                glUniform1f(locBlendAdd, b.blend == BLEND_ADD ? 1.0f : 0.0f);
                 glUniform1f(locTextured, hasTex ? 1.f : 0.f);
                 glUniform1f(locCutout, b.blend == BLEND_CUTOUT ? 1.f : 0.f);
                 // Alpha-tested textures use alpha-to-coverage: far away, the small holes average out to partial transparency.
                 if (b.blend == BLEND_CUTOUT) glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
                 else glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
-                glUniform1f(locLighting, b.blend == BLEND_ADD ? 0.f : lightOn);  // emissive surfaces are not lit
                 if (hasTex) {
                     glActiveTexture(GL_TEXTURE0);
                     glBindTexture(GL_TEXTURE_2D, textures[texFrame[b.tex]]);

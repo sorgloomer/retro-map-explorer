@@ -32,7 +32,7 @@ export function DisplaySection() {
   return (
     <Section id="secDisplay" title="Display" hidden={!scene}>
       <Group id="grpMisc" title="Misc">
-        <Slider optKey="optExposure" label="Brightness" min={0.5} max={3} step={0.05} />
+        <Slider optKey="optExposure" label="Brightness" min={0.2} max={5} step={0.05} />
         <Slider optKey="optSpeed" label="Camera speed" min={0.1} max={4} step={0.05} />
       </Group>
       <Group id="grpPowerups" title="Powerups">

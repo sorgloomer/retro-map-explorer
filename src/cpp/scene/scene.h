@@ -176,8 +176,16 @@ struct Scene : BatchSet {
     Vec3f cameraPos;
     float cameraYaw = 0, cameraPitch = 0;
 
-    int addCategory(const std::string& id, const std::string& name, const Color3b& color, MarkerShape shape = SHAPE_DIAMOND,
-                    float size = 1.0f, bool beam = false, bool visible = true, bool isLine = false) {
+    int addCategory(
+        const std::string& id,
+        const std::string& name,
+        const Color3b& color,
+        MarkerShape shape = SHAPE_DIAMOND,
+        float size = 1.0f,
+        bool beam = false,
+        bool visible = true,
+        bool isLine = false
+    ) {
         Category c;
         c.id = id;
         c.name = name;
