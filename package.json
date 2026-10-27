@@ -2,7 +2,7 @@
   "name": "retro-map-explorer",
   "version": "0.1.0",
   "private": true,
-  "description": "Explore retro game maps (Re-Volt, Carmageddon TDR 2000) in 3D from a bird's-eye view. C++ -> WebAssembly + WebGL2, no frameworks.",
+  "description": "Explore retro game maps (Re-Volt, Carmageddon TDR 2000) in 3D from a bird's-eye view. C++ -> WebAssembly + WebGL2, Preact for the page.",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -14,5 +14,8 @@
   "devDependencies": {
     "rolldown": "^1.2.15",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "preact": "^11.1.0"
   }
 }

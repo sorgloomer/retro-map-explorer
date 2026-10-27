@@ -158,3 +158,12 @@ body.playing #canvas { cursor: default; }
 #ghOver p { margin: 4px 0; font-size: 16px; }
 .gh-help { position: absolute; left: 12px; right: 12px; bottom: 12px; margin: 0; text-align: center; color: rgba(255, 255, 255, .7); font-size: 12px; }
 @media (max-width: 700px) { .gh-stats { gap: 10px; padding: 6px 10px; } .gh-stats b { font-size: 16px; } .gh-speed b { font-size: 38px; } .gh-help { display: none; } }
+
+/* ---- groups of controls inside a section */
+.group { margin-top: 12px; border-top: 1px solid var(--border); }
+.grouphead { display: flex; align-items: center; justify-content: space-between; width: 100%; margin: 0; padding: 8px 0 2px; background: none;
+  border: 0; border-radius: 0; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; text-align: left; }
+.grouphead:hover { color: var(--text); }
+.group.collapsed .chev { transform: rotate(-45deg); }
+.group.collapsed .groupbody { display: none; }
+.levelname { margin: 0; font-weight: 600; }

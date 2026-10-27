@@ -6,6 +6,8 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
     "types": [],
     "strict": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,

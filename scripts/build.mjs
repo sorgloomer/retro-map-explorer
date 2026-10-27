@@ -60,7 +60,7 @@ async function buildWeb() {
     console.error('TypeScript errors: not bundling');
     process.exit(tsc.status || 1);
   }
-  const bundle = await rolldown({ input: path.join(root, 'src', 'ts', 'main.ts'), platform: 'browser', logLevel: 'warn' });
+  const bundle = await rolldown({ input: path.join(root, 'src', 'ts', 'main.tsx'), platform: 'browser', logLevel: 'warn' });
   await bundle.write({ file: path.join(dist, 'app.js'), format: 'iife', minify: !debug, sourcemap: debug });
   await bundle.close();
   for (const f of ['index.html', 'style.css']) fs.copyFileSync(path.join(root, 'src', 'web', f), path.join(dist, f));

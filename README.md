@@ -1,7 +1,7 @@
 # Retro Map Explorer
 
 Explore the maps of retro games in 3D from a bird's-eye view, right in the browser.
-Written in C++ compiled to WebAssembly, rendered with WebGL2. No engine or framework; the
+Written in C++ compiled to WebAssembly, rendered with WebGL2. No engine; the
 JavaScript layer only handles file access (drag & drop) and the HTML selectors.
 
 Supported games:
@@ -60,7 +60,7 @@ so a refresh can reopen it; the browser may ask for permission again.
 
 ## Build
 
-Requires Node.js (with `npm install` for the page's build tools: TypeScript and rolldown) and the Emscripten SDK (installed locally, nothing global):
+Requires Node.js (with `npm install` for the page's build tools and Preact: TypeScript and rolldown) and the Emscripten SDK (installed locally, nothing global):
 
 ```sh
 git clone --depth 1 https://github.com/emscripten-core/emsdk .tools/emsdk
@@ -71,7 +71,7 @@ node scripts/build.mjs          # -> dist/   (--debug: unoptimised wasm, unminif
 node scripts/serve.mjs 8080     # http://localhost:8080
 ```
 
-The page is written in TypeScript (`src/ts/*.ts`). The build type-checks it with `tsc` (`npm run typecheck` does only that), then
+The page is written in TypeScript with Preact components (`src/ts/`, the UI in `src/ts/ui/`). The build type-checks it with `tsc` (`npm run typecheck` does only that), then
 rolldown compiles, bundles and minifies it into the single script `dist/app.js`. `dist/` only receives `app.js`, `index.html`,
 `style.css` and the wasm files: the TypeScript sources are never published.
 
@@ -107,7 +107,9 @@ src/cpp/gestures/      mouse / wheel / touch gestures (GestureHandler, steering 
 src/cpp/app.cpp        camera, keyboard, main loop, JS-facing API; all C++ includes are relative to src/cpp
 src/web/index.html     the page (copied to dist/)
 src/web/style.css      its styles (copied to dist/)
-src/ts/main.ts         entry point: UI, state, controls, wasm boot (bundled into dist/app.js)
+src/ts/main.tsx        entry point: renders the Preact app and starts it (bundled into dist/app.js)
+src/ts/ui/             the frontend: components (App, Dock, the Layers / Display sections, game HUD, overlays), `store.ts` (UI state),
+                       `controller.ts` (loading, saved / shared view, options, wasm calls), `options.ts`, `wasm.ts`
 src/ts/gamefiles.ts    where the game files come from: folders, zip files, remembered handles, the encrypted asset archives
 src/ts/zip/            one zip reader for a file on the device and for the encrypted remote archives:
   index.ts             openZip(ByteReader): the zip directory and entries (stored by range, deflated as a whole, WinZip AES)
@@ -118,7 +120,7 @@ src/ts/zip/            one zip reader for a file on the device and for the encry
   zipaes.ts            WinZip AES: cipher, key derivation, authentication
 src/ts/storage.ts      localStorage: saved view, preferences, secret
 src/ts/utils/arrays.ts  array helpers (pushAll)
-src/ts/types.ts, dom.ts, globals.d.ts   shared types, typed element lookup, browser API declarations
+src/ts/types.ts, globals.d.ts   shared types, browser API declarations
 scripts/               build.mjs, serve.mjs, chunk_assets.py
 ```
 
