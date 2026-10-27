@@ -20,8 +20,7 @@ const char* kWorldFS = R"(#version 300 es
 precision highp float;
 in vec4 vCol; in vec2 vUV; in vec3 vWorld;
 uniform sampler2D uTex;
-uniform float uTextured, uCutout, uShade, uExposure, uWire, uFade;
-uniform vec3 uSun;
+uniform float uTextured, uCutout, uExposure, uWire, uFade;
 uniform float uLighting, uAmbient, uSunOn;
 uniform vec3 uSunDir, uSunColor, uCam;
 uniform int uNumLights;
@@ -49,9 +48,7 @@ void main(){
     }
     o = vec4(t.rgb * (vCol.rgb * lit + add) * uExposure, vCol.a * t.a * uFade);
   } else {
-    float l = abs(dot(n, uSun));
-    float shade = mix(1.0, 0.4 + 0.6 * l, uShade);
-    o = vec4(t.rgb * vCol.rgb * uExposure * shade, vCol.a * t.a * uFade);
+    o = vec4(t.rgb * vCol.rgb * uExposure, vCol.a * t.a * uFade);
   }
 }
 )";
@@ -430,7 +427,7 @@ void Renderer::drawMarkers(const ViewParams& vp, const RenderOptions& opt, bool 
         const CatLines& r = catRanges[c];
         if (r.markerCount == 0) continue;
         float rr = ((cat.color >> 16) & 255) / 255.f, gg = ((cat.color >> 8) & 255) / 255.f, bb = (cat.color & 255) / 255.f;
-        glUniform4f(locColor, rr, gg, bb, xrayPass ? 0.3f : 1.0f);
+        glUniform4f(locColor, rr, gg, bb, xrayPass ? opt.xrayStrength : 1.0f);
         glUniform1f(locSize, cat.size * (cat.isLine ? 0.5f : 1.0f));
         Shape& s = shapes[cat.shape];
         glBindVertexArray(s.vao);
@@ -468,7 +465,7 @@ void Renderer::drawLines(const ViewParams& vp, const RenderOptions& opt, bool xr
         const Category& cat = scene->cats[c];
         if (!cat.visible) continue;
         float rr = ((cat.color >> 16) & 255) / 255.f, gg = ((cat.color >> 8) & 255) / 255.f, bb = (cat.color & 255) / 255.f;
-        glUniform4f(locColor, rr, gg, bb, xrayPass ? 0.3f : 1.0f);
+        glUniform4f(locColor, rr, gg, bb, xrayPass ? opt.xrayStrength : 1.0f);
         const CatLines& r = catRanges[c];
         for (int pass = 0; pass < 2; pass++) {
             if (pass == 1 && !opt.beams) continue;
@@ -501,10 +498,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
     if (opt.showGeometry) {
         glUseProgram(progWorld);
         glUniformMatrix4fv(glGetUniformLocation(progWorld, "uVP"), 1, GL_FALSE, vp.viewProj.m);
-        glUniform1f(glGetUniformLocation(progWorld, "uShade"), opt.shade);
         glUniform1f(glGetUniformLocation(progWorld, "uExposure"), opt.exposure);
-        Vec3 sun = normalize(Vec3(0.35f, 0.85f, 0.4f));
-        glUniform3f(glGetUniformLocation(progWorld, "uSun"), sun.x, sun.y, sun.z);
         glUniform1i(glGetUniformLocation(progWorld, "uTex"), 0);
         glUniform1f(glGetUniformLocation(progWorld, "uLighting"), ((opt.sunLight || opt.pointLights) && scene->hasLighting) ? 1.f : 0.f);
         glUniform1f(glGetUniformLocation(progWorld, "uSunOn"), opt.sunLight ? 1.f : 0.f);
@@ -681,24 +675,27 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 glEnable(GL_BLEND);
                 glDepthMask(GL_FALSE);
             }
+            glUniform1f(locExposure, opt.exposure);  // the movers below change it: reset for the level in every pass
             if (opt.wireframe) { if (pass == 0) drawWire(); }
             else drawSet(batches, pass, Mat4::identity());
             for (size_t i = 0; i < scene->movers.size(); i++) {
                 if (!shown[i]) continue;
-                glUniform1f(locExposure, scene->movers[i].powerupMesh ? opt.powerupExposure : opt.exposure);
+                glUniform1f(locExposure, scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
                 drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
             }
         }
-        // "See-through markers" also covers the in-game powerup meshes: a faint copy where the level hides them
-        if (opt.xray && opt.powerupMeshes) {
-            glUniform1f(locFade, 0.15f);
-            glUniform1f(locExposure, opt.powerupExposure);
+        // See-through strength also covers the in-game powerup meshes: a faint copy where the level hides them
+        if (opt.xrayEnabled() && opt.powerupMeshes) {
+            glUniform1f(locFade, opt.xrayStrength);
             glEnable(GL_BLEND);
             glDepthMask(GL_FALSE);
             glDepthFunc(GL_GREATER);
             for (int pass = 0; pass < 2; pass++)
                 for (size_t i = 0; i < scene->movers.size(); i++)
-                    if (shown[i] && scene->movers[i].powerupMesh) drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
+                    if (shown[i] && scene->movers[i].powerupMesh) {
+                        glUniform1f(locExposure, scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
+                        drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
+                    }
             glDepthFunc(GL_LEQUAL);
             glUniform1f(locFade, 1.0f);
             glUniform1f(locExposure, opt.exposure);
@@ -712,7 +709,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
     // annotations: solid pass, then a faint see-through pass where occluded
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    if (opt.xray) {
+    if (opt.xrayEnabled()) {
         glDepthFunc(GL_GREATER);
         glDepthMask(GL_FALSE);
         drawLines(vp, opt, true);
@@ -741,16 +738,16 @@ void Renderer::drawPivot(const ViewParams& vp, const RenderOptions& opt) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, 16, inst);
     glBindVertexArray(shapes[SHAPE_SPHERE].vao);
     glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 16, (void*)0);
-    // solid where visible; with "see-through markers" a faint copy shows where the scene hides it
+    // solid where visible; with see-through strength above zero a faint copy shows where the scene hides it
     GLint locColor = glGetUniformLocation(progMarker, "uColor");
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
-    if (opt.xray) {
+    if (opt.xrayEnabled()) {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthFunc(GL_GREATER);
         glDepthMask(GL_FALSE);
-        glUniform4f(locColor, 1.0f, 0.25f, 0.9f, 0.3f);
+        glUniform4f(locColor, 1.0f, 0.25f, 0.9f, opt.xrayStrength);
         glDrawArraysInstanced(GL_TRIANGLES, 0, shapes[SHAPE_SPHERE].count, 1);
         glDisable(GL_BLEND);
     }

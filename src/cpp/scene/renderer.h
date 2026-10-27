@@ -6,12 +6,11 @@
 
 struct RenderOptions {
     float exposure = 1.35f;
-    float powerupExposure = 1.35f;  // brightness of the in-game powerup meshes, separate from the level's
+    float haloExposure = 1.35f;  // brightness of the powerup halos (camera-facing billboards), separate from the level's
     bool textured = true;
-    float shade = 0.6f;       // 0 = flat vertex colours, 1 = full face-normal shading
     float markerScale = 1.0f;
     float lineWidth = 3.0f;
-    bool xray = true;         // draw occluded markers/lines faintly
+    float xrayStrength = 1.0f;  // see-through strength: how visible occluded markers / lines / powerup meshes are
     bool showGeometry = true;
     bool sunLight = false;    // in-game global light (sun + ambient) when the scene provides it
     bool wireframe = false;   // level geometry as lines
@@ -19,6 +18,8 @@ struct RenderOptions {
     bool pointLights = false;  // in-game point lights when the scene provides them
     bool beams = false;         // vertical beams above powerup markers
     bool powerupMeshes = true;   // draw powerups with their in-game meshes instead of markers
+
+    bool xrayEnabled() const { return xrayStrength > 0; }  // false: the see-through passes are skipped
 };
 
 struct ViewParams {

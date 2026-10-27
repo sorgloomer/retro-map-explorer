@@ -512,8 +512,8 @@ const bindCheck = (id: string, name: string) => {
   el.onchange = () => { const v = el.checked ? 1 : 0; opt(name, v); setOptPref(id, v); el.blur(); };
 };
 const SIMPLE_OPTS: Record<string, string> = {
-  optExposure: 'exposure', optPupExposure: 'powerupExposure', optShade: 'shade', optMarker: 'markerScale', optLine: 'lineWidth', optSpeed: 'speed',
-  optTex: 'textured', optGeo: 'geometry', optSun: 'sun', optWire: 'wireframe', optBack: 'backFaces', optPoints: 'points', optXray: 'xray',
+  optExposure: 'exposure', optPupExposure: 'haloExposure', optMarker: 'markerScale', optLine: 'lineWidth', optXray: 'xrayStrength', optSpeed: 'speed',
+  optTex: 'textured', optGeo: 'geometry', optSun: 'sun', optWire: 'wireframe', optBack: 'backFaces', optPoints: 'points',
 };
 
 function bindControls(): void {
@@ -527,10 +527,10 @@ function bindControls(): void {
   if (typeof prefs.opts.animSpeed === 'number') setAnimSpeed(prefs.opts.animSpeed);
   if ('beams' in prefs.opts) setBeams(!!prefs.opts.beams);
   if ('pupMeshes' in prefs.opts) setPupMeshes(!!prefs.opts.pupMeshes);
-  bindRange('optExposure', 'exposure'); bindRange('optPupExposure', 'powerupExposure'); bindRange('optShade', 'shade'); bindRange('optMarker', 'markerScale');
-  bindRange('optLine', 'lineWidth'); bindRange('optSpeed', 'speed');
+  bindRange('optExposure', 'exposure'); bindRange('optPupExposure', 'haloExposure'); bindRange('optMarker', 'markerScale');
+  bindRange('optLine', 'lineWidth'); bindRange('optXray', 'xrayStrength'); bindRange('optSpeed', 'speed');
   bindCheck('optTex', 'textured'); bindCheck('optGeo', 'geometry'); bindCheck('optSun', 'sun'); bindCheck('optWire', 'wireframe');
-  bindCheck('optBack', 'backFaces'); bindCheck('optPoints', 'points'); bindCheck('optXray', 'xray');
+  bindCheck('optBack', 'backFaces'); bindCheck('optPoints', 'points');
   $input('optAnim').oninput = () => { setAnimSpeed(parseFloat($input('optAnim').value)); setOptPref('animSpeed', animSpeed); };
   $('animReset').onclick = () => { call('rme_set_anim_time', null, ['number'], [0]); $('animReset').blur(); };
   $input('optBeams').onchange = () => { const on = $input('optBeams').checked; setBeams(on); setOptPref('beams', on ? 1 : 0); $('optBeams').blur(); saveState(); };

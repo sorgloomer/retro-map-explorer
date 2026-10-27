@@ -523,12 +523,11 @@ EMSCRIPTEN_KEEPALIVE void rme_set_category_visible(int cat, int visible) {
 EMSCRIPTEN_KEEPALIVE void rme_set_option(const char* name, double v) {
     std::string n = name;
     if (n == "exposure") app.opt.exposure = (float)v;
-    else if (n == "powerupExposure") app.opt.powerupExposure = (float)v;
+    else if (n == "haloExposure") app.opt.haloExposure = (float)v;
     else if (n == "textured") app.opt.textured = v != 0;
-    else if (n == "shade") app.opt.shade = (float)v;
     else if (n == "markerScale") app.opt.markerScale = (float)v;
     else if (n == "lineWidth") app.opt.lineWidth = (float)v;
-    else if (n == "xray") app.opt.xray = v != 0;
+    else if (n == "xrayStrength") app.opt.xrayStrength = (float)v;
     else if (n == "geometry") app.opt.showGeometry = v != 0;
     else if (n == "sun") app.opt.sunLight = v != 0;
     else if (n == "points") app.opt.pointLights = v != 0;
