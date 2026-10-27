@@ -32,7 +32,7 @@ public:
     void forget();
 
     // Puts the car on the start line and begins a round; freeDrive: no time limit, the round never ends.
-    void start(Scene& scene, const Vec3& sceneCenter, bool freeDrive);
+    void start(Scene& scene, const Vec3f& sceneCenter, bool freeDrive);
     void stop(Scene& scene);                              // hides the car and brings the pickups back
     bool active() const { return running; }
 
@@ -46,7 +46,7 @@ public:
 
 private:
     struct Pickup {
-        Vec3 pos;
+        Vec3f pos;
         int points = 50;
         float seconds = 0;
         std::vector<int> movers;  // the icon and its halo
@@ -55,14 +55,14 @@ private:
     };
 
     void newRound(Scene& scene);
-    void placeCar(const Vec3& groundPos, float yaw);
+    void placeCar(const Vec3f& groundPos, float yaw);
     enum class Spawn { Start, Here, Safe };
     void respawn(Scene& scene, Spawn where);
     void collect(Scene& scene);
     void updateCamera(float dt, bool snap);
     void syncMovers(Scene& scene);
     void makePickupIcons(Scene& scene);  // levels without pickup meshes: spinning gems at their pickup markers
-    bool groundBelow(const Vec3& from, Vec3& hit) const;
+    bool groundBelow(const Vec3f& from, Vec3f& hit) const;
 
     bool isPrepared = false, running = false, freeDrive = false;
     float scale = 1.0f;
@@ -75,13 +75,13 @@ private:
     int carMover[5] = {-1, -1, -1, -1, -1};  // body, FL, FR, RL, RR
     std::vector<Pickup> pickups;
     Hud hud_;
-    Vec3 startPos;
+    Vec3f startPos;
     float startYaw = 0;
-    Vec3 safePos;
+    Vec3f safePos;
     float safeYaw = 0, safeTimer = 0, stuckTimer = 0, worldFloor = -1000.0f;
     Camera cam;
     float camYaw = 0;
-    Vec3 camPos;
+    Vec3f camPos;
     int camMode = 0;
     float driftAccum = 0;
 };

@@ -11,11 +11,11 @@ struct CarModel {
     std::string name;
     BatchSet body;       // chassis, windows, driver...
     BatchSet wheel[4];   // one per wheel (front left, front right, rear left, rear right), centred on the axle
-    Vec3 wheelPos[4];    // rest position of the wheel centres, same order
+    Vec3f wheelPos[4];    // rest position of the wheel centres, same order
     float unitsPerMetre = 1;  // size of a metre in the game's own units: the model is already in metres, the level is not
     float wheelRadius = 0.34f;
     float wheelWidth = 0.25f;
-    Vec3 boundsMin, boundsMax;  // of the chassis
+    Vec3f boundsMin, boundsMax;  // of the chassis
 };
 
 }  // namespace minigame01

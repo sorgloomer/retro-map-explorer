@@ -16,6 +16,6 @@ int parseSmoothIndex(const std::string& optionsText);
 void alignGeometry(BatchSet& g, const float m[16]);
 
 // Uniform Catmull-Rom through the points, `n` samples per segment. Paths whose ends meet are treated as closed loops.
-std::vector<Vec3> catmullRom(const std::vector<Vec3>& p, int n);
+std::vector<Vec3f> catmullRom(const std::vector<Vec3f>& p, int n);
 
 }  // namespace carma

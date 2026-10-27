@@ -31,8 +31,8 @@ struct Reader {
     uint32_t u32() { return get<uint32_t>(); }
     int32_t i32() { return get<int32_t>(); }
     float f32() { return get<float>(); }
-    Vec3 vec3() {
-        Vec3 v;
+    Vec3f vec3() {
+        Vec3f v;
         v.x = f32(); v.y = f32(); v.z = f32();
         return v;
     }

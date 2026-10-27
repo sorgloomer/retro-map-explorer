@@ -42,7 +42,7 @@ void alignGeometry(BatchSet& g, const float m[16]) {
     }
 }
 
-std::vector<Vec3> catmullRom(const std::vector<Vec3>& p, int n) {
+std::vector<Vec3f> catmullRom(const std::vector<Vec3f>& p, int n) {
     size_t cnt = p.size();
     if (cnt < 3 || n < 2) return p;
     bool closed = Mover::length3(p.front() - p.back()) < 1.0f;
@@ -51,11 +51,11 @@ std::vector<Vec3> catmullRom(const std::vector<Vec3>& p, int n) {
         if (closed) return p[(size_t)(((i % (long)cnt) + (long)cnt) % (long)cnt)];
         return p[(size_t)std::min<long>(std::max<long>(i, 0), (long)cnt - 1)];
     };
-    std::vector<Vec3> out;
+    std::vector<Vec3f> out;
     size_t segs = closed ? cnt : cnt - 1;
     out.reserve(segs * n + 1);
     for (size_t i = 0; i < segs; i++) {
-        Vec3 p0 = at((long)i - 1), p1 = at((long)i), p2 = at((long)i + 1), p3 = at((long)i + 2);
+        Vec3f p0 = at((long)i - 1), p1 = at((long)i), p2 = at((long)i + 1), p3 = at((long)i + 2);
         for (int k = 0; k < n; k++) {
             float t = (float)k / (float)n, t2 = t * t, t3 = t2 * t;
             out.push_back((p1 * 2.0f + (p2 - p0) * t + (p0 * 2.0f - p1 * 5.0f + p2 * 4.0f - p3) * t2 + (p1 * 3.0f - p0 - p2 * 3.0f + p3) * t3) * 0.5f);

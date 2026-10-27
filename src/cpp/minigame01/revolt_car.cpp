@@ -17,7 +17,7 @@ struct Poly {
 };
 struct Prm {
     std::vector<Poly> polys;
-    std::vector<Vec3> verts;
+    std::vector<Vec3f> verts;
 };
 
 // .prm: [polygon count u16][vertex count u16], polygons (60 bytes: type, tex, 4 indices, 4 colours, 4 uvs), vertices (position + normal).
@@ -75,7 +75,7 @@ bool loadRevoltCar(Scene& scene, CarModel& out) {
 
     // Parameters.txt: MODEL n "file", TPAGE "file", WHEEL n { Offset1 x y z ... Radius r }
     std::string models[5], tpage;
-    Vec3 wheelOffset[4];
+    Vec3f wheelOffset[4];
     float wheelRadius = 10.0f;
     int wheel = -1;
     std::istringstream in(text);
@@ -127,7 +127,7 @@ bool loadRevoltCar(Scene& scene, CarModel& out) {
 
     // metres: size the car like a 4.3 m car, whatever the game's units are
     float zmin = 1e30f, zmax = -1e30f;
-    for (const Vec3& v : parts[0].verts) { zmin = std::min(zmin, v.z); zmax = std::max(zmax, v.z); }
+    for (const Vec3f& v : parts[0].verts) { zmin = std::min(zmin, v.z); zmax = std::max(zmax, v.z); }
     const float s = std::max(1.0f, (zmax - zmin) / 4.3f);
     out.unitsPerMetre = s;
 
@@ -139,7 +139,7 @@ bool loadRevoltCar(Scene& scene, CarModel& out) {
             int n = (p.type & 1) ? 4 : 3;
             SceneVertex v[4];
             for (int k = 0; k < n; k++) {
-                Vec3 pos = m.verts[std::min<size_t>(p.idx[k], m.verts.size() - 1)];
+                Vec3f pos = m.verts[std::min<size_t>(p.idx[k], m.verts.size() - 1)];
                 uint32_t c = p.col[k];
                 v[k].x = pos.x / s; v[k].y = -pos.y / s; v[k].z = pos.z / s;  // y is down in Re-Volt
                 v[k].r = (c >> 16) & 255; v[k].g = (c >> 8) & 255; v[k].b = c & 255;
@@ -154,14 +154,14 @@ bool loadRevoltCar(Scene& scene, CarModel& out) {
     emit(parts[0], out.body);
     for (int i = 0; i < 4; i++) {
         emit(parts[1 + i], out.wheel[i]);
-        out.wheelPos[i] = Vec3(wheelOffset[i].x, -wheelOffset[i].y, wheelOffset[i].z) * (1.0f / s);
+        out.wheelPos[i] = Vec3f(wheelOffset[i].x, -wheelOffset[i].y, wheelOffset[i].z) * (1.0f / s);
     }
     out.wheelRadius = wheelRadius / s;
-    Vec3 lo(1e30f, 1e30f, 1e30f), hi(-1e30f, -1e30f, -1e30f);
+    Vec3f lo(1e30f, 1e30f, 1e30f), hi(-1e30f, -1e30f, -1e30f);
     for (const Batch& b : out.body.batches)
         for (const SceneVertex& v : b.verts) {
-            lo = vmin(lo, Vec3(v.x, v.y, v.z));
-            hi = vmax(hi, Vec3(v.x, v.y, v.z));
+            lo = vmin(lo, Vec3f(v.x, v.y, v.z));
+            hi = vmax(hi, Vec3f(v.x, v.y, v.z));
         }
     out.boundsMin = lo;
     out.boundsMax = hi;

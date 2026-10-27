@@ -35,8 +35,8 @@ struct PanSurface {
 
 // Builds the pan surface for the camera and the grabbed point as they are when the gesture starts (valid stays false when
 // there is none, e.g. for a steep nearby surface: panning is then purely parallel to the screen).
-PanSurface computePanSurface(const Camera& cam, const Vec3& pivot, float pivotNormalY, float sceneRadius);
+PanSurface computePanSurface(const Camera& cam, const Vec3f& pivot, float pivotNormalY, float sceneRadius);
 
 // Camera position that puts the grabbed point under the view ray `d`. `cam` is the camera of the gesture (its orientation
 // does not change while panning) and `start` its position when the gesture began. The result depends on `d` only.
-Vec3 panCameraPosition(const PanSurface& ps, const Camera& cam, const Vec3& start, const Vec3& pivot, const Vec3& d);
+Vec3f panCameraPosition(const PanSurface& ps, const Camera& cam, const Vec3f& start, const Vec3f& pivot, const Vec3f& d);

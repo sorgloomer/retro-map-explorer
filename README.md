@@ -90,7 +90,7 @@ people who may see your assets.
 ## Layout
 
 ```
-src/cpp/math/          vmath.h (Vec3, Mat4) and vec2.h (Vec2 float, VecI2 integer: pixel positions and sizes)
+src/cpp/math/          vmath.h (Vec3, Mat4), vec2.h (Vec2f float, Vec2i integer: pixel positions and sizes) and color.h (ColorRgb32 packed, Color3b bytes, Color3f floats)
 src/cpp/loader/        inflate.* (DEFLATE/zlib decoder, no zlib dependency) and binio.h (binary reader)
 src/cpp/image.*        BMP + TGA decoders
 src/cpp/vfs.*          file system over the dropped files (JS: list + ranged read, via Asyncify)

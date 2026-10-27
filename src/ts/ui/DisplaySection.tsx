@@ -36,16 +36,16 @@ export function DisplaySection() {
         <Slider optKey="optSpeed" label="Camera speed" min={0.1} max={4} step={0.05} />
       </Group>
       <Group id="grpPowerups" title="Powerups">
-        <Slider optKey="optPupExposure" label="Powerup halo brightness" min={0.2} max={3} step={0.05} />
         <Slider optKey="optPupScale" label="Powerup size" min={0} max={1} step={0.02} />
-        <Slider optKey="optXray" label="See-through strength" min={0} max={1} step={0.05} />
         <Check optKey="beams">Highlight beams above powerups</Check>
         <Check optKey="pupMeshes" disabled={!hasMeshes} title={hasMeshes ? '' : 'No in-game powerup meshes for this level'}>In-game powerup meshes</Check>
+        <Slider optKey="optPupExposure" label="Powerup halo brightness" min={0.2} max={3} step={0.05} />
+        <Slider optKey="optXray" label="See-through strength" min={0} max={1} step={0.05} />
       </Group>
       <Group id="grpRendering" title="Rendering">
         <Check optKey="optTex">Textures</Check>
-          <Check optKey="optGeo">Level geometry</Check>
-          <Check optKey="optWire">Wireframe (level geometry)</Check>
+        <Check optKey="optGeo">Level geometry</Check>
+        <Check optKey="optWire">Wireframe (level geometry)</Check>
         <Check optKey="optSun" disabled={!lighting} title={lighting ? '' : 'This game does not provide in-game lighting data'}>Global light (sun + ambient)</Check>
         <Check optKey="optPoints" disabled={!lighting} title={lighting ? '' : 'This game does not provide in-game lighting data'}>Point lights</Check>
         <Check optKey="optBack" disabled={!canCull} title={canCull ? '' : 'This game draws every face double sided'}>Render back faces</Check>

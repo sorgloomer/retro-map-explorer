@@ -100,22 +100,22 @@ bool CarmaGame::readGeometry(const KeyFile& kf, int& meshCount, std::string& err
 
 Cats CarmaGame::addCategories(Scene& out) {
     Cats c;
-    c.start = out.addCategory("start", "Start position", 0x39ff7a, SHAPE_ARROW, 2.0f, true);
-    c.pup = out.addCategory("powerup", "Powerups", 0xffb870, SHAPE_DIAMOND, 1.0f, true);
-    c.special = out.addCategory("special", "Special powerups", 0xe07b00, SHAPE_DIAMOND, 1.15f, true);
-    c.pedPup = out.addCategory("pedpowerup", "Pedestrian powerups", 0xffe600, SHAPE_DIAMOND, 1.0f, true);
-    c.time = out.addCategory("timepowerup", "Time bonuses", 0x8fd8ff, SHAPE_DIAMOND, 1.0f, true);
-    c.upgrade = out.addCategory("upgrade", "Permanent Upgrades", 0xff2a2a, SHAPE_DIAMOND, 1.2f, true);
-    c.credit = out.addCategory("credit", "Credits", 0x35e04a, SHAPE_DIAMOND, 1.0f, true);
-    c.missionItem = out.addCategory("missionitem", "Mission items", 0x35c7e8, SHAPE_DIAMOND, 1.0f, true);
-    c.mission = out.addCategory("mission", "Mission objectives", 0xff4fd8, SHAPE_CUBE, 1.0f, true);
-    c.check = out.addCategory("checkpoint", "Checkpoints", 0xff5a5a, SHAPE_CUBE, 1.0f, false, true, true);
-    c.race = out.addCategory("raceline", "Race line", 0x37c8ff, SHAPE_DIAMOND, 1.0f, false, true, true);
-    c.startLine = out.addCategory("startline", "AI race-line start (path flag)", 0xffffff, SHAPE_DIAMOND, 1.0f, false, false, true);
-    c.ai = out.addCategory("aipath", "Opponent roam paths", 0x4a7dff, SHAPE_DIAMOND, 1.0f, false, false, true);
-    c.drone = out.addCategory("drone", "Drone paths (traffic, trains)", 0xc27aff, SHAPE_DIAMOND, 1.0f, false, false, true);
-    c.ped = out.addCategory("ped", "Pedestrians", 0x1f7a2e, SHAPE_DIAMOND, 0.6f, false, false);
-    c.respawn = out.addCategory("respawn", "Respawn points", 0x7af0ff, SHAPE_ARROW, 1.2f, false, false);
+    c.start = out.addCategory("start", "Start position", rgb(0x39ff7a), SHAPE_ARROW, 2.0f, true);
+    c.pup = out.addCategory("powerup", "Powerups", rgb(0xffb870), SHAPE_DIAMOND, 1.0f, true);
+    c.special = out.addCategory("special", "Special powerups", rgb(0xe07b00), SHAPE_DIAMOND, 1.15f, true);
+    c.pedPup = out.addCategory("pedpowerup", "Pedestrian powerups", rgb(0xffe600), SHAPE_DIAMOND, 1.0f, true);
+    c.time = out.addCategory("timepowerup", "Time bonuses", rgb(0x8fd8ff), SHAPE_DIAMOND, 1.0f, true);
+    c.upgrade = out.addCategory("upgrade", "Permanent Upgrades", rgb(0xff2a2a), SHAPE_DIAMOND, 1.2f, true);
+    c.credit = out.addCategory("credit", "Credits", rgb(0x35e04a), SHAPE_DIAMOND, 1.0f, true);
+    c.missionItem = out.addCategory("missionitem", "Mission items", rgb(0x35c7e8), SHAPE_DIAMOND, 1.0f, true);
+    c.mission = out.addCategory("mission", "Mission objectives", rgb(0xff4fd8), SHAPE_CUBE, 1.0f, true);
+    c.check = out.addCategory("checkpoint", "Checkpoints", rgb(0xff5a5a), SHAPE_CUBE, 1.0f, false, true, true);
+    c.race = out.addCategory("raceline", "Race line", rgb(0x37c8ff), SHAPE_DIAMOND, 1.0f, false, true, true);
+    c.startLine = out.addCategory("startline", "AI race-line start (path flag)", rgb(0xffffff), SHAPE_DIAMOND, 1.0f, false, false, true);
+    c.ai = out.addCategory("aipath", "Opponent roam paths", rgb(0x4a7dff), SHAPE_DIAMOND, 1.0f, false, false, true);
+    c.drone = out.addCategory("drone", "Drone paths (traffic, trains)", rgb(0xc27aff), SHAPE_DIAMOND, 1.0f, false, false, true);
+    c.ped = out.addCategory("ped", "Pedestrians", rgb(0x1f7a2e), SHAPE_DIAMOND, 0.6f, false, false);
+    c.respawn = out.addCategory("respawn", "Respawn points", rgb(0x7af0ff), SHAPE_ARROW, 1.2f, false, false);
     return c;
 }
 
@@ -124,12 +124,12 @@ void CarmaGame::addStart(const KeyFile& kf, Scene& out, const Cats& c) {
     if (kf.nums("START_POS", sp, 3)) {
         float a = 0;
         if (kf.nums("START_ANGLE", &ang, 1)) a = ang;
-        Vec3 p = fixX({sp[0], sp[1], sp[2]});
+        Vec3f p = fixX({sp[0], sp[1], sp[2]});
         out.addMarker(c.start, p, fixA(a), "Start position");
         out.hasCameraStart = true;
         out.cameraYaw = fixA(a);
         out.cameraPitch = -0.5f;
-        out.cameraPos = p + Vec3(std::sin(fixA(a)), 0, std::cos(fixA(a))) * -60.0f + Vec3(0, 50, 0);
+        out.cameraPos = p + Vec3f(std::sin(fixA(a)), 0, std::cos(fixA(a))) * -60.0f + Vec3f(0, 50, 0);
     }
 }
 
@@ -144,7 +144,7 @@ void CarmaGame::readPupFile(const std::string& pt, Scene& out, const Cats& c, st
         while (is >> f) nums.push_back(f);
         if (nums.size() >= 6) {
             int id = (int)nums[0];
-            Vec3 p = fixX({nums[1], nums[2], nums[3]});
+            Vec3f p = fixX({nums[1], nums[2], nums[3]});
             std::string lb = label.empty() ? "Powerup" : label;
             int cat = c.pup;
             switch (pupTable.classify(id, lb)) {
@@ -210,7 +210,7 @@ void CarmaGame::readMissionScripts(const std::string& name, const KeyFile& race,
             int id = -1;
             for (size_t k = 0; k < pupTable.items.size(); k++)
                 if (vfs::lower(pupTable.items[k].name) == vfs::lower(pname)) { id = (int)k; break; }
-            Vec3 pos = fixX({run[0], run[1], run[2]});
+            Vec3f pos = fixX({run[0], run[1], run[2]});
             int cat = id >= 0 ? c.missionItem : c.mission;  // named items vs. objective markers
             out.addMarker(cat, pos, 0, pname + (id >= 0 ? " (mission item)" : " (mission objective)"));
             placed.push_back({id, cat, pos});
@@ -221,7 +221,7 @@ void CarmaGame::readMissionScripts(const std::string& name, const KeyFile& race,
 void CarmaGame::addPowerupMeshes(Scene& out, const std::vector<Placed>& placed) {
     // In-game icon meshes (spinning). The id -> icon table is hard-coded in the game executable, so the
     // assignment below follows the groups of the powerup string table.
-    struct Icon { int geom = -1, halo = -1; Vec3 center; };
+    struct Icon { int geom = -1, halo = -1; Vec3f center; };
     std::map<std::string, Icon> geoms;
     for (const Placed& pl : placed) {
         if (pl.id < 0) continue;  // mission objective markers have no in-game mesh
@@ -301,7 +301,7 @@ void CarmaGame::addCheckpoints(const KeyFile& kf, Scene& out, const Cats& c) {
             uint32_t n = r.u32();
             if (r.ok && n % 8 == 0 && r.left() >= (size_t)n * 12) {
                 for (uint32_t b = 0; b < n / 8; b++) {
-                    Vec3 p[8], center;
+                    Vec3f p[8], center;
                     for (auto& v : p) { v = fixX(r.vec3()); center += v * 0.125f; }
                     static const int e[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
                     for (auto& ed : e) out.addLine(c.check, p[ed[0]], p[ed[1]]);
@@ -322,9 +322,9 @@ void CarmaGame::addRoutes(const KeyFile& race, bool listed, const Cats& c) {
 }
 
 void CarmaGame::addMovers(const KeyFile& kf, Scene& out) {
-    int cMove = out.addCategory("movers", "Moving objects (path followers, behemoths, lifts)", 0x7fd0ff, SHAPE_DIAMOND, 1.0f, false, true);
-    int cAnimPath = out.addCategory("animpath", "Routes of animated props (behemoths, lifts)", 0xffc46b, SHAPE_DIAMOND, 1.0f, false, false, true);
-    int cFPath = out.addCategory("followerpath", "Paths of moving objects", 0xff9ad5, SHAPE_DIAMOND, 1.0f, false, false, true);
+    int cMove = out.addCategory("movers", "Moving objects (path followers, behemoths, lifts)", rgb(0x7fd0ff), SHAPE_DIAMOND, 1.0f, false, true);
+    int cAnimPath = out.addCategory("animpath", "Routes of animated props (behemoths, lifts)", rgb(0xffc46b), SHAPE_DIAMOND, 1.0f, false, false, true);
+    int cFPath = out.addCategory("followerpath", "Paths of moving objects", rgb(0xff9ad5), SHAPE_DIAMOND, 1.0f, false, false, true);
     std::string pf = kf.str("PATH_FOLLOWERS");
     if (!pf.empty()) loadFollowers(pf, out, cMove, cFPath);
     std::string ap = kf.str("ANIMATED_PROPS");
@@ -373,9 +373,9 @@ void CarmaGame::addLighting(const KeyFile& kf, Scene& out) {
     float amb, sun[3], sc3[3];
     out.hasLighting = true;
     if (kf.nums("AMBIENT_LIGHT", &amb, 1)) out.ambient = amb;
-    if (kf.nums("SUN_VECTOR", sun, 3)) out.sunDir = normalize(fixX(Vec3(-sun[0], -sun[1], -sun[2])));
+    if (kf.nums("SUN_VECTOR", sun, 3)) out.sunDir = normalize(fixX(Vec3f(-sun[0], -sun[1], -sun[2])));
     if (kf.nums("SUN_LIGHT_COLOUR", sc3, 3)) out.sunColor = {sc3[0], sc3[1], sc3[2]};
-    int cLight = out.addCategory("light", "Lights (in-game)", 0xfff3a0, SHAPE_DIAMOND, 0.7f, false, true);
+    int cLight = out.addCategory("light", "Lights (in-game)", rgb(0xfff3a0), SHAPE_DIAMOND, 0.7f, false, true);
     std::string lname = kf.str("LIGHTS_DESCRIPTOR"), lt;
     if (!lname.empty() && readNamedText(lname, lt)) {
         bool first = true;
@@ -401,7 +401,7 @@ void CarmaGame::addLighting(const KeyFile& kf, Scene& out) {
 }
 
 void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
-    int cProps = out.addCategory("props", "Destructible & movable props", 0x9aa0a6, SHAPE_CUBE, 1.0f, false, true);
+    int cProps = out.addCategory("props", "Destructible & movable props", rgb(0x9aa0a6), SHAPE_CUBE, 1.0f, false, true);
     out.moverGeoms.emplace_back();
     int propsGeom = (int)out.moverGeoms.size() - 1;
     int instances = 0;
@@ -458,7 +458,7 @@ void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
                 vs = b.verts;
                 for (SceneVertex& sv : vs) {
                     float x = sv.x, y = sv.y - com, z = sv.z;
-                    Vec3 w = fixX({r[0][0] * x + r[0][1] * y + r[0][2] * z + v[0], r[1][0] * x + r[1][1] * y + r[1][2] * z + v[1],
+                    Vec3f w = fixX({r[0][0] * x + r[0][1] * y + r[0][2] * z + v[0], r[1][0] * x + r[1][1] * y + r[1][2] * z + v[1],
                                    r[2][0] * x + r[2][1] * y + r[2][2] * z + v[2]});
                     sv.x = w.x; sv.y = w.y; sv.z = w.z;
                 }
@@ -480,7 +480,7 @@ void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
         m.cat = cProps;
         m.fixed = true;
         m.staticModel = true;
-        m.path = {Vec3()};
+        m.path = {Vec3f()};
         out.movers.push_back(std::move(m));
         out.cats[cProps].count = instances;
     } else {

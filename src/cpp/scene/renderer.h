@@ -2,6 +2,7 @@
 #pragma once
 #include <vector>
 #include "scene.h"
+#include "../math/color.h"
 #include "../math/vmath.h"
 
 struct RenderOptions {
@@ -25,12 +26,12 @@ struct RenderOptions {
 
 struct ViewParams {
     Mat4 view, proj, viewProj;
-    Vec3 eye;
+    Vec3f eye;
     int width = 1, height = 1;
     float fovY = 1.0f;
     float time = 0;  // seconds, drives moving objects
     bool showPivot = false;  // draw the orbit / pan pivot marker
-    Vec3 pivot;
+    Vec3f pivot;
 };
 
 class Renderer {
@@ -66,7 +67,7 @@ private:
     unsigned compile(const char* vs, const char* fs);
     void drawMarkers(const ViewParams& vp, const RenderOptions& opt, bool xrayPass, int highlight);
     void drawLines(const ViewParams& vp, const RenderOptions& opt, bool xrayPass);
-    float iconScale(const Vec3& at, const ViewParams& vp, const RenderOptions& opt) const;
+    float iconScale(const Vec3f& at, const ViewParams& vp, const RenderOptions& opt) const;
 
     const Scene* scene = nullptr;
     int lost = 0;

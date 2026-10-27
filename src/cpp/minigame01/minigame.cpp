@@ -61,22 +61,22 @@ void MiniGame::forget() {
     input.releaseAll();
 }
 
-bool MiniGame::groundBelow(const Vec3& from, Vec3& hit) const {
+bool MiniGame::groundBelow(const Vec3f& from, Vec3f& hit) const {
     float t;
-    Vec3 n;
-    if (!world.raycast(from, Vec3(0, -1, 0), 120.0f, false, t, n)) return false;
-    hit = from + Vec3(0, -t, 0);
+    Vec3f n;
+    if (!world.raycast(from, Vec3f(0, -1, 0), 120.0f, false, t, n)) return false;
+    hit = from + Vec3f(0, -t, 0);
     return true;
 }
 
-void MiniGame::start(Scene& scene, const Vec3& sceneCenter, bool free) {
+void MiniGame::start(Scene& scene, const Vec3f& sceneCenter, bool free) {
     freeDrive = free;
-    Vec3 p = sceneCenter * (1.0f / scale);
+    Vec3f p = sceneCenter * (1.0f / scale);
     float yaw = 0;
     for (const Marker& m : scene.markers)
         if (scene.cats[m.cat].id == "start") { p = m.pos * (1.0f / scale); yaw = m.yaw; break; }
-    Vec3 g;
-    if (groundBelow(p + Vec3(0, 3, 0), g) || groundBelow(p + Vec3(0, 60, 0), g)) startPos = g;
+    Vec3f g;
+    if (groundBelow(p + Vec3f(0, 3, 0), g) || groundBelow(p + Vec3f(0, 60, 0), g)) startPos = g;
     else startPos = p;
     startYaw = yaw;
     running = true;
@@ -136,21 +136,14 @@ void MiniGame::makePickupIcons(Scene& scene) {
     for (size_t c = 0; c < scene.cats.size(); c++) {
         const std::string& id = scene.cats[c].id;
         if (id != "pickup" && id != "star") continue;
-        std::vector<Vec3> at;
+        std::vector<Vec3f> at;
         for (const Marker& m : scene.markers)
             if (m.cat == (int)c) at.push_back(m.pos);
         if (at.empty()) continue;
         // a gem: an octahedron in the colour of the category
-        uint32_t col = scene.cats[c].color;
+        auto col = Color3f::from3b(scene.cats[c].color);
         auto vtx = [&](float x, float y, float z, float shade) {
-            SceneVertex v;
-            v.x = x; v.y = y; v.z = z;
-            v.r = (uint8_t)(((col >> 16) & 255) * shade);
-            v.g = (uint8_t)(((col >> 8) & 255) * shade);
-            v.b = (uint8_t)((col & 255) * shade);
-            v.a = 255;
-            v.u = v.v = 0;
-            return v;
+            return SceneVertex(Vec3f(x, y, z), Color4b::from1b3f(0xff, col * shade), Vec2f::zero());
         };
         SceneVertex gv[6] = {vtx(r, 0, 0, 0.8f), vtx(-r, 0, 0, 0.8f), vtx(0, r * 1.5f, 0, 1.0f), vtx(0, -r * 1.5f, 0, 0.55f), vtx(0, 0, r, 0.9f), vtx(0, 0, -r, 0.9f)};
         const uint32_t gi[24] = {2, 0, 4, 2, 4, 1, 2, 1, 5, 2, 5, 0, 3, 4, 0, 3, 1, 4, 3, 5, 1, 3, 0, 5};
@@ -166,7 +159,7 @@ void MiniGame::makePickupIcons(Scene& scene) {
             mv.powerupMesh = true;
             mv.hidden = true;
             mv.phase = (float)(i % 7);
-            mv.path = {at[i] + Vec3(0, r * 1.4f, 0)};
+            mv.path = {at[i] + Vec3f(0, r * 1.4f, 0)};
             scene.movers.push_back(mv);
         }
         iconCats.push_back((int)c);
@@ -184,7 +177,7 @@ void MiniGame::stop(Scene& scene) {
     pickups.clear();
 }
 
-void MiniGame::placeCar(const Vec3& groundPos, float yaw) {
+void MiniGame::placeCar(const Vec3f& groundPos, float yaw) {
     vehicle.reset(groundPos, yaw);
     camYaw = yaw;
     safePos = groundPos;
@@ -199,11 +192,11 @@ void MiniGame::respawn(Scene& scene, Spawn where) {
         placeCar(startPos, startYaw);
         return;
     }
-    Vec3 g = safePos;
+    Vec3f g = safePos;
     float yaw = safeYaw;
     if (where == Spawn::Here) {  // upright on the ground below, heading as before
-        Vec3 below;
-        if (groundBelow(vehicle.position() + Vec3(0, 1.5f, 0), below) && vehicle.position().y > worldFloor) {
+        Vec3f below;
+        if (groundBelow(vehicle.position() + Vec3f(0, 1.5f, 0), below) && vehicle.position().y > worldFloor) {
             g = below;
             yaw = std::atan2(vehicle.forward().x, vehicle.forward().z);
         }
@@ -212,7 +205,7 @@ void MiniGame::respawn(Scene& scene, Spawn where) {
 }
 
 void MiniGame::collect(Scene& scene) {
-    Vec3 c = vehicle.position();
+    Vec3f c = vehicle.position();
     for (Pickup& p : pickups) {
         if (p.taken) continue;
         float dx = p.pos.x - c.x, dz = p.pos.z - c.z, dy = p.pos.y - c.y;
@@ -238,10 +231,10 @@ void MiniGame::collect(Scene& scene) {
 }
 
 void MiniGame::updateCamera(float dt, bool snap) {
-    Vec3 pos = vehicle.position();
-    Vec3 fwd = vehicle.forward();
+    Vec3f pos = vehicle.position();
+    Vec3f fwd = vehicle.forward();
     float carYaw = std::atan2(fwd.x, fwd.z);
-    Vec3 vel = vehicle.velocity();
+    Vec3f vel = vehicle.velocity();
     float flat = std::sqrt(vel.x * vel.x + vel.z * vel.z);
     float targetYaw = carYaw;
     if (flat > 5.0f && vehicle.forwardSpeed() > 0) {  // look where the car is going when it slides
@@ -252,20 +245,20 @@ void MiniGame::updateCamera(float dt, bool snap) {
     float height = camMode == 0 ? 2.5f : 5.0f;
     if (snap) camYaw = targetYaw;
     else camYaw += wrapAngle(targetYaw - camYaw) * std::min(1.0f, dt * 3.2f);
-    Vec3 lookAt = pos + Vec3(0, 0.9f, 0) + Vec3(std::sin(camYaw), 0, std::cos(camYaw)) * 2.2f;
-    Vec3 desired = pos + Vec3(0, height, 0) - Vec3(std::sin(camYaw), 0, std::cos(camYaw)) * dist;
+    Vec3f lookAt = pos + Vec3f(0, 0.9f, 0) + Vec3f(std::sin(camYaw), 0, std::cos(camYaw)) * 2.2f;
+    Vec3f desired = pos + Vec3f(0, height, 0) - Vec3f(std::sin(camYaw), 0, std::cos(camYaw)) * dist;
     if (snap) camPos = desired;
     else camPos += (desired - camPos) * std::min(1.0f, dt * 7.0f);
     // keep the camera out of walls: pull it in along the line to the car
-    Vec3 toCam = camPos - lookAt;
+    Vec3f toCam = camPos - lookAt;
     float len = length(toCam);
     if (len > 0.5f) {
-        Vec3 dir = toCam * (1.0f / len);
+        Vec3f dir = toCam * (1.0f / len);
         float t;
-        Vec3 n;
+        Vec3f n;
         if (world.raycast(lookAt, dir, len + 0.4f, true, t, n)) camPos = lookAt + dir * std::max(0.6f, t - 0.4f);
     }
-    Vec3 look = lookAt - camPos;
+    Vec3f look = lookAt - camPos;
     cam.pos = camPos * scale;
     cam.yaw = std::atan2(look.x, look.z);
     cam.pitch = std::asin(std::max(-1.0f, std::min(1.0f, look.y / std::max(1e-3f, length(look)))));
@@ -285,8 +278,8 @@ void MiniGame::syncMovers(Scene& scene) {
         float cs = std::cos(w.steer), sn = std::sin(w.steer);
         float spin = std::fmod(w.spin, kTwoPi);
         float cp = std::cos(spin), sp = std::sin(spin);
-        Vec3 ex(cs, 0, -sn), ez0(sn, 0, cs), ey(0, 1, 0);
-        Vec3 eY = ey * cp + ez0 * sp, eZ = ez0 * cp - ey * sp;
+        Vec3f ex(cs, 0, -sn), ez0(sn, 0, cs), ey(0, 1, 0);
+        Vec3f eY = ey * cp + ez0 * sp, eZ = ez0 * cp - ey * sp;
         Mat4 L = Mat4::identity();
         L.m[0] = ex.x; L.m[1] = ex.y; L.m[2] = ex.z;
         L.m[4] = eY.x; L.m[5] = eY.y; L.m[6] = eY.z;
@@ -315,8 +308,8 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     // last safe spot (wheels down, upright), for falling out of the world
     safeTimer += dt;
     if (safeTimer > 0.7f && vehicle.anyGrounded() && !vehicle.upsideDown()) {
-        Vec3 g;
-        if (groundBelow(vehicle.position() + Vec3(0, 1.0f, 0), g)) {
+        Vec3f g;
+        if (groundBelow(vehicle.position() + Vec3f(0, 1.0f, 0), g)) {
             safePos = g;
             safeYaw = std::atan2(vehicle.forward().x, vehicle.forward().z);
             safeTimer = 0;

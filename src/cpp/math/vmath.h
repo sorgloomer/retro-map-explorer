@@ -3,26 +3,26 @@
 #include <cmath>
 #include <algorithm>
 
-struct Vec3 {
+struct Vec3f {
     float x = 0, y = 0, z = 0;
-    Vec3() = default;
-    Vec3(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
-    Vec3 operator+(const Vec3& o) const { return {x + o.x, y + o.y, z + o.z}; }
-    Vec3 operator-(const Vec3& o) const { return {x - o.x, y - o.y, z - o.z}; }
-    Vec3 operator*(float s) const { return {x * s, y * s, z * s}; }
-    Vec3& operator+=(const Vec3& o) { x += o.x; y += o.y; z += o.z; return *this; }
+    Vec3f() = default;
+    Vec3f(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
+    Vec3f operator+(const Vec3f& o) const { return {x + o.x, y + o.y, z + o.z}; }
+    Vec3f operator-(const Vec3f& o) const { return {x - o.x, y - o.y, z - o.z}; }
+    Vec3f operator*(float s) const { return {x * s, y * s, z * s}; }
+    Vec3f& operator+=(const Vec3f& o) { x += o.x; y += o.y; z += o.z; return *this; }
 };
-inline float dot(const Vec3& a, const Vec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
-inline Vec3 cross(const Vec3& a, const Vec3& b) {
+inline float dot(const Vec3f& a, const Vec3f& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+inline Vec3f cross(const Vec3f& a, const Vec3f& b) {
     return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
 }
-inline float length(const Vec3& a) { return std::sqrt(dot(a, a)); }
-inline Vec3 normalize(const Vec3& a) {
+inline float length(const Vec3f& a) { return std::sqrt(dot(a, a)); }
+inline Vec3f normalize(const Vec3f& a) {
     float l = length(a);
-    return l > 1e-12f ? a * (1.0f / l) : Vec3();
+    return l > 1e-12f ? a * (1.0f / l) : Vec3f();
 }
-inline Vec3 vmin(const Vec3& a, const Vec3& b) { return {std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z)}; }
-inline Vec3 vmax(const Vec3& a, const Vec3& b) { return {std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z)}; }
+inline Vec3f vmin(const Vec3f& a, const Vec3f& b) { return {std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z)}; }
+inline Vec3f vmax(const Vec3f& a, const Vec3f& b) { return {std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z)}; }
 
 struct Mat4 {
     float m[16];  // m[col * 4 + row]
@@ -42,7 +42,7 @@ struct Mat4 {
             }
         return r;
     }
-    Vec3 transformPoint(const Vec3& p) const {
+    Vec3f transformPoint(const Vec3f& p) const {
         return {m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12],
                 m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13],
                 m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14]};
@@ -59,10 +59,10 @@ struct Mat4 {
         r.m[14] = -2.0f * zf * zn / (zf - zn);
         return r;
     }
-    static Mat4 lookAt(const Vec3& eye, const Vec3& fwd, const Vec3& upHint) {
-        Vec3 z = normalize(fwd);
-        Vec3 x = normalize(cross(upHint, z));
-        Vec3 y = cross(z, x);
+    static Mat4 lookAt(const Vec3f& eye, const Vec3f& fwd, const Vec3f& upHint) {
+        Vec3f z = normalize(fwd);
+        Vec3f x = normalize(cross(upHint, z));
+        Vec3f y = cross(z, x);
         Mat4 r = identity();
         r.m[0] = x.x; r.m[4] = x.y; r.m[8] = x.z;
         r.m[1] = y.x; r.m[5] = y.y; r.m[9] = y.z;

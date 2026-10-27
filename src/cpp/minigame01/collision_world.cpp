@@ -7,17 +7,17 @@ namespace minigame01 {
 namespace {
 
 // Closest point of triangle (a, a+e1, a+e2) to p (Ericson, Real-Time Collision Detection).
-Vec3 closestOnTriangle(const Vec3& p, const Vec3& a, const Vec3& e1, const Vec3& e2) {
-    Vec3 b = a + e1, c = a + e2;
-    Vec3 ab = e1, ac = e2, ap = p - a;
+Vec3f closestOnTriangle(const Vec3f& p, const Vec3f& a, const Vec3f& e1, const Vec3f& e2) {
+    Vec3f b = a + e1, c = a + e2;
+    Vec3f ab = e1, ac = e2, ap = p - a;
     float d1 = dot(ab, ap), d2 = dot(ac, ap);
     if (d1 <= 0 && d2 <= 0) return a;
-    Vec3 bp = p - b;
+    Vec3f bp = p - b;
     float d3 = dot(ab, bp), d4 = dot(ac, bp);
     if (d3 >= 0 && d4 <= d3) return b;
     float vc = d1 * d4 - d3 * d2;
     if (vc <= 0 && d1 >= 0 && d3 <= 0) return a + ab * (d1 / (d1 - d3));
-    Vec3 cp = p - c;
+    Vec3f cp = p - c;
     float d5 = dot(ab, cp), d6 = dot(ac, cp);
     if (d6 >= 0 && d5 <= d6) return c;
     float vb = d5 * d2 - d1 * d6;
@@ -31,7 +31,7 @@ Vec3 closestOnTriangle(const Vec3& p, const Vec3& a, const Vec3& e1, const Vec3&
 }  // namespace
 
 template <class F>
-void CollisionWorld::forCells(const Vec3& bmin, const Vec3& bmax, F&& fn) const {
+void CollisionWorld::forCells(const Vec3f& bmin, const Vec3f& bmax, F&& fn) const {
     if (nx == 0) return;
     int x0 = std::max(0, (int)std::floor((bmin.x - lo.x) / cell)), x1 = std::min(nx - 1, (int)std::floor((bmax.x - lo.x) / cell));
     int z0 = std::max(0, (int)std::floor((bmin.z - lo.z) / cell)), z1 = std::min(nz - 1, (int)std::floor((bmax.z - lo.z) / cell));
@@ -55,10 +55,10 @@ void CollisionWorld::build(const Scene& scene, float scale, bool bothSides) {
         for (size_t i = 0; i + 2 < b.idx.size(); i += 3) {
             const SceneVertex &va = b.verts[b.idx[i]], &vb = b.verts[b.idx[i + 1]], &vc = b.verts[b.idx[i + 2]];
             Tri t;
-            t.a = Vec3(va.x, va.y, va.z) * scale;
-            t.e1 = Vec3(vb.x, vb.y, vb.z) * scale - t.a;
-            t.e2 = Vec3(vc.x, vc.y, vc.z) * scale - t.a;
-            Vec3 n = cross(t.e1, t.e2);
+            t.a = Vec3f(va.x, va.y, va.z) * scale;
+            t.e1 = Vec3f(vb.x, vb.y, vb.z) * scale - t.a;
+            t.e2 = Vec3f(vc.x, vc.y, vc.z) * scale - t.a;
+            Vec3f n = cross(t.e1, t.e2);
             float l = length(n);
             if (l < 1e-7f) continue;
             t.n = n * (1.0f / l);
@@ -68,12 +68,12 @@ void CollisionWorld::build(const Scene& scene, float scale, bool bothSides) {
     if (tris.empty()) return;
     // grid bounds from the triangles that are small enough to live in it
     const float kLarge = 80.0f;
-    lo = Vec3(1e30f, 1e30f, 1e30f);
-    hi = Vec3(-1e30f, -1e30f, -1e30f);
+    lo = Vec3f(1e30f, 1e30f, 1e30f);
+    hi = Vec3f(-1e30f, -1e30f, -1e30f);
     std::vector<char> isLarge(tris.size(), 0);
     for (size_t i = 0; i < tris.size(); i++) {
         const Tri& t = tris[i];
-        Vec3 mn = vmin(t.a, vmin(t.a + t.e1, t.a + t.e2)), mx = vmax(t.a, vmax(t.a + t.e1, t.a + t.e2));
+        Vec3f mn = vmin(t.a, vmin(t.a + t.e1, t.a + t.e2)), mx = vmax(t.a, vmax(t.a + t.e1, t.a + t.e2));
         if (mx.x - mn.x > kLarge || mx.z - mn.z > kLarge) { isLarge[i] = 1; large.push_back((int)i); continue; }
         lo = vmin(lo, mn);
         hi = vmax(hi, mx);
@@ -88,7 +88,7 @@ void CollisionWorld::build(const Scene& scene, float scale, bool bothSides) {
     }
     std::vector<int> count((size_t)nx * nz + 1, 0);
     auto cellRange = [&](const Tri& t, int& x0, int& x1, int& z0, int& z1) {
-        Vec3 mn = vmin(t.a, vmin(t.a + t.e1, t.a + t.e2)), mx = vmax(t.a, vmax(t.a + t.e1, t.a + t.e2));
+        Vec3f mn = vmin(t.a, vmin(t.a + t.e1, t.a + t.e2)), mx = vmax(t.a, vmax(t.a + t.e1, t.a + t.e2));
         x0 = std::max(0, (int)std::floor((mn.x - lo.x) / cell));
         x1 = std::min(nx - 1, (int)std::floor((mx.x - lo.x) / cell));
         z0 = std::max(0, (int)std::floor((mn.z - lo.z) / cell));
@@ -114,20 +114,20 @@ void CollisionWorld::build(const Scene& scene, float scale, bool bothSides) {
     }
 }
 
-bool CollisionWorld::raycast(const Vec3& o, const Vec3& d, float maxT, bool bothSides, float& tOut, Vec3& normalOut) const {
+bool CollisionWorld::raycast(const Vec3f& o, const Vec3f& d, float maxT, bool bothSides, float& tOut, Vec3f& normalOut) const {
     float best = maxT;
     bool hit = false;
     auto test = [&](int ti) {
         const Tri& t = tris[ti];
-        Vec3 pv = cross(d, t.e2);
+        Vec3f pv = cross(d, t.e2);
         float det = dot(t.e1, pv);
         if (std::fabs(det) < 1e-9f) return;
         if (!bothSides && !bothSidesSolid && det < 0) return;  // back face (same rule as the renderer's culling)
         float inv = 1.0f / det;
-        Vec3 tv = o - t.a;
+        Vec3f tv = o - t.a;
         float u = dot(tv, pv) * inv;
         if (u < 0 || u > 1) return;
-        Vec3 qv = cross(tv, t.e1);
+        Vec3f qv = cross(tv, t.e1);
         float v = dot(d, qv) * inv;
         if (v < 0 || u + v > 1) return;
         float tt = dot(t.e2, qv) * inv;
@@ -137,20 +137,20 @@ bool CollisionWorld::raycast(const Vec3& o, const Vec3& d, float maxT, bool both
             hit = true;
         }
     };
-    Vec3 end = o + d * maxT;
+    Vec3f end = o + d * maxT;
     forCells(vmin(o, end), vmax(o, end), test);
     for (int ti : large) test(ti);
     if (hit) tOut = best;
     return hit;
 }
 
-bool CollisionWorld::sphereContact(const Vec3& c, float r, Vec3& normalOut, float& depthOut) const {
+bool CollisionWorld::sphereContact(const Vec3f& c, float r, Vec3f& normalOut, float& depthOut) const {
     float bestDepth = 0;
     bool hit = false;
     auto test = [&](int ti) {
         const Tri& t = tris[ti];
-        Vec3 q = closestOnTriangle(c, t.a, t.e1, t.e2);
-        Vec3 diff = c - q;
+        Vec3f q = closestOnTriangle(c, t.a, t.e1, t.e2);
+        Vec3f diff = c - q;
         float d2 = dot(diff, diff);
         if (d2 >= r * r) return;
         float d = std::sqrt(d2);
@@ -160,7 +160,7 @@ bool CollisionWorld::sphereContact(const Vec3& c, float r, Vec3& normalOut, floa
         normalOut = d > 1e-5f ? diff * (1.0f / d) : t.n;
         hit = true;
     };
-    Vec3 ext(r, r, r);
+    Vec3f ext(r, r, r);
     forCells(c - ext, c + ext, test);
     for (int ti : large) test(ti);
     if (hit) depthOut = bestDepth;

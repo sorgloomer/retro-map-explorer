@@ -90,7 +90,7 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
         bool translucent = false;
         for (size_t i = 0; i < m.nv(); i++) {
             const float* f = &m.v[i * 9];
-            Vec3 w = mat.transformPoint({f[0], f[1], f[2]});
+            Vec3f w = mat.transformPoint({f[0], f[1], f[2]});
             SceneVertex& v = vs[i];
             v.x = -w.x; v.y = w.y; v.z = w.z;  // the viewer mirrors X
             v.r = (uint8_t)(std::min(std::max(f[5], 0.f), 1.f) * 255.f);
@@ -148,7 +148,7 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
         const Hie::Node& nd = hie.nodes[n];
         if (slot < 0 || nd.type != 1 || nd.index < 0 || nd.index >= (int)hie.mats.size()) continue;
         const Mat4& wm = hie.mats[nd.index].m;
-        out.wheelPos[slot] = Vec3(-wm.m[12], wm.m[13], wm.m[14]);
+        out.wheelPos[slot] = Vec3f(-wm.m[12], wm.m[13], wm.m[14]);
         haveWheel[slot] = true;
         int axle = slot < 2 ? 0 : 2;  // the left wheel's mesh serves both wheels of an axle
         if (nd.child >= 0 && out.wheel[axle].batches.empty()) walkNodes(nd.child, Mat4::identity(), -1, -1, out.wheel[axle], 0);
@@ -176,17 +176,17 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
     body(0, Mat4::identity(), -1, -1, 0);
     if (out.body.batches.empty()) return false;
 
-    auto bounds = [](const BatchSet& s, Vec3& lo, Vec3& hi) {
-        lo = Vec3(1e30f, 1e30f, 1e30f);
-        hi = Vec3(-1e30f, -1e30f, -1e30f);
+    auto bounds = [](const BatchSet& s, Vec3f& lo, Vec3f& hi) {
+        lo = Vec3f(1e30f, 1e30f, 1e30f);
+        hi = Vec3f(-1e30f, -1e30f, -1e30f);
         for (const Batch& b : s.batches)
             for (const SceneVertex& v : b.verts) {
-                lo = vmin(lo, Vec3(v.x, v.y, v.z));
-                hi = vmax(hi, Vec3(v.x, v.y, v.z));
+                lo = vmin(lo, Vec3f(v.x, v.y, v.z));
+                hi = vmax(hi, Vec3f(v.x, v.y, v.z));
             }
     };
     bounds(out.body, out.boundsMin, out.boundsMax);
-    Vec3 wlo, whi;
+    Vec3f wlo, whi;
     out.wheel[1] = out.wheel[0];
     out.wheel[3] = out.wheel[2];
     bounds(out.wheel[0], wlo, whi);

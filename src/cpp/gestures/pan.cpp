@@ -10,7 +10,7 @@ const double kPanDM = 0.0, kPanDX = 0.04;
 }  // namespace
 
 // Builds the pan surface for the camera and pivot as they are now (ps.valid stays false when no surface exists).
-PanSurface computePanSurface(const Camera& cam, const Vec3& pivot, float pivotNormalY, float sceneRadius) {
+PanSurface computePanSurface(const Camera& cam, const Vec3f& pivot, float pivotNormalY, float sceneRadius) {
     PanSurface ps;
     // Grabbing a steep surface (a wall, a tower) close to the camera pans purely parallel to the screen: no pan surface,
     // panTo then uses the screen-parallel solution.
@@ -22,7 +22,7 @@ PanSurface computePanSurface(const Camera& cam, const Vec3& pivot, float pivotNo
     ps.hz = std::cos(cam.yaw);
     ps.fh = std::cos(ps.phi);
     ps.fy = -std::sin(ps.phi);
-    Vec3 rel = pivot - cam.pos;
+    Vec3f rel = pivot - cam.pos;
     ps.hp = rel.x * ps.hx + rel.z * ps.hz;
     ps.yp = rel.y;
     const double d0 = std::atan2(-ps.yp, ps.hp);  // depression of the pivot's own ray
@@ -84,8 +84,8 @@ PanSurface computePanSurface(const Camera& cam, const Vec3& pivot, float pivotNo
     return ps;
 }
 
-Vec3 panCameraPosition(const PanSurface& ps, const Camera& cam, const Vec3& start, const Vec3& pivot, const Vec3& d) {
-    const Vec3 S = start, P = pivot;
+Vec3f panCameraPosition(const PanSurface& ps, const Camera& cam, const Vec3f& start, const Vec3f& pivot, const Vec3f& d) {
+    const Vec3f S = start, P = pivot;
     const double DM = std::asin(kPanDM), DX = std::asin(kPanDX);
     // the ray in the side plane: d_h forward, d_y up; from P back towards the camera the direction is v = -d
     const double dh = d.x * ps.hx + d.z * ps.hz, dy = d.y;
@@ -120,7 +120,7 @@ Vec3 panCameraPosition(const PanSurface& ps, const Camera& cam, const Vec3& star
         }
     }
     if (!have) {  // no usable surface: slide parallel to the screen
-        Vec3 f = cam.forward();
+        Vec3f f = cam.forward();
         double den = dot(d, f);
         if (den < 1e-4) return cam.pos;
         t = dot(P - S, f) / den;

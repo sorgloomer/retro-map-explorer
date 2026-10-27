@@ -42,7 +42,7 @@ void CarmaGame::loadFollowers(const std::string& fname, Scene& out, int cat, int
         return s;
     };
     std::map<std::string, int> geomIdx;
-    std::map<std::string, std::vector<Vec3>> pathCache;
+    std::map<std::string, std::vector<Vec3f>> pathCache;
     std::set<std::string> drawnPaths;
     for (const Entry& e : list) {
         std::string mb = stem(e.mesh), pb = stem(e.path);
@@ -79,7 +79,7 @@ void CarmaGame::loadFollowers(const std::string& fname, Scene& out, int cat, int
         std::string pkey = vfs::lower(pb) + "#" + std::to_string(smooth);
         auto pi = pathCache.find(pkey);
         if (pi == pathCache.end()) {
-            std::vector<Vec3> pts;
+            std::vector<Vec3f> pts;
             loadPathPoints(pb, pts);
             if (smooth > 1) pts = catmullRom(pts, smooth);
             pi = pathCache.emplace(pkey, std::move(pts)).first;
@@ -141,30 +141,30 @@ void CarmaGame::loadAnimProps(const std::string& fname, Scene& out, int cat, int
         m.geom = (int)out.moverGeoms.size() - 1;
         m.cat = cat;
         m.name = hieName;
-        m.path = {Vec3()};
+        m.path = {Vec3f()};
         const Mat4& R = lastRootMat;
-        m.pivot = fixX(Vec3(R.m[12], R.m[13], R.m[14]));
+        m.pivot = fixX(Vec3f(R.m[12], R.m[13], R.m[14]));
         for (int k = 0; k < nkeys; k++) {
             const float* v = &nums[k * 8];
             AnimKey key;
             key.dur = v[0];
-            key.trans = fixX(Vec3(v[1], v[2], v[3]));
+            key.trans = fixX(Vec3f(v[1], v[2], v[3]));
             // the axis is given in the hierarchy's own frame; mirroring turns a rotation about a into one about (ax, -ay, -az)
-            Vec3 a(R.m[0] * v[4] + R.m[4] * v[5] + R.m[8] * v[6], R.m[1] * v[4] + R.m[5] * v[5] + R.m[9] * v[6],
+            Vec3f a(R.m[0] * v[4] + R.m[4] * v[5] + R.m[8] * v[6], R.m[1] * v[4] + R.m[5] * v[5] + R.m[9] * v[6],
                    R.m[2] * v[4] + R.m[6] * v[5] + R.m[10] * v[6]);
-            key.axis = kMirrorX ? Vec3(a.x, -a.y, -a.z) : a;
+            key.axis = kMirrorX ? Vec3f(a.x, -a.y, -a.z) : a;
             key.rotDeg = v[7];
             m.keys.push_back(key);
         }
         // the route of the prop: from the centre of its geometry through the translations of its movements
         {
-            Vec3 lo(1e30f, 1e30f, 1e30f), hi(-1e30f, -1e30f, -1e30f);
+            Vec3f lo(1e30f, 1e30f, 1e30f), hi(-1e30f, -1e30f, -1e30f);
             for (const Batch& b : out.moverGeoms[m.geom].batches)
                 for (const SceneVertex& v : b.verts) {
-                    lo = Vec3(std::min(lo.x, v.x), std::min(lo.y, v.y), std::min(lo.z, v.z));
-                    hi = Vec3(std::max(hi.x, v.x), std::max(hi.y, v.y), std::max(hi.z, v.z));
+                    lo = Vec3f(std::min(lo.x, v.x), std::min(lo.y, v.y), std::min(lo.z, v.z));
+                    hi = Vec3f(std::max(hi.x, v.x), std::max(hi.y, v.y), std::max(hi.z, v.z));
                 }
-            Vec3 p = (lo + hi) * 0.5f;
+            Vec3f p = (lo + hi) * 0.5f;
             for (const AnimKey& k : m.keys) {
                 if (Mover::length3(k.trans) < 0.5f) continue;
                 out.addLine(pathCat, p, p + k.trans);

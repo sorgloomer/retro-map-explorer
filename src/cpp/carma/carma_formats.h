@@ -9,7 +9,7 @@ namespace carma {
 
 constexpr bool kMirrorX = true;  // the game is left-handed: mirror X so the maps read like in-game
 
-inline Vec3 fixX(Vec3 v) { if (kMirrorX) v.x = -v.x; return v; }
+inline Vec3f fixX(Vec3f v) { if (kMirrorX) v.x = -v.x; return v; }
 inline float fixA(float a) { return kMirrorX ? -a : a; }  // heading angle (sin a, cos a) of a mirrored direction
 
 struct Hie {
@@ -36,6 +36,6 @@ struct CMesh {
 // Appends every mesh of a .mshs file (regular, NGon polygon and per-triangle layouts). False when the data is unreadable.
 bool parseMshs(const std::vector<uint8_t>& data, std::vector<CMesh>& out);
 // Appends the splines of a .lins file (or the single spline of a text .lin).
-bool parseLins(const std::vector<uint8_t>& data, std::vector<std::vector<Vec3>>& out);
+bool parseLins(const std::vector<uint8_t>& data, std::vector<std::vector<Vec3f>>& out);
 
 }  // namespace carma

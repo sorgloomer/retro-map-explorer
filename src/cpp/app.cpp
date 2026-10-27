@@ -32,14 +32,14 @@ struct App {
     float animScale = 1.0f;   // 0 = frozen
     float sceneRadius = 1000.0f;
     float farDist = 30000.0f;
-    Vec3 sceneCenter;
+    Vec3f sceneCenter;
     bool keys[256] = {};  // indexed by our own key enum
     int hover = -1;
     int camMode = 0;  // 0 = fly, 1 = orbit around a clicked pivot
-    Vec3 pivot;
+    Vec3f pivot;
     float pivotNormalY = 1.0f;  // |y| of the unit normal of the surface the pivot was picked on (1 = floor, 0 = wall)
-    Vec3 panStart;  // camera position when the current pan gesture began
-    Vec3 orbitOff;  // pivot position in camera space (right, up, forward) - keeps it fixed on screen while orbiting
+    Vec3f panStart;  // camera position when the current pan gesture began
+    Vec3f orbitOff;  // pivot position in camera space (right, up, forward) - keeps it fixed on screen while orbiting
     std::string json;  // return buffer for strings handed to JS
     std::string lastError;
     int canvasW = 0, canvasH = 0;
@@ -90,7 +90,7 @@ std::string jsonEscape(const std::string& s) {
 void frameCamera() {
     Scene* s = app.scene.get();
     if (!s) return;
-    Vec3 c, ext(1000, 1000, 1000);
+    Vec3f c, ext(1000, 1000, 1000);
     float fullR = 1000.0f;
     if (s->triCount > 0) {
         std::vector<float> xs, ys, zs;
@@ -106,8 +106,8 @@ void frameCamera() {
             std::nth_element(a.begin(), a.begin() + i, a.end());
             return a[i];
         };
-        Vec3 lo(pct(xs, 0.02f), pct(ys, 0.02f), pct(zs, 0.02f));
-        Vec3 hi(pct(xs, 0.98f), pct(ys, 0.98f), pct(zs, 0.98f));
+        Vec3f lo(pct(xs, 0.02f), pct(ys, 0.02f), pct(zs, 0.02f));
+        Vec3f hi(pct(xs, 0.98f), pct(ys, 0.98f), pct(zs, 0.98f));
         c = (lo + hi) * 0.5f;
         ext = hi - lo;
         fullR = length(s->bmax - s->bmin) * 0.5f;
@@ -116,7 +116,7 @@ void frameCamera() {
     app.sceneCenter = c;
     app.sceneRadius = r;
     app.farDist = std::max(r * 30.0f, fullR * 3.0f);
-    app.cam.pos = c + Vec3(0, r * 0.9f, -r * 0.8f);
+    app.cam.pos = c + Vec3f(0, r * 0.9f, -r * 0.8f);
     app.cam.yaw = 0;
     app.cam.pitch = -std::atan2(0.9f, 0.8f);
 }
@@ -129,11 +129,11 @@ void jumpToStart() {
     app.cam.pitch = s->cameraPitch;
 }
 
-struct Basis { Vec3 r, u, f; };
+struct Basis { Vec3f r, u, f; };
 Basis camBasis() {
     Basis b;
     b.f = app.cam.forward();
-    b.r = normalize(cross(Vec3(0, 1, 0), b.f));
+    b.r = normalize(cross(Vec3f(0, 1, 0), b.f));
     b.u = cross(b.f, b.r);
     return b;
 }
@@ -145,25 +145,25 @@ void orbitReposition() {
 }
 
 // Ray through a canvas pixel (CSS coordinates).
-VecI2 canvasSize() { return {app.canvasW, app.canvasH}; }
-VecI2 canvasCenter() { return {app.canvasW / 2, app.canvasH / 2}; }
-Vec3 mouseRay(VecI2 at) { return viewRay(app.cam, canvasSize(), at); }
+Vec2i canvasSize() { return {app.canvasW, app.canvasH}; }
+Vec2i canvasCenter() { return {app.canvasW / 2, app.canvasH / 2}; }
+Vec3f mouseRay(Vec2i at) { return viewRay(app.cam, canvasSize(), at); }
 
 // Sets the orbit pivot to what is under (mx, my); falls back to the ground below the cursor / scene centre.
-void pickPivot(VecI2 at) {
+void pickPivot(Vec2i at) {
     bool culling = app.scene && app.scene->cullBackfaces && !app.opt.backFaces && !app.opt.wireframe;
     PivotPick pick = pickPivotPoint(app.scene.get(), culling, app.cam, canvasSize(), at, app.sceneCenter, app.sceneRadius);
     app.pivot = pick.point;
     app.pivotNormalY = pick.normalY;
     Basis b = camBasis();
-    Vec3 rel = app.pivot - app.cam.pos;
+    Vec3f rel = app.pivot - app.cam.pos;
     app.orbitOff = {dot(rel, b.r), dot(rel, b.u), std::max(app.sceneRadius * 0.002f, dot(rel, b.f))};
 }
 
 // Keeps orbitOff consistent after the camera moved without turning (panning).
 void refreshOrbitOffset() {
     Basis b = camBasis();
-    Vec3 rel = app.pivot - app.cam.pos;
+    Vec3f rel = app.pivot - app.cam.pos;
     app.orbitOff = {dot(rel, b.r), dot(rel, b.u), dot(rel, b.f)};
 }
 
@@ -175,7 +175,7 @@ void beginPan() {
     panSurf = computePanSurface(app.cam, app.pivot, app.pivotNormalY, app.sceneRadius);
 }
 
-void panTo(VecI2 at) {
+void panTo(Vec2i at) {
     app.cam.pos = panCameraPosition(panSurf, app.cam, app.panStart, app.pivot, mouseRay(at));
     refreshOrbitOffset();
 }
@@ -198,12 +198,12 @@ void setCameraMode(int mode) {
 struct CameraGestures : GestureTarget {
     bool enabled() const override { return !app.gameMode; }
     bool orbitMode() const override { return app.camMode == 1; }
-    void pickPivot(VecI2 at) override { ::pickPivot(at); }
+    void pickPivot(Vec2i at) override { ::pickPivot(at); }
     void beginPan() override { ::beginPan(); }
-    void panTo(VecI2 at) override { ::panTo(at); }
-    void rotateView(Vec2 angles) override { ::rotateView(angles.x, angles.y); }
+    void panTo(Vec2i at) override { ::panTo(at); }
+    void rotateView(Vec2f angles) override { ::rotateView(angles.x, angles.y); }
     void orbitReposition() override { ::orbitReposition(); }
-    void wheelZoom(VecI2 at, float amount) override {
+    void wheelZoom(Vec2i at, float amount) override {
         if (app.camMode == 1) {
             // Zoom towards whatever is under the cursor right now (not the last clicked pivot).
             ::pickPivot(at);
@@ -217,14 +217,14 @@ struct CameraGestures : GestureTarget {
     void pinchTilt(float dYaw, float dPitch, float zoom) override {
         app.cam.yaw += dYaw;
         app.cam.pitch = std::max(-kMaxPitch, std::min(kMaxPitch, app.cam.pitch + dPitch));
-        Vec3 off = app.orbitOff * (1.0f / zoom);
+        Vec3f off = app.orbitOff * (1.0f / zoom);
         if (off.z >= app.sceneRadius * 0.002f || zoom < 1.0f) app.orbitOff = off;
         ::orbitReposition();
     }
 } cameraGestures;
 GestureHandler gestures(cameraGestures);
 
-void notifyHover(const char* text, const char* cat, VecI2 at) {
+void notifyHover(const char* text, const char* cat, Vec2i at) {
     EM_ASM({
         if (window.RME && window.RME.onHover) window.RME.onHover($0 ? UTF8ToString($0) : null, $1 ? UTF8ToString($1) : null, $2, $3);
     }, text, cat, at.x, at.y);
@@ -249,7 +249,7 @@ void updateHover(const ViewParams& vp) {
             if (w <= 0.01f) continue;
             float px = (x / w * 0.5f + 0.5f) * (float)app.canvasW;
             float py = (1.0f - (y / w * 0.5f + 0.5f)) * (float)app.canvasH;
-            Vec2 mouse = (Vec2)gestures.pointer();
+            Vec2f mouse = (Vec2f)gestures.pointer();
             float dx = px - mouse.x, dy = py - mouse.y;
             float d = dx * dx + dy * dy;
             // Hit radius follows the drawn size: close up (world-sized markers / meshes) it grows with the zoom.
@@ -267,7 +267,7 @@ void updateHover(const ViewParams& vp) {
     if (best != app.hoverShown) {
         app.hoverShown = best;
         if (best < 0) notifyHover(nullptr, nullptr, {});
-        else notifyHover(s->markers[best].label.c_str(), s->cats[s->markers[best].cat].name.c_str(), gestures.pointer() - VecI2(0, gestures.touchMode() ? 70 : 0));
+        else notifyHover(s->markers[best].label.c_str(), s->cats[s->markers[best].cat].name.c_str(), gestures.pointer() - Vec2i(0, gestures.touchMode() ? 70 : 0));
     }
 }
 
@@ -337,18 +337,18 @@ void frame() {
     float speed = app.sceneRadius * 0.3f * app.speedMul;
     if (app.keys[K_FAST]) speed *= 4.0f;
     if (app.keys[K_SLOW]) speed *= 0.2f;
-    Vec3 f(std::sin(app.cam.yaw), 0, std::cos(app.cam.yaw));
-    Vec3 r(std::cos(app.cam.yaw), 0, -std::sin(app.cam.yaw));
-    Vec3 mv;
+    Vec3f f(std::sin(app.cam.yaw), 0, std::cos(app.cam.yaw));
+    Vec3f r(std::cos(app.cam.yaw), 0, -std::sin(app.cam.yaw));
+    Vec3f mv;
     if (app.gameMode) { app.keys[K_W] = app.keys[K_A] = app.keys[K_S] = app.keys[K_D] = app.keys[K_UP] = app.keys[K_DOWN] = false; }
     // Fly mode: W/S follow the view direction (changes height); orbit mode: horizontal like a walking pan.
-    Vec3 fwdMove = app.camMode == 0 ? app.cam.forward() : f;
+    Vec3f fwdMove = app.camMode == 0 ? app.cam.forward() : f;
     if (app.keys[K_W]) mv += fwdMove;
     if (app.keys[K_S]) mv += fwdMove * -1.0f;
     if (app.keys[K_D]) mv += r;
     if (app.keys[K_A]) mv += r * -1.0f;
-    if (app.keys[K_UP]) mv += Vec3(0, 1, 0);
-    if (app.keys[K_DOWN]) mv += Vec3(0, -1, 0);
+    if (app.keys[K_UP]) mv += Vec3f(0, 1, 0);
+    if (app.keys[K_DOWN]) mv += Vec3f(0, -1, 0);
     app.cam.pos += mv * (speed * dt);
     if (app.camMode == 1) app.pivot += mv * (speed * dt);
 
@@ -361,7 +361,7 @@ void frame() {
     vp.showPivot = gestures.dragging() && (app.camMode == 1 || gestures.touchMode());
     vp.pivot = app.pivot;
     vp.eye = app.cam.pos;
-    vp.view = Mat4::lookAt(app.cam.pos, app.cam.forward(), Vec3(0, 1, 0));
+    vp.view = Mat4::lookAt(app.cam.pos, app.cam.forward(), Vec3f(0, 1, 0));
     // the chase camera sits close to the car: a much nearer clipping plane than the viewer's
     float zNear = app.gameMode ? 0.4f * app.mg.unitsPerMetre() : nearPlane(app.sceneRadius);
     float zFar = app.gameMode ? std::min(app.farDist, 12000.0f * app.mg.unitsPerMetre()) : app.farDist;
@@ -519,7 +519,7 @@ EMSCRIPTEN_KEEPALIVE const char* rme_scene_info() {
             const Category& c = s->cats[i];
             if (i) j += ",";
             char col[16];
-            snprintf(col, sizeof col, "#%06x", c.color);
+            snprintf(col, sizeof col, "#%06x", c.color.to_rgb32());
             // Box / line categories also own a centre marker: report markers when there are any, else segments.
             int markers = 0;
             for (const Marker& m : s->markers) markers += m.cat == (int)i;
@@ -561,7 +561,7 @@ EMSCRIPTEN_KEEPALIVE void rme_camera_command(int cmd) {
     if (cmd == 0) frameCamera();
     else if (cmd == 1) jumpToStart();
     else if (cmd == 2 && app.scene) {  // top-down
-        app.cam.pos = app.sceneCenter + Vec3(0, app.sceneRadius * 1.6f, 0);
+        app.cam.pos = app.sceneCenter + Vec3f(0, app.sceneRadius * 1.6f, 0);
         app.cam.pitch = -kMaxPitch;
     }
     if (app.camMode == 1) pickPivot(canvasCenter());
@@ -571,7 +571,7 @@ EMSCRIPTEN_KEEPALIVE void rme_set_camera_mode(int mode) { setCameraMode(mode ? 1
 
 // Debug helper: place the camera explicitly.
 EMSCRIPTEN_KEEPALIVE void rme_set_camera(double x, double y, double z, double yaw, double pitch) {
-    app.cam.pos = Vec3((float)x, (float)y, (float)z);
+    app.cam.pos = Vec3f((float)x, (float)y, (float)z);
     app.cam.yaw = (float)yaw;
     app.cam.pitch = (float)pitch;
     if (app.camMode == 1) pickPivot(canvasCenter());

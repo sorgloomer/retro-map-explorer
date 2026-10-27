@@ -19,7 +19,7 @@ struct RvPoly {
     uint32_t col[4] = {0, 0, 0, 0};
     float uv[4][2] = {};
 };
-struct RvVert { Vec3 pos; };
+struct RvVert { Vec3f pos; };
 struct RvMesh {
     std::vector<RvPoly> polys;
     std::vector<RvVert> verts;
@@ -47,11 +47,11 @@ bool readMesh(Reader& r, RvMesh& m, bool worldHeader) {
 
 // Row-major 3x3 rotation (rows are the local axes) + translation.
 struct RvXform {
-    Vec3 r0{1, 0, 0}, r1{0, 1, 0}, r2{0, 0, 1}, t;
-    Vec3 apply(const Vec3& v) const { return r0 * v.x + r1 * v.y + r2 * v.z + t; }
+    Vec3f r0{1, 0, 0}, r1{0, 1, 0}, r2{0, 0, 1}, t;
+    Vec3f apply(const Vec3f& v) const { return r0 * v.x + r1 * v.y + r2 * v.z + t; }
 };
 
-inline Vec3 toWorld(const Vec3& v) { return {v.x, -v.y, v.z}; }
+inline Vec3f toWorld(const Vec3f& v) { return {v.x, -v.y, v.z}; }
 
 struct Loader {
     Scene& sc;
@@ -103,7 +103,7 @@ struct Loader {
         (void)colorTint;
         auto vert = [&](const RvPoly& p, int k, Blend bl) {
             const RvVert& rv = m.verts[std::min<size_t>(p.idx[k], m.verts.size() - 1)];
-            Vec3 w = toWorld(xf ? xf->apply(rv.pos) : rv.pos);
+            Vec3f w = toWorld(xf ? xf->apply(rv.pos) : rv.pos);
             uint32_t c = p.col[k];
             SceneVertex v;
             v.x = w.x; v.y = w.y; v.z = w.z;
@@ -147,9 +147,9 @@ struct Loader {
 struct Inf {
     std::string name;
     bool hasStart = false, hasStartRev = false;
-    Vec3 start, startRev;
+    Vec3f start, startRev;
     float rot = 0, rotRev = 0.5f;
-    Vec3 fog{80, 144, 192};
+    Vec3f fog{80, 144, 192};
     bool hasFog = false;
 };
 
@@ -316,24 +316,24 @@ public:
         }
 
         // --- markers
-        int cStart = sc.addCategory("start", "Start position", 0x39ff7a, SHAPE_ARROW, 2.2f, true);
-        int cPick = sc.addCategory("pickup", "Pickups", 0xffd23f, SHAPE_DIAMOND, 1.0f, true);
-        int cStar = sc.addCategory("star", "Star pickups (practice)", 0xff8a1f, SHAPE_DIAMOND, 1.1f, true);
-        int cPath = sc.addCategory("path", "Race line (position nodes)", 0x37c8ff, SHAPE_DIAMOND, 1.0f, false, true, true);
-        int cLight = sc.addCategory("light", "Lights", 0xfff3a0, SHAPE_DIAMOND, 0.7f, false, false);
-        int cZone = sc.addCategory("zone", "Track zones", 0x66e0a3, SHAPE_CUBE, 0.6f, false, false, true);
-        int cTrig = sc.addCategory("trigger", "Triggers (arrows / reposition)", 0xff7ad9, SHAPE_CUBE, 0.6f, false, false, true);
-        int cField = sc.addCategory("field", "Force fields", 0xa88bff, SHAPE_DIAMOND, 1.0f, true, false);
-        int cMirror = sc.addCategory("mirror", "Mirror planes", 0xbfefff, SHAPE_CUBE, 0.6f, false, false, true);
-        int cObj = sc.addCategory("object", "Other objects (.fob)", 0xff8a3d, SHAPE_CUBE, 0.8f, false, false);
+        int cStart = sc.addCategory("start", "Start position", rgb(0x39ff7a), SHAPE_ARROW, 2.2f, true);
+        int cPick = sc.addCategory("pickup", "Pickups", rgb(0xffd23f), SHAPE_DIAMOND, 1.0f, true);
+        int cStar = sc.addCategory("star", "Star pickups (practice)", rgb(0xff8a1f), SHAPE_DIAMOND, 1.1f, true);
+        int cPath = sc.addCategory("path", "Race line (position nodes)", rgb(0x37c8ff), SHAPE_DIAMOND, 1.0f, false, true, true);
+        int cLight = sc.addCategory("light", "Lights", rgb(0xfff3a0), SHAPE_DIAMOND, 0.7f, false, false);
+        int cZone = sc.addCategory("zone", "Track zones", rgb(0x66e0a3), SHAPE_CUBE, 0.6f, false, false, true);
+        int cTrig = sc.addCategory("trigger", "Triggers (arrows / reposition)", rgb(0xff7ad9), SHAPE_CUBE, 0.6f, false, false, true);
+        int cField = sc.addCategory("field", "Force fields", rgb(0xa88bff), SHAPE_DIAMOND, 1.0f, true, false);
+        int cMirror = sc.addCategory("mirror", "Mirror planes", rgb(0xbfefff), SHAPE_CUBE, 0.6f, false, false, true);
+        int cObj = sc.addCategory("object", "Other objects (.fob)", rgb(0xff8a3d), SHAPE_CUBE, 0.8f, false, false);
 
         float twoPi = 6.2831853f;
         if (L.reversed ? inf.hasStartRev : inf.hasStart) {
-            Vec3 p = toWorld(L.reversed ? inf.startRev : inf.start);
+            Vec3f p = toWorld(L.reversed ? inf.startRev : inf.start);
             float rot = (L.reversed ? inf.rotRev : inf.rot) * twoPi;
             sc.addMarker(cStart, p, rot, L.reversed ? "Start position (reversed)" : "Start position");
             sc.hasCameraStart = true;
-            sc.cameraPos = p + Vec3(std::sin(rot), 0, std::cos(rot)) * -900.0f + Vec3(0, 700, 0);
+            sc.cameraPos = p + Vec3f(std::sin(rot), 0, std::cos(rot)) * -900.0f + Vec3f(0, 700, 0);
             sc.cameraYaw = rot;
             sc.cameraPitch = -0.45f;
         }
@@ -351,7 +351,7 @@ public:
                 size_t b = r.pos;
                 uint32_t type = r.u32();
                 r.pos = b + 20;
-                Vec3 p = toWorld(r.vec3());
+                Vec3f p = toWorld(r.vec3());
                 r.pos = b + 56;
                 if (type == 30) sc.addMarker(cPick, p, 0, "Pickup");
                 else if (type == 50) sc.addMarker(cStar, p, 0, "Practice star (type 50)");
@@ -363,10 +363,10 @@ public:
             Reader r(data);
             int32_t n = r.i32();
             r.skip(8);
-            std::vector<Vec3> pts;
+            std::vector<Vec3f> pts;
             std::vector<std::vector<int>> links;
             for (int i = 0; i < n && r.has(48); i++) {
-                Vec3 p = toWorld(r.vec3());
+                Vec3f p = toWorld(r.vec3());
                 r.skip(4);
                 int32_t prev[4], next[4];
                 for (auto& v : prev) v = r.i32();
@@ -388,12 +388,12 @@ public:
                 size_t b = r.pos;
                 int32_t a = r.i32();
                 int32_t bb = hdr == 8 ? r.i32() : 0;
-                Vec3 pos = r.vec3();
-                Vec3 m0 = r.vec3(), m1 = r.vec3(), m2 = r.vec3();
-                Vec3 size = r.vec3();
+                Vec3f pos = r.vec3();
+                Vec3f m0 = r.vec3(), m1 = r.vec3(), m2 = r.vec3();
+                Vec3f size = r.vec3();
                 r.pos = b + stride;
-                Vec3 c = toWorld(pos);
-                Vec3 ax = toWorld(m0 * size.x), ay = toWorld(m1 * size.y), az = toWorld(m2 * size.z);
+                Vec3f c = toWorld(pos);
+                Vec3f ax = toWorld(m0 * size.x), ay = toWorld(m1 * size.y), az = toWorld(m2 * size.z);
                 sc.addBox(cat, c, ax, ay, az);
                 std::string text = std::string(label) + " #" + std::to_string(i);
                 if (hdr == 8) text += " (type " + std::to_string(a) + "/" + std::to_string(bb) + ")";
@@ -408,7 +408,7 @@ public:
             int32_t n = r.i32();
             for (int i = 0; i < n && r.has(72); i++) {
                 size_t b = r.pos;
-                Vec3 p = toWorld(r.vec3());
+                Vec3f p = toWorld(r.vec3());
                 float reach = r.f32();
                 r.pos = b + 72;
                 sc.addMarker(cLight, p, 0, "Light (reach " + std::to_string((int)reach) + ")");
@@ -421,7 +421,7 @@ public:
             for (int i = 0; i < n && r.has(100); i++) {
                 size_t b = r.pos;
                 int32_t type = r.i32();
-                Vec3 p = toWorld(r.vec3());
+                Vec3f p = toWorld(r.vec3());
                 r.pos = b + 100;
                 sc.addMarker(cField, p, 0, "Force field (type " + std::to_string(type) + ")");
             }
@@ -435,7 +435,7 @@ public:
                 for (int i = 0; i < n && r.has(92); i++) {
                     size_t b = r.pos;
                     r.skip(4 + 12 + 4 + 24);
-                    Vec3 q[4];
+                    Vec3f q[4];
                     for (auto& v : q) v = toWorld(r.vec3());
                     r.pos = b + 92;
                     for (int k = 0; k < 4; k++) sc.addLine(cMirror, q[k], q[(k + 1) % 4]);

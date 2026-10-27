@@ -111,7 +111,7 @@ void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int
         }
         for (size_t i = 0; i < m.nv(); i++) {
             const float* f = &m.v[i * 9];
-            Vec3 w = corona ? Vec3(f[0], f[1], f[2]) : st.m.transformPoint({f[0], f[1], f[2]});
+            Vec3f w = corona ? Vec3f(f[0], f[1], f[2]) : st.m.transformPoint({f[0], f[1], f[2]});
             if (flip) {
                 if (mir == MIR_Z) w.z = -w.z;
                 else w.x = -w.x;
@@ -159,7 +159,7 @@ void CarmaGame::emitPaths(const std::string& hieBase, int catAI, int catRace, in
     Hie hie;
     if (!loadHie(hieBase, pk, hie)) return;
     std::vector<uint8_t> data;
-    std::vector<std::vector<Vec3>> lines;
+    std::vector<std::vector<Vec3f>> lines;
     for (const std::string& ln : hie.lineNames) {
         int le = pk->find(ln);
         if (le < 0 || !pk->extract(le, data)) continue;
@@ -179,7 +179,7 @@ void CarmaGame::emitPaths(const std::string& hieBase, int catAI, int catRace, in
     });
 }
 
-bool CarmaGame::loadPathPoints(const std::string& base, std::vector<Vec3>& pts) {
+bool CarmaGame::loadPathPoints(const std::string& base, std::vector<Vec3f>& pts) {
     // ASSETS/ModifiedSplines/<path>.bin holds the game's final version of a follower spline: plain x,y,z floats.
     // The .lin inside the archive is the raw export (still in the object space of the model it was drawn on).
     {
@@ -199,7 +199,7 @@ bool CarmaGame::loadPathPoints(const std::string& base, std::vector<Vec3>& pts) 
     Hie hie;
     if (!loadHie(base, pk, hie)) return false;
     std::vector<uint8_t> data;
-    std::vector<std::vector<Vec3>> lines;
+    std::vector<std::vector<Vec3f>> lines;
     for (const std::string& ln : hie.lineNames) {
         int le = pk->find(ln);
         if (le < 0 || !pk->extract(le, data)) continue;
@@ -208,7 +208,7 @@ bool CarmaGame::loadPathPoints(const std::string& base, std::vector<Vec3>& pts) 
     bool got = false;
     walk(hie, [&](const Hie::Node& n, const State& st) {
         if (got || n.type != 6 || n.index < 0 || n.index >= (int)lines.size()) return;
-        for (const Vec3& p : lines[n.index]) pts.push_back(fixX(st.m.transformPoint(p)));
+        for (const Vec3f& p : lines[n.index]) pts.push_back(fixX(st.m.transformPoint(p)));
         got = true;
     });
     return got && pts.size() >= 2;

@@ -7,12 +7,23 @@
 #include <vector>
 #include "../loader/image.h"
 #include "../math/vmath.h"
+#include "../math/vec2.h"
+#include "math/color.h"
 
 struct SceneVertex {
     float x, y, z;
     uint8_t r, g, b, a;
     float u, v;
+
+    SceneVertex() = default;
+
+    SceneVertex(const Vec3f& pos, const Color4b& col, const Vec2f& tex)
+        : x(pos.x), y(pos.y), z(pos.z),
+          r(col.r), g(col.g), b(col.b), a(col.a),
+          u(tex.x), v(tex.y)
+    {}
 };
+
 
 enum Blend : uint8_t { BLEND_OPAQUE = 0, BLEND_CUTOUT = 1, BLEND_ALPHA = 2, BLEND_ADD = 3 };
 
@@ -37,10 +48,10 @@ enum MarkerShape : uint8_t { SHAPE_DIAMOND = 0, SHAPE_ARROW = 1, SHAPE_CUBE = 2,
 struct Category {
     std::string id;
     std::string name;
-    uint32_t color = 0xffffff;  // 0xRRGGBB
+    Color3b color = Color3b::from_rgb(0xffffff);
     MarkerShape shape = SHAPE_DIAMOND;
     float size = 1.0f;       // relative marker size
-    bool beam = false;      // draw a vertical beam above each marker
+    bool beam = false;       // draw a vertical beam above each marker
     bool visible = true;
     int count = 0;           // number of markers / segments
     bool isLine = false;     // category consists of line segments only
@@ -49,20 +60,20 @@ struct Category {
 
 struct Marker {
     int cat = 0;
-    Vec3 pos;
+    Vec3f pos;
     float yaw = 0;  // radians, direction in the XZ plane (0 = +Z)
     std::string label;
 };
 
 struct Line {
     int cat = 0;
-    Vec3 a, b;
+    Vec3f a, b;
 };
 
 struct PointLight {
-    Vec3 pos;
+    Vec3f pos;
     float inner = 0, outer = 1;  // full intensity up to `inner`, fading to zero at `outer`
-    Vec3 color{1, 1, 1};
+    Vec3f color{1, 1, 1};
 };
 
 // A set of batches keyed by (texture, blend mode).
@@ -82,7 +93,7 @@ struct BatchSet {
     }
     void appendIndexed(int tex, Blend blend, const SceneVertex* v, size_t nv, const uint32_t* idx, size_t ni, bool twoSided = false) {
         Batch& bt = batchFor(tex, blend, twoSided);
-        uint32_t base = (uint32_t)bt.verts.size();
+        auto base = static_cast<uint32_t>(bt.verts.size());
         bt.verts.insert(bt.verts.end(), v, v + nv);
         for (size_t i = 0; i < ni; i++) bt.idx.push_back(base + idx[i]);
     }
@@ -93,13 +104,13 @@ private:
 
 // A mesh (in its own local space) travelling along a polyline, e.g. helicopters or energy rings.
 // One step of an animated prop (lift, behemoth, generator wheel): move by `trans` and turn by `rotDeg` about `axis` over `dur` seconds.
-struct AnimKey { float dur = 0; Vec3 trans; Vec3 axis; float rotDeg = 0; };
+struct AnimKey { float dur = 0; Vec3f trans; Vec3f axis; float rotDeg = 0; };
 
 struct Mover {
     int geom = 0;  // index into Scene::moverGeoms
     int cat = 0;
     std::string name;
-    std::vector<Vec3> path;
+    std::vector<Vec3f> path;
     std::vector<float> cum;  // cumulative length at each path point
     float length = 0;
     float speed = 0;  // units per second
@@ -107,10 +118,10 @@ struct Mover {
     bool fixed = false;        // stands still at path[0] and spins (powerup icons)
     bool powerupMesh = false;  // only drawn when "in-game powerup meshes" is on
     bool billboard = false;    // always faces the camera (powerup halos); anchored at path[0] + anchor * scale
-    Vec3 anchor;               // billboard centre in the model space of the icon it belongs to
+    Vec3f anchor;               // billboard centre in the model space of the icon it belongs to
     int scaleGeom = -1;        // geometry whose size decides the on-screen scale (the icon, for its halo)
     std::vector<AnimKey> keys; // looping keyframes of an animated prop
-    Vec3 pivot;                // keyframe rotations turn about this point
+    Vec3f pivot;                // keyframe rotations turn about this point
     bool staticModel = false;  // geometry is already in world space (merged props): draw with an identity transform
     bool external = false;     // `model` is set from outside every frame (the minigame's car); `cat` may be -1
     bool hidden = false;       // not drawn (collected pickups, the parked car)
@@ -121,9 +132,9 @@ struct Mover {
         for (size_t i = 1; i < path.size(); i++) cum[i] = cum[i - 1] + length3(path[i] - path[i - 1]);
         length = cum.empty() ? 0.0f : cum.back();
     }
-    static float length3(const Vec3& v) { return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
+    static float length3(const Vec3f& v) { return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
     // Position and direction at distance s (0 <= s < length).
-    bool sample(float s, Vec3& pos, Vec3& dir) const {
+    bool sample(float s, Vec3f& pos, Vec3f& dir) const {
         if (path.size() < 2 || length <= 0) return false;
         size_t lo = 0, hi = cum.size() - 1;
         while (hi - lo > 1) {
@@ -149,49 +160,55 @@ struct Scene : BatchSet {
     // In-game lighting (optional): ambient + sun + point lights
     bool hasLighting = false;
     float ambient = 0.3f;
-    Vec3 sunDir{0.3f, 0.8f, 0.5f};    // unit vector pointing towards the sun
-    Vec3 sunColor{1, 1, 1};
+    Vec3f sunDir{0.3f, 0.8f, 0.5f};    // unit vector pointing towards the sun
+    Vec3f sunColor{1, 1, 1};
     std::vector<PointLight> lights;
     std::string title;
     std::string info;                 // short multi-line description shown in the UI
-    Vec3 background{0.08f, 0.1f, 0.14f};
+    Vec3f background{0.08f, 0.1f, 0.14f};
     std::vector<Image> textures;
     std::vector<TexAnim> texAnims;
     std::vector<Category> cats;
     std::vector<Marker> markers;
     std::vector<Line> lines;
-    Vec3 bmin{1e30f, 1e30f, 1e30f}, bmax{-1e30f, -1e30f, -1e30f};
+    Vec3f bmin{1e30f, 1e30f, 1e30f}, bmax{-1e30f, -1e30f, -1e30f};
     bool hasCameraStart = false;
-    Vec3 cameraPos;
+    Vec3f cameraPos;
     float cameraYaw = 0, cameraPitch = 0;
 
-    int addCategory(const std::string& id, const std::string& name, uint32_t color, MarkerShape shape = SHAPE_DIAMOND,
+    int addCategory(const std::string& id, const std::string& name, const Color3b& color, MarkerShape shape = SHAPE_DIAMOND,
                     float size = 1.0f, bool beam = false, bool visible = true, bool isLine = false) {
         Category c;
-        c.id = id; c.name = name; c.color = color; c.shape = shape; c.size = size;
-        c.beam = beam; c.visible = visible; c.isLine = isLine;
+        c.id = id;
+        c.name = name;
+        c.color = color;
+        c.shape = shape;
+        c.size = size;
+        c.beam = beam;
+        c.visible = visible;
+        c.isLine = isLine;
         cats.push_back(c);
         return (int)cats.size() - 1;
     }
-    void addMarker(int cat, const Vec3& p, float yaw, const std::string& label) {
+    void addMarker(int cat, const Vec3f& p, float yaw, const std::string& label) {
         Marker m;
         m.cat = cat; m.pos = p; m.yaw = yaw; m.label = label;
         markers.push_back(std::move(m));
         cats[cat].count++;
     }
-    void addLine(int cat, const Vec3& a, const Vec3& b) {
+    void addLine(int cat, const Vec3f& a, const Vec3f& b) {
         lines.push_back({cat, a, b});
         cats[cat].count++;
     }
     // Oriented box outline: centre, three axis vectors already scaled by the half extents.
-    void addBox(int cat, const Vec3& c, const Vec3& ax, const Vec3& ay, const Vec3& az) {
-        Vec3 p[8];
+    void addBox(int cat, const Vec3f& c, const Vec3f& ax, const Vec3f& ay, const Vec3f& az) {
+        Vec3f p[8];
         for (int i = 0; i < 8; i++)
             p[i] = c + ax * ((i & 1) ? 1.f : -1.f) + ay * ((i & 2) ? 1.f : -1.f) + az * ((i & 4) ? 1.f : -1.f);
         static const int e[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
         for (auto& ed : e) addLine(cat, p[ed[0]], p[ed[1]]);
     }
-    void extend(const Vec3& p) {
+    void extend(const Vec3f& p) {
         bmin = vmin(bmin, p);
         bmax = vmax(bmax, p);
     }

@@ -29,9 +29,9 @@ constexpr float kDownforce = 0.9f;      // N per (m/s)^2
 constexpr float kMaxSpeed = 95.0f;      // m/s (hard limit)
 constexpr float kRollCentre = 0.30f;    // tyre side forces act this far above the road: less body roll
 
-Vec3 quatRotate(const Quat& q, const Vec3& v) {
-    Vec3 u(q.x, q.y, q.z);
-    Vec3 t = cross(u, v) * 2.0f;
+Vec3f quatRotate(const Quat& q, const Vec3f& v) {
+    Vec3f u(q.x, q.y, q.z);
+    Vec3f t = cross(u, v) * 2.0f;
     return v + t * q.w + cross(u, t);
 }
 
@@ -58,10 +58,10 @@ void Vehicle::init(const CarModel& m) {
     float frontZ = 0.5f * (m.wheelPos[0].z + m.wheelPos[1].z), rearZ = 0.5f * (m.wheelPos[2].z + m.wheelPos[3].z);
     float axleY = 0.25f * (m.wheelPos[0].y + m.wheelPos[1].y + m.wheelPos[2].y + m.wheelPos[3].y);
     // centre of mass: slightly ahead of the middle, about 0.55 m above the road
-    com = Vec3(0, axleY - wheelR + 0.55f, rearZ + 0.54f * (frontZ - rearZ));
+    com = Vec3f(0, axleY - wheelR + 0.55f, rearZ + 0.54f * (frontZ - rearZ));
     float w = bmax.x - bmin.x, h = bmax.y - bmin.y, l = bmax.z - bmin.z;
     mass = 1250.0f;
-    inertia = Vec3(mass / 12.0f * (h * h + l * l), mass / 12.0f * (w * w + l * l), mass / 12.0f * (w * w + h * h) * 1.5f);
+    inertia = Vec3f(mass / 12.0f * (h * h + l * l), mass / 12.0f * (w * w + l * l), mass / 12.0f * (w * w + h * h) * 1.5f);
     // hull probes: a lattice of spheres inside the chassis bounds; the lowest row hovers above the road
     probes.clear();
     float groundY = axleY - wheelR;
@@ -72,22 +72,22 @@ void Vehicle::init(const CarModel& m) {
             for (int iy = 0; iy < 3; iy++) {
                 float z = bmin.z + probeR + (bmax.z - bmin.z - 2 * probeR) * 0.5f * iz;
                 float y = yLow + (yHigh - yLow) * 0.5f * iy;
-                probes.push_back(Vec3(sx, y, z));
+                probes.push_back(Vec3f(sx, y, z));
             }
-    probes.push_back(Vec3(0, yHigh, bmin.z + probeR));
-    probes.push_back(Vec3(0, yHigh, bmax.z - probeR));
-    reset(Vec3(), 0);
+    probes.push_back(Vec3f(0, yHigh, bmin.z + probeR));
+    probes.push_back(Vec3f(0, yHigh, bmax.z - probeR));
+    reset(Vec3f(), 0);
 }
 
-void Vehicle::reset(const Vec3& groundPos, float yaw) {
+void Vehicle::reset(const Vec3f& groundPos, float yaw) {
     float axleY = 0.25f * (wheelRest[0].y + wheelRest[1].y + wheelRest[2].y + wheelRest[3].y);
     // car origin height so that the wheels touch the road with the suspension at its rest length
-    Vec3 origin = groundPos + Vec3(0, wheelR - axleY + 0.02f, 0);
+    Vec3f origin = groundPos + Vec3f(0, wheelR - axleY + 0.02f, 0);
     q = quatNormalize({std::cos(yaw * 0.5f), 0, std::sin(yaw * 0.5f), 0});
     updateAxes();
     // pos is the centre of mass; the car origin is pos - R * com
     pos = origin + axes[0] * com.x + axes[1] * com.y + axes[2] * com.z;
-    vel = angVel = Vec3();
+    vel = angVel = Vec3f();
     steerAngle = 0;
     groundedCount = 0;
     drift_ = impact_ = 0;
@@ -98,14 +98,14 @@ void Vehicle::reset(const Vec3& groundPos, float yaw) {
 }
 
 void Vehicle::updateAxes() {
-    axes[0] = quatRotate(q, Vec3(1, 0, 0));
-    axes[1] = quatRotate(q, Vec3(0, 1, 0));
-    axes[2] = quatRotate(q, Vec3(0, 0, 1));
+    axes[0] = quatRotate(q, Vec3f(1, 0, 0));
+    axes[1] = quatRotate(q, Vec3f(0, 1, 0));
+    axes[2] = quatRotate(q, Vec3f(0, 0, 1));
 }
 
 Mat4 Vehicle::modelMatrix() const {
     Mat4 m = Mat4::identity();
-    Vec3 origin = pos - (axes[0] * com.x + axes[1] * com.y + axes[2] * com.z);
+    Vec3f origin = pos - (axes[0] * com.x + axes[1] * com.y + axes[2] * com.z);
     m.m[0] = axes[0].x; m.m[1] = axes[0].y; m.m[2] = axes[0].z;
     m.m[4] = axes[1].x; m.m[5] = axes[1].y; m.m[6] = axes[1].z;
     m.m[8] = axes[2].x; m.m[9] = axes[2].y; m.m[10] = axes[2].z;
@@ -115,8 +115,8 @@ Mat4 Vehicle::modelMatrix() const {
     return m;
 }
 
-Vec3 Vehicle::invInertia(const Vec3& t) const {
-    Vec3 b(dot(t, axes[0]) / inertia.x, dot(t, axes[1]) / inertia.y, dot(t, axes[2]) / inertia.z);
+Vec3f Vehicle::invInertia(const Vec3f& t) const {
+    Vec3f b(dot(t, axes[0]) / inertia.x, dot(t, axes[1]) / inertia.y, dot(t, axes[2]) / inertia.z);
     return axes[0] * b.x + axes[1] * b.y + axes[2] * b.z;
 }
 
@@ -130,7 +130,7 @@ void Vehicle::step(float dt, const VehicleInput& in, const CollisionWorld& world
 
 void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& world) {
     updateAxes();
-    const Vec3 r = axes[0], u = axes[1], f = axes[2];
+    const Vec3f r = axes[0], u = axes[1], f = axes[2];
     float speed = length(vel);
     float fwdSpeed = dot(vel, f);
 
@@ -151,8 +151,8 @@ void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& wor
     }
     if (std::fabs(fwdSpeed) > 55.0f && drive * fwdSpeed > 0) drive *= std::max(0.0f, 1.0f - (std::fabs(fwdSpeed) - 55.0f) / 15.0f);
 
-    Vec3 force(0, -kGravity * mass, 0);
-    Vec3 torque;
+    Vec3f force(0, -kGravity * mass, 0);
+    Vec3f torque;
     // drag and downforce
     force += vel * (-kDrag * speed);
     force += u * (-kDownforce * speed * speed);
@@ -162,11 +162,11 @@ void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& wor
     for (int i = 0; i < 4; i++) {
         Wheel& w = wheels[i];
         const bool front = i < 2, rear = !front;
-        Vec3 local = wheelRest[i] - com;
-        Vec3 mount = pos + r * local.x + u * (local.y + kSuspRest) + f * local.z;  // upper end of the suspension
+        Vec3f local = wheelRest[i] - com;
+        Vec3f mount = pos + r * local.x + u * (local.y + kSuspRest) + f * local.z;  // upper end of the suspension
         float rayLen = kSuspMax + wheelR;
         float t;
-        Vec3 n;
+        Vec3f n;
         w.grounded = false;
         w.load = 0;
         float s = kSuspMax;
@@ -176,23 +176,23 @@ void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& wor
         }
         if (w.grounded) {
             groundedCount++;
-            Vec3 contact = mount - u * t;
-            Vec3 rp = contact - pos;
-            Vec3 vMount = vel + cross(angVel, mount - pos);
+            Vec3f contact = mount - u * t;
+            Vec3f rp = contact - pos;
+            Vec3f vMount = vel + cross(angVel, mount - pos);
             float comp = kSpringFree - s;
             float fs = kSpringK * comp * (s < kSuspMin + 0.03f ? 4.0f : 1.0f) + kDamper * (-dot(vMount, u));
             fs = std::max(0.0f, fs);
             w.load = fs;
-            Vec3 fsv = u * fs;
+            Vec3f fsv = u * fs;
             force += fsv;
             torque += cross(rp, fsv);
 
             // wheel axes on the road
             float st = front ? steerAngle : 0.0f;
-            Vec3 wf0 = f * std::cos(st) + r * std::sin(st);
-            Vec3 wf = normalize(wf0 - n * dot(wf0, n));
-            Vec3 lat = normalize(cross(n, wf));
-            Vec3 vP = vel + cross(angVel, rp);
+            Vec3f wf0 = f * std::cos(st) + r * std::sin(st);
+            Vec3f wf = normalize(wf0 - n * dot(wf0, n));
+            Vec3f lat = normalize(cross(n, wf));
+            Vec3f vP = vel + cross(angVel, rp);
             float vlong = dot(vP, wf), vlat = dot(vP, lat);
             float meff = mass * 0.25f;
 
@@ -215,9 +215,9 @@ void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& wor
             float limX = std::sqrt(std::max(0.0f, lim * lim - fy * fy));
             fx = clampf(fx, -limX, limX);
 
-            Vec3 ft = wf * fx + lat * fy;
+            Vec3f ft = wf * fx + lat * fy;
             force += ft;
-            Vec3 rpTyre = rp + u * kRollCentre;
+            Vec3f rpTyre = rp + u * kRollCentre;
             torque += cross(rpTyre, ft);
 
             w.slip = std::atan2(std::fabs(vlat), std::fabs(vlong) + 1.0f);
@@ -229,14 +229,14 @@ void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& wor
             w.slip = 0;
             if (front) w.steer = steerAngle;
         }
-        w.centre = wheelRest[i] + Vec3(0, kSuspRest - s, 0);  // for drawing: lower when the suspension is extended
+        w.centre = wheelRest[i] + Vec3f(0, kSuspRest - s, 0);  // for drawing: lower when the suspension is extended
     }
     drift_ = speed > 8.0f ? clampf((maxSlipSide - 0.12f) / 0.45f, 0.0f, 1.0f) : 0.0f;
 
     // in the air: a little damping and a gentle pull towards level flight so jumps land on the wheels
     if (groundedCount == 0) {
         angVel = angVel * (1.0f - 0.6f * h);
-        Vec3 corr = cross(u, Vec3(0, 1, 0));
+        Vec3f corr = cross(u, Vec3f(0, 1, 0));
         torque += corr * (inertia.x * 2.0f);
     } else {
         angVel = angVel * (1.0f - 0.35f * h);
@@ -253,18 +253,18 @@ void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& wor
     updateAxes();
 
     // hull against the level: walls, ceilings, the road when the chassis bottoms out
-    Vec3 origin = pos - (axes[0] * com.x + axes[1] * com.y + axes[2] * com.z);
-    for (const Vec3& pr : probes) {
-        Vec3 c = origin + axes[0] * pr.x + axes[1] * pr.y + axes[2] * pr.z;
-        Vec3 n;
+    Vec3f origin = pos - (axes[0] * com.x + axes[1] * com.y + axes[2] * com.z);
+    for (const Vec3f& pr : probes) {
+        Vec3f c = origin + axes[0] * pr.x + axes[1] * pr.y + axes[2] * pr.z;
+        Vec3f n;
         float depth;
         if (!world.sphereContact(c, probeR, n, depth)) continue;
-        Vec3 rr = c - pos;
-        Vec3 vP = vel + cross(angVel, rr);
+        Vec3f rr = c - pos;
+        Vec3f vP = vel + cross(angVel, rr);
         float vn = dot(vP, n);
         const bool floor = n.y > 0.7f;
         if (vn < 0) {
-            Vec3 a = invInertia(cross(rr, n));
+            Vec3f a = invInertia(cross(rr, n));
             float denom = 1.0f / mass + dot(n, cross(a, rr));
             float e = floor ? 0.0f : 0.25f;
             float j = -(1.0f + e) * vn / denom;
@@ -273,11 +273,11 @@ void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& wor
             impact_ = std::max(impact_, -vn);
             // Coulomb friction along the surface
             vP = vel + cross(angVel, rr);
-            Vec3 vt = vP - n * dot(vP, n);
+            Vec3f vt = vP - n * dot(vP, n);
             float tl = length(vt);
             if (tl > 1e-4f) {
-                Vec3 tdir = vt * (1.0f / tl);
-                Vec3 at = invInertia(cross(rr, tdir));
+                Vec3f tdir = vt * (1.0f / tl);
+                Vec3f at = invInertia(cross(rr, tdir));
                 float denomT = 1.0f / mass + dot(tdir, cross(at, rr));
                 float jt = std::min(tl / denomT, (floor ? 0.9f : 0.5f) * j);
                 vel += tdir * (-jt / mass);

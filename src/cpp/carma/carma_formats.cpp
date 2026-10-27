@@ -94,7 +94,7 @@ bool parseMshs(const std::vector<uint8_t>& data, std::vector<CMesh>& out) {
                 if (!r.ok || k < 3 || k > 256 || r.left() < (size_t)k * 48) return false;
                 uint32_t base = (uint32_t)m.nv();
                 for (uint32_t j = 0; j < k; j++) {
-                    Vec3 pos = r.vec3();
+                    Vec3f pos = r.vec3();
                     r.skip(12);
                     float col[4] = {r.f32(), r.f32(), r.f32(), r.f32()};
                     float u = r.f32(), v = r.f32();
@@ -154,15 +154,15 @@ bool parseMshs(const std::vector<uint8_t>& data, std::vector<CMesh>& out) {
     return true;
 }
 
-bool parseLins(const std::vector<uint8_t>& data, std::vector<std::vector<Vec3>>& out) {
+bool parseLins(const std::vector<uint8_t>& data, std::vector<std::vector<Vec3f>>& out) {
     // Single-spline ".lin" files are text: a point count followed by "x y z" lines.
     if (data.size() > 2 && data[0] >= '0' && data[0] <= '9' && data[1] != 0) {
         std::istringstream is(std::string((const char*)data.data(), data.size()));
         int n = 0;
         if (!(is >> n) || n < 0 || n > 100000) return false;
-        std::vector<Vec3> pts;
+        std::vector<Vec3f> pts;
         for (int i = 0; i < n; i++) {
-            Vec3 p;
+            Vec3f p;
             if (!(is >> p.x >> p.y >> p.z)) break;
             pts.push_back(p);
         }
@@ -176,7 +176,7 @@ bool parseLins(const std::vector<uint8_t>& data, std::vector<std::vector<Vec3>>&
         r.skip(nl);
         uint32_t np = r.u32();
         if (!r.ok || r.left() < (size_t)np * 12) return false;
-        std::vector<Vec3> pts(np);
+        std::vector<Vec3f> pts(np);
         for (auto& p : pts) p = r.vec3();
         out.push_back(std::move(pts));
     }

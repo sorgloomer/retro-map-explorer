@@ -4,7 +4,7 @@
 #include "../math/vmath.h"
 
 struct Camera {
-    Vec3 pos;
+    Vec3f pos;
     float yaw = 0, pitch = -0.8f;
-    Vec3 forward() const { return {std::cos(pitch) * std::sin(yaw), std::sin(pitch), std::cos(pitch) * std::cos(yaw)}; }
+    Vec3f forward() const { return {std::cos(pitch) * std::sin(yaw), std::sin(pitch), std::cos(pitch) * std::cos(yaw)}; }
 };

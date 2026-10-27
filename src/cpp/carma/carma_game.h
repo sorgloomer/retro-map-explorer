@@ -32,7 +32,7 @@ struct Cats {
 };
 
 // A powerup placed in the level (id < 0: a mission objective marker without an in-game mesh).
-struct Placed { int id; int cat; Vec3 pos; };
+struct Placed { int id; int cat; Vec3f pos; };
 
 struct State {
     Mat4 m = Mat4::identity();
@@ -75,7 +75,7 @@ public:
     // ---- per-load state
     Scene* sc = nullptr;
     BatchSet* coronaDst = nullptr;  // when set, meshes under a "corona" matrix go here, centred on that matrix (billboard halos)
-    Vec3 coronaCenter;
+    Vec3f coronaCenter;
     bool coronaFound = false;
     Mat4 lastRootMat = Mat4::identity();  // first matrix of the hierarchy emitted last
     BatchSet* dst = nullptr;  // when set, emitHie writes into this (local space) instead of the level
@@ -146,7 +146,7 @@ public:
     void emitPaths(const std::string& hieBase, int catAI, int catRace, int catStart, int catDrone, bool drone);
 
     // Polyline of the first spline of a path hierarchy, in world space.
-    bool loadPathPoints(const std::string& base, std::vector<Vec3>& pts);
+    bool loadPathPoints(const std::string& base, std::vector<Vec3f>& pts);
 
 
 

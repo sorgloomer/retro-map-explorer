@@ -116,17 +116,17 @@ out vec4 o;
 void main(){ o = uColor; }
 )";
 
-void pushV(std::vector<float>& v, Vec3 p, Vec3 n) {
+void pushV(std::vector<float>& v, Vec3f p, Vec3f n) {
     v.insert(v.end(), {p.x, p.y, p.z, n.x, n.y, n.z});
 }
-void pushTri(std::vector<float>& v, Vec3 a, Vec3 b, Vec3 c) {
-    Vec3 n = normalize(cross(b - a, c - a));
+void pushTri(std::vector<float>& v, Vec3f a, Vec3f b, Vec3f c) {
+    Vec3f n = normalize(cross(b - a, c - a));
     // keep normals pointing away from the origin of the unit shape
-    Vec3 centre = (a + b + c) * (1.0f / 3.0f);
+    Vec3f centre = (a + b + c) * (1.0f / 3.0f);
     if (dot(n, centre) < 0) n = n * -1.0f;
     pushV(v, a, n); pushV(v, b, n); pushV(v, c, n);
 }
-void pushQuad(std::vector<float>& v, Vec3 a, Vec3 b, Vec3 c, Vec3 d) {
+void pushQuad(std::vector<float>& v, Vec3f a, Vec3f b, Vec3f c, Vec3f d) {
     pushTri(v, a, b, c);
     pushTri(v, a, c, d);
 }
@@ -187,17 +187,17 @@ void Renderer::buildShapes() {
     std::vector<float> d, a, c;
     // diamond (octahedron)
     {
-        Vec3 px(1, 0, 0), nx(-1, 0, 0), py(0, 1.4f, 0), ny(0, -1.4f, 0), pz(0, 0, 1), nz(0, 0, -1);
+        Vec3f px(1, 0, 0), nx(-1, 0, 0), py(0, 1.4f, 0), ny(0, -1.4f, 0), pz(0, 0, 1), nz(0, 0, -1);
         pushTri(d, px, py, pz); pushTri(d, pz, py, nx); pushTri(d, nx, py, nz); pushTri(d, nz, py, px);
         pushTri(d, pz, ny, px); pushTri(d, nx, ny, pz); pushTri(d, nz, ny, nx); pushTri(d, px, ny, nz);
     }
     // arrow pointing +Z (flat prism)
     {
         float t = 0.35f;
-        Vec3 tip(0, 0, 1.8f), l(-1.0f, 0, 0.2f), r(1.0f, 0, 0.2f);
-        Vec3 sl(-0.35f, 0, 0.2f), sr(0.35f, 0, 0.2f), bl(-0.35f, 0, -1.0f), br(0.35f, 0, -1.0f);
-        auto up = [&](Vec3 p) { return Vec3(p.x, t, p.z); };
-        auto dn = [&](Vec3 p) { return Vec3(p.x, -t, p.z); };
+        Vec3f tip(0, 0, 1.8f), l(-1.0f, 0, 0.2f), r(1.0f, 0, 0.2f);
+        Vec3f sl(-0.35f, 0, 0.2f), sr(0.35f, 0, 0.2f), bl(-0.35f, 0, -1.0f), br(0.35f, 0, -1.0f);
+        auto up = [&](Vec3f p) { return Vec3f(p.x, t, p.z); };
+        auto dn = [&](Vec3f p) { return Vec3f(p.x, -t, p.z); };
         pushTri(a, up(tip), up(l), up(r)); pushTri(a, dn(tip), dn(l), dn(r));
         pushQuad(a, up(sl), up(sr), up(br), up(bl)); pushQuad(a, dn(sl), dn(sr), dn(br), dn(bl));
         pushQuad(a, up(tip), up(l), dn(l), dn(tip)); pushQuad(a, up(tip), up(r), dn(r), dn(tip));
@@ -207,8 +207,8 @@ void Renderer::buildShapes() {
     }
     // cube
     {
-        Vec3 p[8];
-        for (int i = 0; i < 8; i++) p[i] = Vec3((i & 1) ? 1.f : -1.f, (i & 2) ? 1.f : -1.f, (i & 4) ? 1.f : -1.f);
+        Vec3f p[8];
+        for (int i = 0; i < 8; i++) p[i] = Vec3f((i & 1) ? 1.f : -1.f, (i & 2) ? 1.f : -1.f, (i & 4) ? 1.f : -1.f);
         pushQuad(c, p[0], p[1], p[3], p[2]); pushQuad(c, p[4], p[5], p[7], p[6]);
         pushQuad(c, p[0], p[1], p[5], p[4]); pushQuad(c, p[2], p[3], p[7], p[6]);
         pushQuad(c, p[0], p[2], p[6], p[4]); pushQuad(c, p[1], p[3], p[7], p[5]);
@@ -219,7 +219,7 @@ void Renderer::buildShapes() {
         const float pi = 3.14159265f;
         auto pt = [&](int i, int j) {
             float th = pi * i / lat, ph = 2 * pi * j / lon;
-            return Vec3(std::sin(th) * std::cos(ph), std::cos(th), std::sin(th) * std::sin(ph));
+            return Vec3f(std::sin(th) * std::cos(ph), std::cos(th), std::sin(th) * std::sin(ph));
         };
         for (int i = 0; i < lat; i++)
             for (int j = 0; j < lon; j++) pushQuad(sph, pt(i, j), pt(i + 1, j), pt(i + 1, j + 1), pt(i, j + 1));
@@ -404,7 +404,7 @@ void Renderer::setScene(const Scene* s, float radius) {
 
 // Powerup scale factor: 1 (the exact in-game size) up close; far away an icon grows so that it keeps a minimum size on screen.
 // Meshes and diamonds both use it, so their sizes do not depend on which of them is drawn.
-float Renderer::iconScale(const Vec3& at, const ViewParams& vp, const RenderOptions& opt) const {
+float Renderer::iconScale(const Vec3f& at, const ViewParams& vp, const RenderOptions& opt) const {
     float pixelWorld = 2.0f * std::tan(vp.fovY * 0.5f) / (float)vp.height;  // world units per pixel at distance 1
     return std::max(1.0f, 16.0f * opt.powerupScale * length(at - vp.eye) * pixelWorld / scene->pickupRadius);
 }
@@ -444,8 +444,8 @@ void Renderer::drawMarkers(const ViewParams& vp, const RenderOptions& opt, bool 
         if (cat.hasMesh && opt.powerupMeshes) continue;  // drawn as in-game meshes instead
         const CatLines& r = catRanges[c];
         if (r.markerCount == 0) continue;
-        float rr = ((cat.color >> 16) & 255) / 255.f, gg = ((cat.color >> 8) & 255) / 255.f, bb = (cat.color & 255) / 255.f;
-        glUniform4f(locColor, rr, gg, bb, xrayPass ? opt.xrayStrength : 1.0f);
+        const Color3f col = Color3f::from3b(cat.color);
+        glUniform4f(locColor, col.r, col.g, col.b, xrayPass ? opt.xrayStrength : 1.0f);
         if (cat.hasMesh) { powerupSize(1.0f); glUniform1f(locSize, 1.0f); }
         else { plainSize(); glUniform1f(locSize, cat.size * (cat.isLine ? 0.5f : 1.0f)); }
         Shape& s = shapes[cat.shape];
@@ -459,7 +459,7 @@ void Renderer::drawMarkers(const ViewParams& vp, const RenderOptions& opt, bool 
         glUniform4f(locColor, 1, 1, 1, 1);
         // The wireframe is concentric with what it marks and a little larger. A powerup keeps the size and centre of its
         // diamond / in-game mesh; other markers are scaled about the diamond's lift of 0.6, which needs a lift of 0.6 / k.
-        const float kHighlight = 1.15f;
+        const float kHighlight = 1.20f;
         if (cat.hasMesh) { powerupSize(kHighlight); glUniform1f(locSize, 1.0f); }
         else {
             plainSize();
@@ -489,8 +489,8 @@ void Renderer::drawLines(const ViewParams& vp, const RenderOptions& opt, bool xr
     for (size_t c = 0; c < scene->cats.size(); c++) {
         const Category& cat = scene->cats[c];
         if (!cat.visible) continue;
-        float rr = ((cat.color >> 16) & 255) / 255.f, gg = ((cat.color >> 8) & 255) / 255.f, bb = (cat.color & 255) / 255.f;
-        glUniform4f(locColor, rr, gg, bb, xrayPass ? opt.xrayStrength : 1.0f);
+        const auto col = cat.color.to_f();
+        glUniform4f(locColor, col.r, col.g, col.b, xrayPass ? opt.xrayStrength : 1.0f);
         const CatLines& r = catRanges[c];
         for (int pass = 0; pass < 2; pass++) {
             if (pass == 1 && !opt.beams) continue;
@@ -509,7 +509,7 @@ void Renderer::drawLines(const ViewParams& vp, const RenderOptions& opt, bool xr
 
 void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highlightMarker) {
     glViewport(0, 0, vp.width, vp.height);
-    Vec3 bg = scene ? scene->background : Vec3(0.08f, 0.1f, 0.14f);
+    Vec3f bg = scene ? scene->background : Vec3f(0.08f, 0.1f, 0.14f);
     glClearColor(bg.x, bg.y, bg.z, 1);
     glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -562,11 +562,11 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             if (m.staticModel) { shown[i] = 1; continue; }
             if (m.billboard) {  // the halo of a powerup icon turns towards the camera, as in the game
                 float sc = iconScale(m.path[0], vp, opt);
-                Vec3 c = m.path[0] + Vec3(0, scene->pickupBottomY * (1.0f - sc), 0) + m.anchor * sc;  // scaled from the icon's bottom
-                Vec3 z = normalize(vp.eye - c);
-                Vec3 upv = std::fabs(z.y) > 0.999f ? Vec3(0, 0, 1) : Vec3(0, 1, 0);
-                Vec3 r = normalize(cross(upv, z));
-                Vec3 u = cross(z, r);
+                Vec3f c = m.path[0] + Vec3f(0, scene->pickupBottomY * (1.0f - sc), 0) + m.anchor * sc;  // scaled from the icon's bottom
+                Vec3f z = normalize(vp.eye - c);
+                Vec3f upv = std::fabs(z.y) > 0.999f ? Vec3f(0, 0, 1) : Vec3f(0, 1, 0);
+                Vec3f r = normalize(cross(upv, z));
+                Vec3f u = cross(z, r);
                 Mat4& M = models[i];
                 M.m[0] = r.x * sc; M.m[1] = r.y * sc; M.m[2] = r.z * sc;
                 M.m[4] = u.x * sc; M.m[5] = u.y * sc; M.m[6] = u.z * sc;
@@ -580,7 +580,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 for (const AnimKey& k : m.keys) total += k.dur;
                 float tt = total > 0 ? std::fmod(vp.time, total) : 0;
                 if (tt < 0) tt += total;
-                Vec3 off;
+                Vec3f off;
                 Mat4 R = Mat4::identity();
                 float start = 0;
                 for (const AnimKey& k : m.keys) {
@@ -588,7 +588,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                     off = off + k.trans * f;
                     if (k.rotDeg != 0) {
                         float a = k.rotDeg * f * 0.0174532925f, cs = std::cos(a), sn = std::sin(a), t = 1 - cs;
-                        Vec3 ax = normalize(k.axis);
+                        Vec3f ax = normalize(k.axis);
                         Mat4 Q = Mat4::identity();
                         Q.m[0] = cs + ax.x * ax.x * t;      Q.m[4] = ax.x * ax.y * t - ax.z * sn; Q.m[8] = ax.x * ax.z * t + ax.y * sn;
                         Q.m[1] = ax.y * ax.x * t + ax.z * sn; Q.m[5] = cs + ax.y * ax.y * t;      Q.m[9] = ax.y * ax.z * t - ax.x * sn;
@@ -597,7 +597,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                     }
                     start += k.dur;
                 }
-                const Vec3& c = m.pivot;
+                const Vec3f& c = m.pivot;
                 R.m[12] = c.x - (R.m[0] * c.x + R.m[4] * c.y + R.m[8] * c.z) + off.x;
                 R.m[13] = c.y - (R.m[1] * c.x + R.m[5] * c.y + R.m[9] * c.z) + off.y;
                 R.m[14] = c.z - (R.m[2] * c.x + R.m[6] * c.y + R.m[10] * c.z) + off.z;
@@ -620,13 +620,13 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             if (m.length <= 0) continue;
             float d = std::fmod(m.speed * vp.time + m.phase * m.length, m.length);
             if (d < 0) d += m.length;
-            Vec3 pos, dir;
+            Vec3f pos, dir;
             if (!m.sample(d, pos, dir)) continue;
             // The game's followers (helicopter noses, energy arches) are modelled along local +X.
-            Vec3 f = normalize(dir);
-            Vec3 up = std::fabs(f.y) > 0.99f ? Vec3(0, 0, 1) : Vec3(0, 1, 0);
-            Vec3 z = normalize(cross(f, up));
-            Vec3 u = cross(z, f);
+            Vec3f f = normalize(dir);
+            Vec3f up = std::fabs(f.y) > 0.99f ? Vec3f(0, 0, 1) : Vec3f(0, 1, 0);
+            Vec3f z = normalize(cross(f, up));
+            Vec3f u = cross(z, f);
             Mat4& M = models[i];
             M.m[0] = f.x; M.m[1] = f.y; M.m[2] = f.z;
             M.m[4] = u.x; M.m[5] = u.y; M.m[6] = u.z;
