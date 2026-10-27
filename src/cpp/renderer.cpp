@@ -523,6 +523,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         GLint locLighting = glGetUniformLocation(progWorld, "uLighting");
         GLint locWire = glGetUniformLocation(progWorld, "uWire");
         GLint locFade = glGetUniformLocation(progWorld, "uFade");
+        GLint locExposure = glGetUniformLocation(progWorld, "uExposure");
         glUniform1f(locFade, 1.0f);
         if (cull) { glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CW); }
         float lightOn = ((opt.sunLight || opt.pointLights) && scene->hasLighting) ? 1.f : 0.f;
@@ -684,12 +685,14 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             else drawSet(batches, pass, Mat4::identity());
             for (size_t i = 0; i < scene->movers.size(); i++) {
                 if (!shown[i]) continue;
+                glUniform1f(locExposure, scene->movers[i].powerupMesh ? opt.powerupExposure : opt.exposure);
                 drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
             }
         }
         // "See-through markers" also covers the in-game powerup meshes: a faint copy where the level hides them
         if (opt.xray && opt.powerupMeshes) {
             glUniform1f(locFade, 0.15f);
+            glUniform1f(locExposure, opt.powerupExposure);
             glEnable(GL_BLEND);
             glDepthMask(GL_FALSE);
             glDepthFunc(GL_GREATER);
@@ -698,6 +701,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                     if (shown[i] && scene->movers[i].powerupMesh) drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
             glDepthFunc(GL_LEQUAL);
             glUniform1f(locFade, 1.0f);
+            glUniform1f(locExposure, opt.exposure);
         }
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);

@@ -47,6 +47,8 @@ struct App {
     float gestureCx = 0, gestureCy = 0;
     float touchTravel = 0;
     double touchStart = 0;
+    int firstTouchId = -1;       // finger that started the current touch gesture
+    bool pivotOnFirst = false;   // two-finger gesture pivots on the first finger (the second one came late)
     Vec3 orbitOff;  // pivot position in camera space (right, up, forward) - keeps it fixed on screen while orbiting
     std::string json;  // return buffer for strings handed to JS
     std::string lastError;
@@ -188,6 +190,10 @@ void panTo(int mx, int my) {
 
 // Pitch limit of the camera in radians (a little short of straight up / down), for the mouse and for touch tilting alike.
 constexpr float kMaxPitch = 1.55f;
+
+// Two-finger gestures normally pivot on the midpoint between the fingers. When the second finger touches down at least this
+// long after the first one, the first finger (which was already holding a spot on the map) is the pivot instead.
+constexpr double kFirstFingerPivotDelayMs = 500.0;
 
 void rotateView(float dx, float dy) {
     app.cam.yaw += dx;
@@ -431,9 +437,13 @@ void beginGesture() {
         app.gestureDist = std::max(1.0f, std::hypot(app.touches[0].x - app.touches[1].x, app.touches[0].y - app.touches[1].y));
         app.gestureAngle = std::atan2(app.touches[1].y - app.touches[0].y, app.touches[1].x - app.touches[0].x);
     }
+    float px = cx, py = cy;  // where the pivot is picked
+    if (n >= 2 && app.pivotOnFirst)
+        for (auto& t : app.touches)
+            if (t.id == app.firstTouchId) { px = t.x; py = t.y; }
     app.mouseX = (int)cx;
     app.mouseY = (int)cy;
-    pickPivot((int)cx, (int)cy);
+    pickPivot((int)px, (int)py);
     beginPan();
 }
 
@@ -444,7 +454,14 @@ EM_BOOL onTouch(int type, const EmscriptenTouchEvent* e, void*) {
         EM_ASM({ if (window.RME && window.RME.onTouchMode) window.RME.onTouchMode(); });
     }
     if (type == EMSCRIPTEN_EVENT_TOUCHSTART) {
-        if (e->numTouches == 1) { app.touchStart = emscripten_get_now(); app.touchTravel = 0; }
+        if (e->numTouches == 1) {
+            app.touchStart = emscripten_get_now();
+            app.touchTravel = 0;
+            app.firstTouchId = e->touches[0].identifier;
+            app.pivotOnFirst = false;
+        } else if (e->numTouches == 2) {
+            app.pivotOnFirst = emscripten_get_now() - app.touchStart >= kFirstFingerPivotDelayMs;
+        }
         collectTouches(e, false);
         beginGesture();
     } else if (type == EMSCRIPTEN_EVENT_TOUCHMOVE) {
@@ -646,6 +663,7 @@ EMSCRIPTEN_KEEPALIVE void rme_set_category_visible(int cat, int visible) {
 EMSCRIPTEN_KEEPALIVE void rme_set_option(const char* name, double v) {
     std::string n = name;
     if (n == "exposure") app.opt.exposure = (float)v;
+    else if (n == "powerupExposure") app.opt.powerupExposure = (float)v;
     else if (n == "textured") app.opt.textured = v != 0;
     else if (n == "shade") app.opt.shade = (float)v;
     else if (n == "markerScale") app.opt.markerScale = (float)v;

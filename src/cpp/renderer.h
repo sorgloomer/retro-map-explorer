@@ -6,6 +6,7 @@
 
 struct RenderOptions {
     float exposure = 1.35f;
+    float powerupExposure = 1.35f;  // brightness of the in-game powerup meshes, separate from the level's
     bool textured = true;
     float shade = 0.6f;       // 0 = flat vertex colours, 1 = full face-normal shading
     float markerScale = 1.0f;
