@@ -189,6 +189,7 @@ body.playing #canvas { cursor: default; }
 .gd-row.slide .gd-bar i { background: #ff5d5d; }
 .gd-row.slide .gd-num { color: #ff8a8a; }
 .gd-num { min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
+.gd-num.gd-susp { min-width: 38px; color: #9ec5ff; }  /* the suspension force: blue, to tell it from the lateral numbers */
 .gd-total { margin-top: 2px; color: var(--muted); }
 /* on-screen driving buttons, only on devices whose main pointer is a finger */
 .gh-touch, .gh-overbtns { display: none; }

@@ -78,7 +78,7 @@ function LateralForces() {
     <div class={'gh-debug' + (shown ? '' : ' closed')}>
       <div class="gd-head">
         <button type="button" class="gd-title" onClick={(e) => { toggleDebugPanel(); e.currentTarget.blur(); }}
-          title="Show or hide the lateral force panel (L)">{shown ? '▾' : '▸'} lateral force{shown ? ' (kN, + = right)' : ''} <kbd>L</kbd></button>
+          title="Show or hide the lateral force panel (L)">{shown ? '▾' : '▸'} tyre forces{shown ? ' (kN): lateral / limit (+ = right), slip, suspension' : ''} <kbd>L</kbd></button>
         <button type="button" class="gd-config" onClick={(e) => { setParamsEditor(true); e.currentTarget.blur(); }}
           title="Edit the minigame's parameters as JSON">configure</button>
       </div>
@@ -90,9 +90,10 @@ function LateralForces() {
           </span>
           <span class="gd-num">{(w.lat / 1000).toFixed(1)} / {(w.limit / 1000).toFixed(1)}</span>
           <span class="gd-num">{(w.slip * 57.3).toFixed(0)}°</span>
+          <span class="gd-num gd-susp">{(w.load / 1000).toFixed(1)}</span>
         </div>
       ))}
-      {shown && <div class="gd-total">total {(total / 1000).toFixed(1)} kN</div>}
+      {shown && <div class="gd-total">total lateral {(total / 1000).toFixed(1)} kN · suspension {(wheels.reduce((sum, w) => sum + w.load, 0) / 1000).toFixed(1)} kN</div>}
     </div>
   );
 }
