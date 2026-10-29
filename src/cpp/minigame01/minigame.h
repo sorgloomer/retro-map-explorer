@@ -76,7 +76,7 @@ private:
     CarModel car;
     Vehicle vehicle;
     Input input;
-    int carMover[5] = {-1, -1, -1, -1, -1};  // body, FL, FR, RL, RR
+    int carMover[6] = {-1, -1, -1, -1, -1, -1};  // body, FL, FR, RL, RR, the centre of mass marker (debug)
     std::vector<Pickup> pickups;
     Hud hud_;
     Vec3f startPos;

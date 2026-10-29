@@ -253,9 +253,9 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
     out.name = "Eagle";
 
     // The chassis .dcol the descriptor names ("Shadow dcol filename") starts with the car's mass in kg (the kerb weight of its
-    // text file), its width, height and length, and then a vector at byte 24 that looks like the centre of mass: (-0.2, 0.1, 0)
-    // for the Eagle. The axis order is a guess: forward, up, sideways, which gives a spot a little behind the middle of the
-    // wheelbase, inside the body.
+    // text file), then a width, height and length (m), and at byte 24 a vector that is taken as the centre of mass in fractions
+    // of the chassis box, from its geometric centre: (-0.2, 0.1, 0) for the Eagle. Read as: first = along the car (negative:
+    // towards the rear), second = vertical (positive: below the middle), third = sideways (0: no bias).
     const std::string dcolName = descriptorValue(dlines, "Shadow dcol filename");
     const int dcolEntry = dcolName.empty() ? -1 : pk->find(dcolName);
     std::vector<uint8_t> dcol;
@@ -263,8 +263,25 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
         float f[9];
         memcpy(f, dcol.data(), sizeof f);
         if (f[0] > 1.0f) out.mass = f[0];
-        out.centreOfMass = Vec3f(-f[8], f[7], f[6]);  // sideways (mirrored like the rest of the car), up, forward
+        out.centreOfMassFraction = Vec3f(-f[8], -f[7], f[6]);  // sideways (mirrored like the rest of the car), up (the file counts downwards), forward
         out.hasCentreOfMass = true;
+        // The chassis hull follows the header: a count at byte 60, then that many points (x, y, z), in the car's own space.
+        // The fractions are measured against its box, which is the physics shape: the body mesh also has the roof spike.
+        uint32_t points = 0;
+        if (dcol.size() >= 64) memcpy(&points, &dcol[60], 4);
+        if (points >= 4 && points <= 4096 && dcol.size() >= 64 + (size_t)points * 12) {
+            Vec3f lo(1e30f, 1e30f, 1e30f), hi(-1e30f, -1e30f, -1e30f);
+            for (uint32_t i = 0; i < points; i++) {
+                float p[3];
+                memcpy(p, &dcol[64 + (size_t)i * 12], 12);
+                const Vec3f v(-p[0], p[1], p[2]);  // mirrored like the rest of the car
+                lo = vmin(lo, v);
+                hi = vmax(hi, v);
+            }
+            out.hullBoxMin = lo;
+            out.hullBoxMax = hi;
+            out.hasHullBox = true;
+        }
     }
     return true;
 }

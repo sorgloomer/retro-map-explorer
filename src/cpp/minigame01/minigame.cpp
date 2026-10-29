@@ -16,6 +16,23 @@ float wrapAngle(float a) {
     return a;
 }
 
+// A small octahedron in pink, for the debug marker of the car's centre of mass (radius in metres).
+BatchSet makeCentreOfMassMarker(float radius) {
+    auto vertex = [&](float x, float y, float z) {
+        SceneVertex v;
+        v.x = x; v.y = y; v.z = z;
+        v.r = 255; v.g = 105; v.b = 180; v.a = 255;  // hot pink
+        v.u = v.v = 0;
+        return v;
+    };
+    const float r = radius;
+    const SceneVertex corners[6] = {vertex(r, 0, 0), vertex(-r, 0, 0), vertex(0, r, 0), vertex(0, -r, 0), vertex(0, 0, r), vertex(0, 0, -r)};
+    const uint32_t indices[24] = {2, 0, 4, 2, 4, 1, 2, 1, 5, 2, 5, 0, 3, 4, 0, 3, 1, 4, 3, 5, 1, 3, 0, 5};
+    BatchSet marker;
+    marker.appendIndexed(-1, BLEND_OPAQUE, corners, 6, indices, 24, true);
+    return marker;
+}
+
 void setMessage(Hud& h, const char* text) {
     snprintf(h.message, sizeof h.message, "%s", text);
     h.messageAge = 0;
@@ -63,6 +80,11 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
     };
     carMover[0] = addMover(g0);
     for (int i = 0; i < 4; i++) carMover[1 + i] = addMover(g0 + 1 + i);
+    // the debug marker of the centre of mass: not shaded, and drawn on top of everything so it shows through the hull
+    scene.moverGeoms.push_back(makeCentreOfMassMarker(0.14f));
+    carMover[5] = addMover((int)scene.moverGeoms.size() - 1);
+    scene.movers[carMover[5]].lit = false;
+    scene.movers[carMover[5]].alwaysOnTop = true;
     worldFloor = scene.bmin.y / scale - tuning().worldFloorBelow;
     makePickupIcons(scene);
     isPrepared = true;
@@ -293,6 +315,13 @@ void MiniGame::syncMovers(Scene& scene) {
     };
     scene.movers[carMover[0]].model = toLevel(M);
     scene.movers[carMover[0]].hidden = false;
+    {  // the centre of mass marker sits at that point of the car
+        Mat4 L = Mat4::identity();
+        const Vec3f centre = vehicle.centreOfMassInCarSpace();
+        L.m[12] = centre.x; L.m[13] = centre.y; L.m[14] = centre.z;
+        scene.movers[carMover[5]].model = toLevel(Mat4::mul(M, L));
+        scene.movers[carMover[5]].hidden = false;
+    }
     for (int i = 0; i < 4; i++) {
         const Vehicle::Wheel& w = vehicle.wheel(i);
         float cs = std::cos(w.steer), sn = std::sin(w.steer);

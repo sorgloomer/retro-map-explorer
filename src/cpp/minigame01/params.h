@@ -12,7 +12,9 @@ namespace minigame01 {
     X(mass, 0)                          /* kg; 0 = the car's own mass from its files, else defaultMass */ \
     X(defaultMass, 1250)                /* kg, when the car's files do not say and mass is 0 */ \
     X(centreOfMassFromFile, 1)          /* 1: use the centre of mass of the car's files when it has one; 0: the two numbers below */ \
-    X(centreOfMassHeight, 0.40)         /* m above the road, when not taken from the car's files */ \
+    X(centreOfMassBoxFromFile, 1)       /* the file's centre of mass is fractions of a box from its centre (-0.5 = the very rear): 1: the chassis hull box of the car's files; 0: the whole body mesh's bounding box (it includes the roof spike) */ \
+    X(centreOfMassLowering, 0.2)        /* the centre of mass of the car's files is moved down by this fraction of the chassis box height (0 = where the file says) */ \
+    X(centreOfMassHeight, 0.40)       /* m above the road, when not taken from the car's files */ \
     X(centreOfMassFromRearAxle, 0.36)   /* between the axles when not taken from the files: 0 = on the rear axle, 1 = on the front axle */ \
     X(rollInertiaFactor, 1.5)           /* turns the roll (about the forward axis) inertia up or down */ \
     X(probeRadius, 0.3)                 /* m, radius of the spheres that make the chassis collide with walls and ceilings */ \
@@ -32,9 +34,10 @@ namespace minigame01 {
     X(bumpStopZone, 0.03)               /* within this distance above suspMin the spring turns stiffer... */ \
     X(bumpStopStiffness, 4)             /* ...by this factor */ \
     /* --- tyres, engine and air */ \
-    X(grip, 1.5)                        /* friction coefficient on the road: a tyre pushes with at most this times its load */ \
+    X(grip, 1.1)                      /* friction coefficient on the road: a tyre pushes with at most this times its load */ \
     X(slideGrip, 0.85)                  /* part of the grip left while a tyre slides sideways */ \
-    X(engineForce, 40000)               /* N at the wheels at low speed (over three times the car's weight) */ \
+    X(engineTorqueScale, 0.3)           /* scales the engine's push (forward and reverse, not the afterburner): 1 = engineForce and enginePower as they are */ \
+    X(engineForce, 40000)              /* N at the wheels at low speed (over three times the car's weight) */ \
     X(enginePower, 420000)              /* W: above the speed where force * speed reaches this, the force falls off as 1 / speed */ \
     X(brakeForce, 1)                    /* brake pedal fully down asks for this part of the friction limit */ \
     X(rollResist, 0.016)                /* rolling resistance, as a fraction of the tyre load */ \
@@ -43,7 +46,7 @@ namespace minigame01 {
     X(maxSpeed, 500)                    /* m/s (hard limit) */ \
     X(afterburnerForce, 36000)          /* N: about three times the car's weight, in the direction the car faces */ \
     X(kangarooSpeed, 8)                 /* m/s added upwards per jump (about 3 m high from rest) */ \
-    X(rollCentre, 0.30)                 /* tyre forces act this far above the road: less body roll */ \
+    X(rollCentre, 0.6)                 /* tyre forces act this far above the road: less body roll */ \
     /* --- steering */ \
     X(maxSteerAngle, 0.45)              /* radians of front wheel turn at a standstill (full lock) */ \
     X(steerFadeSpeed, 20)               /* m/s: around this speed the available steering angle has dropped to half... */ \

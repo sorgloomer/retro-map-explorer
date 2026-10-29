@@ -73,15 +73,15 @@ bool CarmaGame::loadHie(const std::string& base, Pak*& pk, Hie& hie) {
     return true;
 }
 
-void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int mir, float* com) {
+void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int mir, float* centreOfMass) {
     Pak* pk = nullptr;
     Hie hie;
     if (!loadHie(base, pk, hie)) return;
     std::vector<uint8_t> data;
-    if (com && !hie.collNames.empty()) {
+    if (centreOfMass && !hie.collNames.empty()) {
         int ce = pk->find(hie.collNames[0]);
         std::vector<uint8_t> cd;
-        if (ce >= 0 && pk->extract(ce, cd) && cd.size() >= 28) memcpy(com, &cd[24], 4);
+        if (ce >= 0 && pk->extract(ce, cd) && cd.size() >= 28) memcpy(centreOfMass, &cd[24], 4);
     }
     const bool flip = kMirrorX && mir != MIR_NONE;
     if (!hie.mats.empty()) lastRootMat = hie.mats[0].m;

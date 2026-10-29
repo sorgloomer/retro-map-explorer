@@ -39,9 +39,12 @@ void Vehicle::init(const CarModel& m) {
     bmin = m.boundsMin;
     bmax = m.boundsMax;
     fileMass = m.mass;
-    hasFileCom = m.hasCentreOfMass;
-    fileCom = m.centreOfMass;
-    com = Vec3f();  // nothing is placed yet: applyTuning has no position to keep
+    hasFileCentreOfMass = m.hasCentreOfMass;
+    fileCentreOfMassFraction = m.centreOfMassFraction;
+    hasHullBox = m.hasHullBox;
+    hullBoxMin = m.hullBoxMin;
+    hullBoxMax = m.hullBoxMax;
+    centreOfMass = Vec3f();  // nothing is placed yet: applyTuning has no position to keep
     applyTuning();
     reset(Vec3f(), 0);
 }
@@ -50,7 +53,7 @@ void Vehicle::init(const CarModel& m) {
 // Called when the car is set up and whenever the parameters change; the car stays where it is (its origin does not move).
 void Vehicle::applyTuning() {
     const Params& P = tuning();
-    const Vec3f oldCom = com;
+    const Vec3f previousCentreOfMass = centreOfMass;
     // suspension and wheels: the car's own files when they say (and the parameters allow it), else the parameters / the meshes
     const bool fromFileSuspension = P.suspensionFromFile > 0.5f, fromFileRadius = P.wheelRadiusFromFile > 0.5f;
     springStiffness = fromFileSuspension && fileSpringK > 0 ? fileSpringK : P.springK;
@@ -63,14 +66,21 @@ void Vehicle::applyTuning() {
     wheelR = radiusSum * 0.25f;
     float frontZ = 0.5f * (wheelRest[0].z + wheelRest[1].z), rearZ = 0.5f * (wheelRest[2].z + wheelRest[3].z);
     float axleY = 0.25f * (wheelRest[0].y + wheelRest[1].y + wheelRest[2].y + wheelRest[3].y);
-    if (P.centreOfMassFromFile > 0.5f && hasFileCom) {
-        com = fileCom;  // the car's own files say where it is
+    if (P.centreOfMassFromFile > 0.5f && hasFileCentreOfMass) {
+        // the car's own files say where it is: fractions of the chassis box, from the box's geometric centre; the box is the hull
+        // of the car's files (the physics shape) or, as a choice, the whole body mesh (which includes the roof spike)
+        const bool useHull = P.centreOfMassBoxFromFile > 0.5f && hasHullBox;
+        const Vec3f boxMin = useHull ? hullBoxMin : bmin, boxMax = useHull ? hullBoxMax : bmax;
+        const Vec3f boxCentre = (boxMin + boxMax) * 0.5f;
+        const Vec3f boxSize = boxMax - boxMin;
+        centreOfMass = boxCentre + Vec3f(fileCentreOfMassFraction.x * boxSize.x, fileCentreOfMassFraction.y * boxSize.y, fileCentreOfMassFraction.z * boxSize.z);
+        centreOfMass.y -= P.centreOfMassLowering * boxSize.y;  // lowered further by a fraction of the box height, as configured
     } else {
         // low, and towards the rear axle (so the rear tyres, which drive the car, carry more of the weight)
-        com = Vec3f(0, axleY - wheelR + P.centreOfMassHeight, rearZ + P.centreOfMassFromRearAxle * (frontZ - rearZ));
+        centreOfMass = Vec3f(0, axleY - wheelR + P.centreOfMassHeight, rearZ + P.centreOfMassFromRearAxle * (frontZ - rearZ));
     }
     float w = bmax.x - bmin.x, h = bmax.y - bmin.y, l = bmax.z - bmin.z;
-    mass = P.mass > 0 ? P.mass : (fileMass > 0 ? fileMass : P.defaultMass);
+    mass =P.mass > 0 ? P.mass : (fileMass > 0 ? fileMass : P.defaultMass);
     inertia = Vec3f(mass / 12.0f * (h * h + l * l), mass / 12.0f * (w * w + l * l), mass / 12.0f * (w * w + h * h) * P.rollInertiaFactor);
     probeR = P.probeRadius;
     // hull probes: a lattice of spheres inside the chassis bounds; the lowest row hovers above the road
@@ -89,7 +99,7 @@ void Vehicle::applyTuning() {
     probes.push_back(Vec3f(0, yHigh, bmax.z - probeR));
     // pos is the centre of mass: when that moves within the car, move pos with it so that the car itself stays put
     updateAxes();
-    pos += axes[0] * (com.x - oldCom.x) + axes[1] * (com.y - oldCom.y) + axes[2] * (com.z - oldCom.z);
+    pos += axes[0] * (centreOfMass.x - previousCentreOfMass.x) + axes[1] * (centreOfMass.y - previousCentreOfMass.y) + axes[2] * (centreOfMass.z - previousCentreOfMass.z);
 }
 
 void Vehicle::reset(const Vec3f& groundPos, float yaw) {
@@ -98,8 +108,8 @@ void Vehicle::reset(const Vec3f& groundPos, float yaw) {
     Vec3f origin = groundPos + Vec3f(0, wheelR - axleY + 0.02f, 0);
     q = quatNormalize({std::cos(yaw * 0.5f), 0, std::sin(yaw * 0.5f), 0});
     updateAxes();
-    // pos is the centre of mass; the car origin is pos - R * com
-    pos = origin + axes[0] * com.x + axes[1] * com.y + axes[2] * com.z;
+    // pos is the centre of mass; the car origin is pos - R * centreOfMass
+    pos = origin + axes[0] * centreOfMass.x + axes[1] * centreOfMass.y + axes[2] * centreOfMass.z;
     vel = angVel = Vec3f();
     steerAngle = 0;
     groundedCount = 0;
@@ -118,7 +128,7 @@ void Vehicle::updateAxes() {
 
 Mat4 Vehicle::modelMatrix() const {
     Mat4 m = Mat4::identity();
-    Vec3f origin = pos - (axes[0] * com.x + axes[1] * com.y + axes[2] * com.z);
+    Vec3f origin = pos - (axes[0] * centreOfMass.x + axes[1] * centreOfMass.y + axes[2] * centreOfMass.z);
     m.m[0] = axes[0].x; m.m[1] = axes[0].y; m.m[2] = axes[0].z;
     m.m[4] = axes[1].x; m.m[5] = axes[1].y; m.m[6] = axes[1].z;
     m.m[8] = axes[2].x; m.m[9] = axes[2].y; m.m[10] = axes[2].z;
@@ -178,6 +188,10 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     if (std::fabs(forwardSpeed) > P.taperStartSpeed && driveForce * forwardSpeed > 0)
         driveForce *= std::max(0.0f, 1.0f - (std::fabs(forwardSpeed) - P.taperStartSpeed) / P.taperLength);
 
+    // Scaling of the engine (forward and reverse push alike), 30% by default. The afterburner is not an engine and keeps its
+    // full force.
+    driveForce *= P.engineTorqueScale;
+
     Vec3f totalForce(0, -P.gravity * mass, 0);  // N, on the centre of mass: starts with gravity
     Vec3f totalTorque;                         // N m, about the centre of mass
     // air drag against the velocity, and downforce pressing the car down onto its wheels
@@ -193,7 +207,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         const bool isFrontWheel = i < 2, isRearWheel = !isFrontWheel;  // wheels 0, 1 are the front ones, 2, 3 the rear (drive) ones
         // The suspension is a ray from its upper mount straight down (along the car's down axis): where it hits the road,
         // and how much of the suspension is left, tells how far the spring is compressed.
-        const Vec3f wheelOffsetFromCentreOfMass = wheelRest[i] - com;  // in car space
+        const Vec3f wheelOffsetFromCentreOfMass = wheelRest[i] - centreOfMass;  // in car space
         const Vec3f suspensionMount = pos + rightAxis * wheelOffsetFromCentreOfMass.x +
                                       upAxis * (wheelOffsetFromCentreOfMass.y + P.suspRest) +
                                       forwardAxis * wheelOffsetFromCentreOfMass.z;  // world position of the upper end of the suspension
@@ -302,7 +316,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
 
     // --- hull against the level: walls, ceilings, the road when the chassis bottoms out. Each probe sphere that overlaps
     // the level gets an impulse that stops it moving into the surface, a friction impulse along the surface, and is pushed out.
-    const Vec3f carOrigin = pos - (axes[0] * com.x + axes[1] * com.y + axes[2] * com.z);
+    const Vec3f carOrigin = pos - (axes[0] * centreOfMass.x + axes[1] * centreOfMass.y + axes[2] * centreOfMass.z);
     for (const Vec3f& probeInCarSpace : probes) {
         const Vec3f probeCentre = carOrigin + axes[0] * probeInCarSpace.x + axes[1] * probeInCarSpace.y + axes[2] * probeInCarSpace.z;
         Vec3f contactNormal;   // from the level towards the probe

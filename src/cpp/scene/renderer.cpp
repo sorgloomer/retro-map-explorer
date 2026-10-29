@@ -821,7 +821,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             // water instead, the windows would paint over it as if nothing was in between.
             if (pass == 1)
                 for (size_t i = 0; i < scene->movers.size(); i++) {
-                    if (!shown[i] || !scene->movers[i].external) continue;
+                    if (!shown[i] || !scene->movers[i].external || scene->movers[i].alwaysOnTop) continue;
                     setExposure(opt.exposure);
                     glDepthMask(GL_TRUE);
                     drawSet(geomGpu[scene->movers[i].geom], pass, models[i], scene->movers[i].lit);
@@ -832,7 +832,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             else drawSet(batches, pass, Mat4::identity());
             if (pass == 0 && opt.xrayEnabled() && opt.powerupMeshes) drawPowerupGhosts();
             for (size_t i = 0; i < scene->movers.size(); i++) {
-                if (!shown[i]) continue;
+                if (!shown[i] || scene->movers[i].alwaysOnTop) continue;  // those are drawn last, below
                 if (pass == 1 && scene->movers[i].external) continue;  // drawn before the level's blended surfaces
                 setExposure(scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
                 drawSet(geomGpu[scene->movers[i].geom], pass, models[i], scene->movers[i].lit);
@@ -843,6 +843,11 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         glDisable(GL_BLEND);
         glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
         glDisable(GL_CULL_FACE);
+        // debug markers: over everything, whatever is in front of them (no depth test, so they show through the car's hull)
+        glDisable(GL_DEPTH_TEST);
+        for (size_t i = 0; i < scene->movers.size(); i++)
+            if (shown[i] && scene->movers[i].alwaysOnTop) drawSet(geomGpu[scene->movers[i].geom], 0, models[i], false);
+        glEnable(GL_DEPTH_TEST);
     }
 
     // the game's collision mesh: a translucent overlay, nudged towards the camera so it wins against the surfaces it coincides with

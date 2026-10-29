@@ -431,7 +431,7 @@ void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
     std::string mo = kf.str("MOVABLE_OBJECTS"), mt;
     if (!mo.empty() && readNamedText(mo, mt)) {
         std::map<std::string, std::unique_ptr<BatchSet>> cache;
-        std::map<std::string, float> coms;
+        std::map<std::string, float> centresOfMass;
         for (const std::string& raw : splitLines(mt)) {
             std::string l = stripComment(raw);
             if (l.empty() || l[0] != '"') continue;
@@ -445,16 +445,16 @@ void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
                 auto bs = std::make_unique<BatchSet>();
                 dst = bs.get();
                 int mc = 0;
-                float com = 0;
-                emitHie(hie, mc, false, MIR_NONE, &com);
+                float centreOfMass = 0;
+                emitHie(hie, mc, false, MIR_NONE, &centreOfMass);
                 dst = nullptr;
                 if (mc == 0) bs.reset();
                 it = cache.emplace(vfs::lower(hie), std::move(bs)).first;
-                coms[vfs::lower(hie)] = com;
+                centresOfMass[vfs::lower(hie)] = centreOfMass;
             }
             if (!it->second) continue;
             // The descriptor places the object's centre of mass (the .dcol holds its height); the mesh sits on y = 0.
-            float com = coms[vfs::lower(hie)];
+            float centreOfMass = centresOfMass[vfs::lower(hie)];
             // position + rotation quaternion (x, y, z, w)
             float qx = v[3], qy = v[4], qz = v[5], qw = v[6];
             float r[3][3] = {{1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw), 2 * (qx * qz + qy * qw)},
@@ -465,7 +465,7 @@ void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
             for (const Batch& b : it->second->batches) {
                 vs = b.verts;
                 for (SceneVertex& sv : vs) {
-                    float x = sv.x, y = sv.y - com, z = sv.z;
+                    float x = sv.x, y = sv.y - centreOfMass, z = sv.z;
                     Vec3f w = fixX({r[0][0] * x + r[0][1] * y + r[0][2] * z + v[0], r[1][0] * x + r[1][1] * y + r[1][2] * z + v[1],
                                    r[2][0] * x + r[2][1] * y + r[2][2] * z + v[2]});
                     sv.x = w.x; sv.y = w.y; sv.z = w.z;

@@ -47,6 +47,7 @@ public:
     Vec3f up() const { return axes[1]; }
     Vec3f forward() const { return axes[2]; }
     Vec3f position() const { return pos; }   // centre of mass
+    Vec3f centreOfMassInCarSpace() const { return centreOfMass; }  // relative to the car's origin, for the debug marker
     Vec3f velocity() const { return vel; }
     float speed() const { return length(vel); }
     float forwardSpeed() const { return dot(vel, axes[2]); }
@@ -70,10 +71,12 @@ private:
     float meshWheelRadii[4] = {0, 0, 0, 0}, fileWheelRadii[4] = {0, 0, 0, 0}, fallbackWheelRadius = 0.34f;
     float fileSpringK = 0, fileDamper = 0;   // what the car's own files say (0: nothing)
     float springStiffness = 30000, damping = 3300;  // the ones in use (N/m, N s/m)
-    Vec3f com;                    // centre of mass in car space
+    Vec3f centreOfMass;                    // centre of mass in car space
     float fileMass = 0;           // what the car's own files say (0: nothing)
-    bool hasFileCom = false;
-    Vec3f fileCom;
+    bool hasFileCentreOfMass = false;
+    Vec3f fileCentreOfMassFraction;        // the centre of mass in the car's files: fractions of the chassis box from its centre
+    bool hasHullBox = false;      // the chassis hull box of the car's files
+    Vec3f hullBoxMin, hullBoxMax;
     Vec3f bmin, bmax;
     std::vector<Vec3f> probes;    // hull probe centres in car space (relative to the car origin)
     float probeR = 0.3f;

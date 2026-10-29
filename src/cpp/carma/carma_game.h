@@ -139,8 +139,8 @@ public:
 
 
     // mir: MIR_WORLD for level geometry; MIR_X / MIR_Z mirror model-space meshes (icons / path followers, whose forward is +X);
-    // MIR_NONE leaves the mesh raw. com receives the height of the centre of mass from the .dcol (movable objects).
-    void emitHie(const std::string& base, int& meshCount, bool water = false, int mir = MIR_WORLD, float* com = nullptr);
+    // MIR_NONE leaves the mesh raw. centreOfMass receives the height of the centre of mass from the .dcol (movable objects).
+    void emitHie(const std::string& base, int& meshCount, bool water = false, int mir = MIR_WORLD, float* centreOfMass = nullptr);
 
     // Paths: .lins + hie placed with parent matrices.
     void emitPaths(const std::string& hieBase, int catAI, int catRace, int catStart, int catDrone, bool drone);

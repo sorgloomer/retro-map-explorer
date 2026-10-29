@@ -160,6 +160,7 @@ struct Mover {
     bool staticModel = false;  // geometry is already in world space (merged props): draw with an identity transform
     bool external = false;     // `model` is set from outside every frame (the minigame's car); `cat` may be -1
     bool lit = false;          // shaded with the scene's Lighting
+    bool alwaysOnTop = false;  // drawn last without a depth test: visible through everything (debug markers)
     bool hidden = false;       // not drawn (collected pickups, the parked car)
     Mat4 model = Mat4::identity();
 
