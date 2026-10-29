@@ -91,6 +91,7 @@ void CollisionWorld::build(const std::vector<CollisionMesh>& meshes, float scale
             for (int k = 2; k < p.n; k++) {  // a fan: (0 1 2), (0 2 3), ...
                 Tri t;
                 t.twoSided = true;
+                t.friction = m.frictionOf(p.material);
                 t.a = m.verts[c[0]] * scale;
                 t.e1 = m.verts[c[k - 1]] * scale - t.a;
                 t.e2 = m.verts[c[k]] * scale - t.a;
@@ -189,8 +190,9 @@ void CollisionWorld::buildGrid() {
     }
 }
 
-bool CollisionWorld::raycast(const Vec3f& o, const Vec3f& d, float maxT, bool bothSides, float& tOut, Vec3f& normalOut) const {
+bool CollisionWorld::raycast(const Vec3f& o, const Vec3f& d, float maxT, bool bothSides, float& tOut, Vec3f& normalOut, float* frictionOut) const {
     float best = maxT;
+    float hitFriction = 1.0f;
     bool hit = false;
     auto test = [&](const Tri& t) {
         Vec3f pv = cross(d, t.e2);
@@ -208,6 +210,7 @@ bool CollisionWorld::raycast(const Vec3f& o, const Vec3f& d, float maxT, bool bo
         if (tt > 1e-4f && tt < best) {
             best = tt;
             normalOut = det > 0 ? t.n : t.n * -1.0f;
+            hitFriction = t.friction;
             hit = true;
         }
     };
@@ -230,7 +233,10 @@ bool CollisionWorld::raycast(const Vec3f& o, const Vec3f& d, float maxT, bool bo
             stack[sp++] = n.child[1];
         }
     }
-    if (hit) tOut = best;
+    if (hit) {
+        tOut = best;
+        if (frictionOut) *frictionOut = hitFriction;
+    }
     return hit;
 }
 

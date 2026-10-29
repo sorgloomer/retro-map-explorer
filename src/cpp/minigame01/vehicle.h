@@ -32,6 +32,8 @@ public:
         float slip = 0;     // slip angle, radians
         float lateralForce = 0;  // N, across the wheel on the road (positive: towards the car's right); for the debug display
         float lateralLimit = 0;  // N, the most the tyre could push sideways (grip limit, handbrake included)
+        float longitudinalForce = 0;  // N, along the wheel on the road (positive: forward); for the debug display
+        float frictionLimit = 0;      // N, the most the tyre could push in any direction (the friction circle)
         bool sliding = false;    // the sideways force wanted was over the limit: the tyre slides
         bool grounded = false;
     };
@@ -74,7 +76,7 @@ private:
     Vec3f centreOfMass;                    // centre of mass in car space
     float fileMass = 0;           // what the car's own files say (0: nothing)
     bool hasFileCentreOfMass = false;
-    Vec3f fileCentreOfMassFraction;        // the centre of mass in the car's files: fractions of the chassis box from its centre
+    Vec3f fileCentreOfMassOffset;          // the centre of mass in the car's files: metres from the car's origin
     bool hasHullBox = false;      // the chassis hull box of the car's files
     Vec3f hullBoxMin, hullBoxMax;
     Vec3f bmin, bmax;

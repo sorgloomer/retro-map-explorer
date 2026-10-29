@@ -185,6 +185,8 @@ body.playing #canvas { cursor: default; }
 .gd-name { width: 20px; }
 .gd-bar { position: relative; width: 90px; height: 8px; background: rgba(255, 255, 255, .12); border-radius: 2px; }
 .gd-bar::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: rgba(255, 255, 255, .5); }
+.gd-bars { display: flex; flex-direction: column; gap: 3px; }
+.gd-bar.gd-long i { background: #e0b34a; }  /* the force along the wheel: amber, the sideways one is green */
 .gd-bar i { position: absolute; top: 0; bottom: 0; background: #62c46a; border-radius: 2px; }
 .gd-row.slide .gd-bar i { background: #ff5d5d; }
 .gd-row.slide .gd-num { color: #ff8a8a; }

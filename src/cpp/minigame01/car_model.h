@@ -22,10 +22,9 @@ struct CarModel {
     Vec3f boundsMin, boundsMax;  // of the chassis
     float mass = 0;                  // kg, from the car's own files; 0 when they do not say
     bool hasCentreOfMass = false;
-    // Where the car's own files put the centre of mass, as fractions of the chassis box measured from its geometric centre
-    // (car space: x towards the right, y up, z forward): z = -0.2 is a fifth of the length towards the rear, y = -0.1 is a tenth
-    // of the height below the middle, x = 0 is no left-right bias.
-    Vec3f centreOfMassFraction;
+    // Where the car's own files put the centre of mass: metres from the car's origin (car space: x towards the right, y up,
+    // z forward). The game stores the opposite vector (the origin seen from the centre of mass) and adds it to every position.
+    Vec3f centreOfMassOffset;
     // The chassis hull of the car's files (the physics shape, without the roof spike and the like), as a box in car space.
     bool hasHullBox = false;
     Vec3f hullBoxMin, hullBoxMax;

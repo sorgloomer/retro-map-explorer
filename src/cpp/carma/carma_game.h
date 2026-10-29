@@ -204,6 +204,9 @@ public:
     bool readGeometry(const KeyFile& kf, int& meshCount, std::string& err);  // STATIC_MESH_DESCRIPTOR + WATER_MESH
     void findCollision(const std::vector<std::string>& descriptors, Scene& out);  // names the .scol files; read on first use
     static bool parseCollisionMesh(const std::vector<uint8_t>& data, CollisionMesh& out);
+    // The tyre friction of each material of a collision mesh: the "#define NAME index" list in the .h next to the .scol, each name
+    // (without its trailing digits) the Attribute_<name>.txt of the game's ATTRIBUTES archive, whose WHEEL_FRICTION is read.
+    void loadMaterialFriction(const std::string& scolName, CollisionMesh& m);
     static void buildCollisionOverlay(const CollisionMesh& mesh, BatchSet& out);
     Cats addCategories(Scene& out);
     void addStart(const KeyFile& kf, Scene& out, const Cats& c);

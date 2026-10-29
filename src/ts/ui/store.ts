@@ -27,7 +27,7 @@ export interface SceneView {
 }
 
 /** One tyre's sideways force, for the debug panel (N). */
-export interface WheelDebug { lat: number; limit: number; slide: number; slip: number; load: number }
+export interface WheelDebug { lat: number; limit: number; lon: number; fric: number; slide: number; slip: number; load: number }
 
 export interface GameHud {
   speed: number;

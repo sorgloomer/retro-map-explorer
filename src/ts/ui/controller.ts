@@ -55,15 +55,16 @@ function dropRestore(): void {
 
 let sceneLoaded = false, lastSaved = '';
 
-// Layers are shown in groups, each with a checkbox that switches the whole group. Only the first group (pickups and
-// powerups) is visible by default; the last one (Misc) also takes every layer that is not listed.
+// Layers are shown in groups, each with a checkbox that switches the whole group. The first group (pickups and
+// powerups) is visible by default, plus the props and movers of Misc, which also takes every layer that is not listed.
 const LAYER_GROUPS: { title: string; ids: string[] }[] = [
   { title: 'Pickups & powerups', ids: ['powerup', 'timepowerup', 'notable', 'pedpowerup', 'upgrade', 'credit', 'pickup', 'star'] },
   { title: 'Course & paths', ids: ['start', 'checkpoint', 'raceline', 'startline', 'aipath', 'path', 'zone', 'trigger'] },
   { title: 'Mission', ids: ['missionitem', 'mission', 'ped'] },
   { title: 'Misc', ids: ['props', 'movers', 'drone', 'followerpath', 'animpath'] },  // listed first, in this order; then everything else
 ];
-const defaultLayerVisible = (id: string) => (LAYER_GROUPS[0].ids.includes(id) ? 1 : 0);
+const DEFAULT_VISIBLE_EXTRA = ['props', 'movers'];  // destructible and movable objects are shown from the start
+const defaultLayerVisible = (id: string) => (LAYER_GROUPS[0].ids.includes(id) || DEFAULT_VISIBLE_EXTRA.includes(id) ? 1 : 0);
 
 // ---------------------------------------------------------------- status, busy
 function setStatus(text: string, error = false): void { update({ status: { text: text || '', error } }); }

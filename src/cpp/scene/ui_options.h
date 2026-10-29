@@ -8,7 +8,7 @@ struct UiOptions {
     float exposure = 1.35f;
     float haloExposure = 1.35f;
     bool textured = true;
-    float powerupScale = 0.0f;  // slider 0..1: log10 of the powerup size factor
+    float powerupScale = 0.1f;  // slider 0..1: log10 of the powerup size factor
     float lineWidth = 3.0f;
     float xrayStrength = 1.0f;
     bool showGeometry = true;

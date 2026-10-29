@@ -102,6 +102,8 @@ struct CollisionMesh {
     std::vector<Poly> polys;
     std::vector<Node> nodes;
     int root = 0;
+    std::vector<float> materialFriction;  // tyre friction multiplier by material index (the level's Attribute files); empty: 1 everywhere
+    float frictionOf(uint8_t material) const { return material < materialFriction.size() ? materialFriction[material] : 1.0f; }
 };
 
 // A set of batches keyed by (texture, blend mode).

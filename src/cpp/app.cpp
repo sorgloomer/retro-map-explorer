@@ -308,13 +308,13 @@ void pushGameHud() {
     EM_ASM({
         if (window.RME && window.RME.onGameHud) window.RME.onGameHud($0, $1, $2, $3, $4, $5, $6, UTF8ToString($7), $8);
     }, (double)h.speedKmh, h.score, h.driftScore, (double)h.timeLeft, h.collected, h.total, h.state, h.message, (double)h.messageAge);
-    // the tyres' sideways forces, for the debug panel: [{lat, limit, slide, slip, load}] for FL, FR, RL, RR
-    char json[512];
+    // the tyres' sideways forces, for the debug panel: [{lat, limit, lon, fric, slide, slip, load}] for FL, FR, RL, RR
+    char json[768];
     int len = snprintf(json, sizeof json, "[");
     for (int i = 0; i < 4; i++) {
         const minigame01::Vehicle::Wheel& w = app.mg.vehicleState().wheel(i);
-        len += snprintf(json + len, sizeof json - len, "%s{\"lat\":%.0f,\"limit\":%.0f,\"slide\":%d,\"slip\":%.3f,\"load\":%.0f}", i ? "," : "",
-                        w.lateralForce, w.lateralLimit, w.sliding ? 1 : 0, w.slip, w.load);
+        len += snprintf(json + len, sizeof json - len, "%s{\"lat\":%.0f,\"limit\":%.0f,\"lon\":%.0f,\"fric\":%.0f,\"slide\":%d,\"slip\":%.3f,\"load\":%.0f}", i ? "," : "",
+                        w.lateralForce, w.lateralLimit, w.longitudinalForce, w.frictionLimit, w.sliding ? 1 : 0, w.slip, w.load);
     }
     snprintf(json + len, sizeof json - len, "]");
     EM_ASM({ if (window.RME && window.RME.onGameDebug) window.RME.onGameDebug(UTF8ToString($0)); }, json);

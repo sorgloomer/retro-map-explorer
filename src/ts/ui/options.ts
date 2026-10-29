@@ -5,7 +5,7 @@ export interface OptDef { key: string; name: string; def: number }
 export const OPTS: OptDef[] = [
   { key: 'optExposure', name: 'exposure', def: 1.35 },
   { key: 'optPupExposure', name: 'haloExposure', def: 1.35 },
-  { key: 'optPupScale', name: 'powerupScale', def: 0 },
+  { key: 'optPupScale', name: 'powerupScale', def: 0.1 },
   { key: 'optXray', name: 'xrayStrength', def: 0.2 },
   { key: 'beams', name: 'beams', def: 0 },
   { key: 'pupMeshes', name: 'powerupMeshes', def: 1 },

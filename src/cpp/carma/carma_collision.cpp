@@ -7,7 +7,10 @@
 //       a child id below polygonCount is that polygon, otherwise it is node (id - polygonCount); each node box is the exact
 //       union of its children's boxes
 //   u32 root id (the first node)
+#include <cctype>
+#include <cstdio>
 #include <cstring>
+#include <map>
 #include "carma/carma_game.h"
 #include "scene/subdivide.h"
 #include "vfs.h"
@@ -108,6 +111,38 @@ void CarmaGame::buildCollisionOverlay(const CollisionMesh& m, BatchSet& out) {
     }
 }
 
+void CarmaGame::loadMaterialFriction(const std::string& scolName, CollisionMesh& m) {
+    std::string header;
+    if (scolName.size() < 5 || !readNamedText(scolName.substr(0, scolName.size() - 5) + ".h", header)) return;
+    Pak* attributes = pakForHie("ATTRIBUTES");
+    if (!attributes) return;
+    std::map<std::string, float> byName;  // cache: several materials share an attribute file
+    for (const std::string& line : splitLines(header)) {
+        char name[128];
+        int index;
+        if (sscanf(line.c_str(), "#define %127s %d", name, &index) != 2 || index < 0 || index > 255) continue;
+        std::string base = name;
+        while (!base.empty() && isdigit((unsigned char)base.back())) base.pop_back();  // BLUEROAD2 -> BLUEROAD (the digit keeps names unique)
+        float friction = 1.0f;                                                       // no attribute file of that name: plain road
+        auto it = byName.find(vfs::lower(base));
+        if (it != byName.end()) {
+            friction = it->second;
+        } else {
+            const int entry = attributes->find("Attribute_" + base + ".txt");
+            std::vector<uint8_t> data;
+            if (entry >= 0 && attributes->extract(entry, data)) {
+                for (const std::string& l : splitLines(std::string((const char*)data.data(), data.size()))) {
+                    float v;
+                    if (sscanf(l.c_str(), "WHEEL_FRICTION %f", &v) == 1) friction = v;
+                }
+            }
+            byName[vfs::lower(base)] = friction;
+        }
+        if (m.materialFriction.size() <= (size_t)index) m.materialFriction.resize((size_t)index + 1, 1.0f);
+        m.materialFriction[(size_t)index] = friction;
+    }
+}
+
 // Names the .scol files of the level's collision descriptors (the fourth column of the static mesh descriptor). Only the small
 // text files are read here; the meshes themselves are read the first time the scene needs them (Scene::ensureCollision).
 void CarmaGame::findCollision(const std::vector<std::string>& descriptors, Scene& out) {
@@ -129,6 +164,7 @@ void CarmaGame::findCollision(const std::vector<std::string>& descriptors, Scene
                 s.collisionErrors.push_back(f);
                 continue;
             }
+            loadMaterialFriction(f, m);
             if (s.smoothPasses > 0) smoothCollisionMesh(m, s.smoothPasses);
             buildCollisionOverlay(m, s.collision);
             s.collisionMeshes.push_back(std::move(m));

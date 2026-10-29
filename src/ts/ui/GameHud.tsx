@@ -78,22 +78,28 @@ function LateralForces() {
     <div class={'gh-debug' + (shown ? '' : ' closed')}>
       <div class="gd-head">
         <button type="button" class="gd-title" onClick={(e) => { toggleDebugPanel(); e.currentTarget.blur(); }}
-          title="Show or hide the lateral force panel (L)">{shown ? '▾' : '▸'} tyre forces{shown ? ' (kN): lateral / limit (+ = right), slip, suspension' : ''} <kbd>L</kbd></button>
+          title="Show or hide the lateral force panel (L)">{shown ? '▾' : '▸'} tyre forces{shown ? ' (kN): lateral / limit (+ = right), longitudinal / limit (+ = forward), slip, suspension' : ''} <kbd>L</kbd></button>
         <button type="button" class="gd-config" onClick={(e) => { setParamsEditor(true); e.currentTarget.blur(); }}
           title="Edit the minigame's parameters as JSON">configure</button>
       </div>
       {shown && wheels.map((w, i) => (
         <div class={'gd-row' + (w.slide ? ' slide' : '')}>
           <span class="gd-name">{WHEEL_NAMES[i]}</span>
+          <span class="gd-bars">
           <span class="gd-bar">
             <i style={{ left: w.lat < 0 ? `${50 - Math.min(50, (-w.lat / (w.limit || 1)) * 50)}%` : '50%', width: `${Math.min(50, (Math.abs(w.lat) / (w.limit || 1)) * 50)}%` }} />
           </span>
+          <span class="gd-bar gd-long">
+            <i style={{ left: w.lon < 0 ? `${50 - Math.min(50, (-w.lon / (w.fric || 1)) * 50)}%` : '50%', width: `${Math.min(50, (Math.abs(w.lon) / (w.fric || 1)) * 50)}%` }} />
+          </span>
+          </span>
           <span class="gd-num">{(w.lat / 1000).toFixed(1)} / {(w.limit / 1000).toFixed(1)}</span>
+          <span class="gd-num">{(w.lon / 1000).toFixed(1)} / {(w.fric / 1000).toFixed(1)}</span>
           <span class="gd-num">{(w.slip * 57.3).toFixed(0)}°</span>
           <span class="gd-num gd-susp">{(w.load / 1000).toFixed(1)}</span>
         </div>
       ))}
-      {shown && <div class="gd-total">total lateral {(total / 1000).toFixed(1)} kN · suspension {(wheels.reduce((sum, w) => sum + w.load, 0) / 1000).toFixed(1)} kN</div>}
+      {shown && <div class="gd-total">total lateral {(total / 1000).toFixed(1)} kN · longitudinal {(wheels.reduce((sum, w) => sum + w.lon, 0) / 1000).toFixed(1)} kN · suspension {(wheels.reduce((sum, w) => sum + w.load, 0) / 1000).toFixed(1)} kN</div>}
     </div>
   );
 }

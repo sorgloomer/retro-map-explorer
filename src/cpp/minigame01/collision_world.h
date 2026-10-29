@@ -19,7 +19,8 @@ public:
 
     // First triangle hit by the ray within maxT. Front faces only unless bothSides (or the triangle is two-sided); returns the unit normal of the hit face
     // (pointing against the ray).
-    bool raycast(const Vec3f& origin, const Vec3f& dir, float maxT, bool bothSides, float& tOut, Vec3f& normalOut) const;
+    // frictionOut (optional): the tyre friction multiplier of the surface that was hit.
+    bool raycast(const Vec3f& origin, const Vec3f& dir, float maxT, bool bothSides, float& tOut, Vec3f& normalOut, float* frictionOut = nullptr) const;
 
     // Deepest overlap of a sphere with the level: normal points from the surface towards the sphere centre.
     bool sphereContact(const Vec3f& centre, float radius, Vec3f& normalOut, float& depthOut) const;
@@ -28,6 +29,7 @@ private:
     struct Tri {
         Vec3f a, e1, e2, n;  // vertex, edges, unit face normal
         bool twoSided = false;  // the material is drawn without back-face culling: solid from either side
+        float friction = 1.0f;  // tyre friction multiplier of the surface
     };
     // One of the game's meshes: its polygons as triangles, under its hierarchy of boxes.
     struct Bvh {

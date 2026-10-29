@@ -40,7 +40,7 @@ void Vehicle::init(const CarModel& m) {
     bmax = m.boundsMax;
     fileMass = m.mass;
     hasFileCentreOfMass = m.hasCentreOfMass;
-    fileCentreOfMassFraction = m.centreOfMassFraction;
+    fileCentreOfMassOffset = m.centreOfMassOffset;
     hasHullBox = m.hasHullBox;
     hullBoxMin = m.hullBoxMin;
     hullBoxMax = m.hullBoxMax;
@@ -67,14 +67,9 @@ void Vehicle::applyTuning() {
     float frontZ = 0.5f * (wheelRest[0].z + wheelRest[1].z), rearZ = 0.5f * (wheelRest[2].z + wheelRest[3].z);
     float axleY = 0.25f * (wheelRest[0].y + wheelRest[1].y + wheelRest[2].y + wheelRest[3].y);
     if (P.centreOfMassFromFile > 0.5f && hasFileCentreOfMass) {
-        // the car's own files say where it is: fractions of the chassis box, from the box's geometric centre; the box is the hull
-        // of the car's files (the physics shape) or, as a choice, the whole body mesh (which includes the roof spike)
-        const bool useHull = P.centreOfMassBoxFromFile > 0.5f && hasHullBox;
-        const Vec3f boxMin = useHull ? hullBoxMin : bmin, boxMax = useHull ? hullBoxMax : bmax;
-        const Vec3f boxCentre = (boxMin + boxMax) * 0.5f;
-        const Vec3f boxSize = boxMax - boxMin;
-        centreOfMass = boxCentre + Vec3f(fileCentreOfMassFraction.x * boxSize.x, fileCentreOfMassFraction.y * boxSize.y, fileCentreOfMassFraction.z * boxSize.z);
-        centreOfMass.y -= P.centreOfMassLowering * boxSize.y;  // lowered further by a fraction of the box height, as configured
+        // the car's own files say where it is: metres from the car's origin (what TDR2000.exe does with the vector it reads)
+        centreOfMass = fileCentreOfMassOffset;
+        centreOfMass.y -= P.centreOfMassLowering;  // lowered further by this many metres, as configured
     } else {
         // low, and towards the rear axle (so the rear tyres, which drive the car, carry more of the weight)
         centreOfMass = Vec3f(0, axleY - wheelR + P.centreOfMassHeight, rearZ + P.centreOfMassFromRearAxle * (frontZ - rearZ));
@@ -212,12 +207,13 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
                                       upAxis * (wheelOffsetFromCentreOfMass.y + P.suspRest) +
                                       forwardAxis * wheelOffsetFromCentreOfMass.z;  // world position of the upper end of the suspension
         const float suspensionRayLength = P.suspMax + wheelRadii[i];  // fully extended suspension plus the wheel's radius
+        float roadFriction = 1.0f;  // the surface's tyre friction multiplier (Attribute files: grass 0.8, road 1.0, ...)
         float rayHitDistance;     // from the mount to the road
         Vec3f groundNormal;       // unit normal of the road where the ray hit
         wheel.grounded = false;
         wheel.load = 0;
         float suspensionLength = P.suspMax;  // from the mount to the wheel centre; the maximum when nothing is under the wheel
-        if (world.raycast(suspensionMount, upAxis * -1.0f, suspensionRayLength, false, rayHitDistance, groundNormal)) {
+        if (world.raycast(suspensionMount, upAxis * -1.0f, suspensionRayLength, false, rayHitDistance, groundNormal, &roadFriction)) {
             suspensionLength = std::max(P.suspMin, rayHitDistance - wheelRadii[i]);
             if (suspensionLength < P.suspMax) wheel.grounded = true;
         }
@@ -251,7 +247,11 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             // Force along the rolling direction: engine on the rear wheels (half each), brakes, rolling resistance.
             float longitudinalForce = 0;
             if (isRearWheel) longitudinalForce += driveForce * 0.5f;
-            const float frictionLimit = P.grip * suspensionForce;  // N: the most the tyre can push with, in any direction
+            // The original game takes the friction from the static weight of a quarter of the car, not from the wheel's current
+            // load, so load transfer does not change the grip (no feedback that lifts the nose or tips the car over).
+            const float staticWheelLoad = mass * P.gravity * 0.25f;
+            const float frictionLoad = staticWheelLoad + (suspensionForce - staticWheelLoad) * P.tyreLoadSensitivity;
+            const float frictionLimit = P.grip * (1.0f + (roadFriction - 1.0f) * P.surfaceFrictionEffect) * frictionLoad;  // N: the most the tyre can push with, in any direction
             float brakingForce = brakeInput * P.brakeForce * frictionLimit;
             if (isRearWheel) brakingForce = std::max(brakingForce, handbrakeInput * P.handbrakeBrake * frictionLimit);
             const float rollingDirection = longitudinalSpeed > 0 ? 1.0f : -1.0f;  // brakes and resistance act against the motion
@@ -265,8 +265,21 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             const float handbrakeGripFactor = (isRearWheel && handbrakeInput > 0.05f) ? 1.0f - P.handbrakeGripLoss * handbrakeInput : 1.0f;
             const float lateralFrictionLimit = frictionLimit * handbrakeGripFactor;
             float lateralForce = -lateralSpeed * massPerWheel / stepSeconds * P.lateralStiffness;
-            const bool isSliding = std::fabs(lateralForce) > lateralFrictionLimit;
-            if (isSliding) lateralForce = (lateralForce > 0 ? 1.0f : -1.0f) * lateralFrictionLimit * P.slideGrip;
+            bool isSliding = std::fabs(lateralForce) > lateralFrictionLimit;
+            if (P.tyreSlipCurve > 0.5f) {
+                // The game's slip curve: the slip is the sideways speed relative to the speed of the contact point (at least a
+                // floor), and the grip grows with it up to a plateau. The force is capped at what stops the slide in one step.
+                const float contactSpeed = std::max(std::sqrt(longitudinalSpeed * longitudinalSpeed + lateralSpeed * lateralSpeed), P.tyreSlipFloorSpeed);
+                const float slipFraction = std::fabs(lateralSpeed) / contactSpeed;
+                const float gripFraction = slipFraction < P.tyreSlipKnee
+                    ? P.tyreSlipKneeValue * slipFraction / P.tyreSlipKnee
+                    : std::min(1.0f, P.tyreSlipKneeValue + (1.0f - P.tyreSlipKneeValue) * (slipFraction - P.tyreSlipKnee) / (P.tyreSlipFull - P.tyreSlipKnee));
+                const float stopForce = std::fabs(lateralSpeed) * massPerWheel / stepSeconds;
+                lateralForce = -(lateralSpeed > 0 ? 1.0f : -1.0f) * std::min(gripFraction * lateralFrictionLimit, stopForce);
+                isSliding = gripFraction >= 1.0f;
+            } else if (isSliding) {
+                lateralForce = (lateralForce > 0 ? 1.0f : -1.0f) * lateralFrictionLimit * P.slideGrip;
+            }
             // the friction circle: what the sideways force uses of the grip is not left for pushing along the wheel
             const float longitudinalFrictionLimit = std::sqrt(std::max(0.0f, frictionLimit * frictionLimit - lateralForce * lateralForce));
             longitudinalForce = clampf(longitudinalForce, -longitudinalFrictionLimit, longitudinalFrictionLimit);
@@ -277,6 +290,8 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             totalTorque += cross(tyreForceOffset, tyreForce);
 
             wheel.lateralForce = lateralForce;
+            wheel.longitudinalForce = longitudinalForce;
+            wheel.frictionLimit = frictionLimit;
             wheel.lateralLimit = lateralFrictionLimit;
             wheel.sliding = isSliding;
             wheel.slip = std::atan2(std::fabs(lateralSpeed), std::fabs(longitudinalSpeed) + 1.0f);  // slip angle, radians (+1: no jump near standstill)
@@ -287,6 +302,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             wheel.spin += (forwardSpeed / wheelRadii[i]) * stepSeconds * 0.5f;  // in the air: turns slowly with the car's speed
             wheel.slip = 0;
             wheel.lateralForce = wheel.lateralLimit = 0;
+            wheel.longitudinalForce = wheel.frictionLimit = 0;
             wheel.sliding = false;
             if (isFrontWheel) wheel.steer = steerAngle;
         }

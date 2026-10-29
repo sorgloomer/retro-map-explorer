@@ -210,6 +210,7 @@ static void smoothCollisionPass(CollisionMesh& m, float creaseDegrees) {
     sm.finish();
 
     CollisionMesh out;
+    out.materialFriction = m.materialFriction;
     out.verts.resize(weld.pos.size());
     for (size_t v = 0; v < weld.pos.size(); v++) out.verts[v] = sm.vertexPos((uint32_t)v);
     std::unordered_map<uint64_t, uint32_t> mid;  // edge -> its new vertex (shared by the faces next to it)

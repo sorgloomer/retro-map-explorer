@@ -253,9 +253,10 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
     out.name = "Eagle";
 
     // The chassis .dcol the descriptor names ("Shadow dcol filename") starts with the car's mass in kg (the kerb weight of its
-    // text file), then a width, height and length (m), and at byte 24 a vector that is taken as the centre of mass in fractions
-    // of the chassis box, from its geometric centre: (-0.2, 0.1, 0) for the Eagle. Read as: first = along the car (negative:
-    // towards the rear), second = vertical (positive: below the middle), third = sideways (0: no bias).
+    // text file), then a width, height and length (m) of the box the inertia comes from, a margin, and at byte 20 a vector
+    // (x, y, z) that TDR2000.exe (body constructor 0x51E180) stores in the body and adds to every part position to make it
+    // relative to the centre of mass. So the centre of mass is the negative of it, in metres from the car's origin (which is at
+    // axle height): (0, -0.2, 0.1) for the Eagle puts it 0.2 m above the origin and 0.1 m towards the rear.
     const std::string dcolName = descriptorValue(dlines, "Shadow dcol filename");
     const int dcolEntry = dcolName.empty() ? -1 : pk->find(dcolName);
     std::vector<uint8_t> dcol;
@@ -263,7 +264,7 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
         float f[9];
         memcpy(f, dcol.data(), sizeof f);
         if (f[0] > 1.0f) out.mass = f[0];
-        out.centreOfMassFraction = Vec3f(-f[8], -f[7], f[6]);  // sideways (mirrored like the rest of the car), up (the file counts downwards), forward
+        out.centreOfMassOffset = Vec3f(f[5], -f[6], -f[7]);  // the negative vector; x is mirrored like the rest of the car, so it stays
         out.hasCentreOfMass = true;
         // The chassis hull follows the header: a count at byte 60, then that many points (x, y, z), in the car's own space.
         // The fractions are measured against its box, which is the physics shape: the body mesh also has the roof spike.
