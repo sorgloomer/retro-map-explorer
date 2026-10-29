@@ -8,7 +8,7 @@ namespace minigame01 {
 
 namespace {
 
-enum Held { H_FWD, H_BACK, H_LEFT, H_RIGHT, H_HAND };
+enum Held { H_FWD, H_BACK, H_LEFT, H_RIGHT, H_HAND, H_AFTERBURNER };
 
 float approach(float v, float target, float rate, float dt) {
     float d = target - v;
@@ -31,6 +31,8 @@ bool Input::key(const char* code, bool down, bool repeat) {
     if (!strcmp(code, "KeyA") || !strcmp(code, "ArrowLeft")) { held[H_LEFT] = down; return true; }
     if (!strcmp(code, "KeyD") || !strcmp(code, "ArrowRight")) { held[H_RIGHT] = down; return true; }
     if (!strcmp(code, "Space")) { held[H_HAND] = down; return true; }
+    if (!strcmp(code, "Digit1") || !strcmp(code, "Numpad1")) { held[H_AFTERBURNER] = down; return true; }
+    if (!strcmp(code, "Digit2") || !strcmp(code, "Numpad2")) { if (down && !repeat) edgeKangaroo = true; return true; }
     if (!strcmp(code, "KeyR")) { if (down && !repeat) edgeReset = true; return true; }
     if (!strcmp(code, "KeyC")) { if (down && !repeat) edgeCamera = true; return true; }
     if (!strcmp(code, "Enter")) { if (down && !repeat) edgeRestart = true; return true; }
@@ -86,7 +88,9 @@ Controls Input::update(float dt) {
     c.reset = edgeReset;
     c.restart = edgeRestart;
     c.toggleCamera = edgeCamera;
-    edgeReset = edgeRestart = edgeCamera = false;
+    c.afterburner = held[H_AFTERBURNER];
+    c.kangaroo = edgeKangaroo;
+    edgeReset = edgeRestart = edgeCamera = edgeKangaroo = false;
 
     // gamepad (the first connected one)
     pad = false;

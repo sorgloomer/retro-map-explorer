@@ -322,6 +322,8 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     vi.brake = c.brake;
     vi.steer = c.steer;
     vi.handbrake = c.handbrake;
+    vi.afterburner = c.afterburner;
+    vi.jump = c.kangaroo;
     vehicle.step(dt, vi, world);
 
     // last safe spot (wheels down, upright), for falling out of the world

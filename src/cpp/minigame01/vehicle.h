@@ -13,6 +13,8 @@ struct VehicleInput {
     float brake = 0;      // 0..1 (also reverses once the car stands still)
     float steer = 0;      // -1 left .. 1 right
     float handbrake = 0;  // 0..1
+    bool afterburner = false;  // thrust forward while true
+    bool jump = false;         // one upward impulse (kangaroo); the caller sets it for a single step per key press
 };
 
 struct Quat {

@@ -27,7 +27,9 @@ constexpr float kRollResist = 0.016f;
 constexpr float kDrag = 0.25f;         // 0.5 * rho * Cd * A
 constexpr float kDownforce = 0.9f;      // N per (m/s)^2
 constexpr float kMaxSpeed = 500.0f;     // m/s (hard limit)
-constexpr float kRollCentre = 0.30f;    // tyre side forces act this far above the road: less body roll
+constexpr float kAfterburnerForce = 36000.0f;  // N: about three times the car's weight, in the direction it faces
+constexpr float kKangarooSpeed = 8.0f;         // m/s added upwards per jump (about 3 m high from rest)
+constexpr float kRollCentre =0.30f;    // tyre side forces act this far above the road: less body roll
 
 Vec3f quatRotate(const Quat& q, const Vec3f& v) {
     Vec3f u(q.x, q.y, q.z);
@@ -125,6 +127,7 @@ void Vehicle::step(float dt, const VehicleInput& in, const CollisionWorld& world
     int n = std::max(1, (int)std::ceil(dt / kStep));
     float h = dt / (float)n;
     impact_ = 0;
+    if (in.jump) vel += Vec3f(0, kKangarooSpeed, 0);  // an impulse, once per press: straight up whatever the car's attitude
     for (int i = 0; i < n; i++) substep(h, in, world);
 }
 
@@ -156,6 +159,7 @@ void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& wor
     // drag and downforce
     force += vel * (-kDrag * speed);
     force += u * (-kDownforce * speed * speed);
+    if (in.afterburner) force += f * kAfterburnerForce;  // a rocket along the car's nose
 
     groundedCount = 0;
     float maxSlipSide = 0;
@@ -233,11 +237,9 @@ void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& wor
     }
     drift_ = speed > 8.0f ? clampf((maxSlipSide - 0.12f) / 0.45f, 0.0f, 1.0f) : 0.0f;
 
-    // in the air: a little damping and a gentle pull towards level flight so jumps land on the wheels
+    // in the air: a little damping, the car tumbles freely otherwise
     if (groundedCount == 0) {
         angVel = angVel * (1.0f - 0.6f * h);
-        Vec3f corr = cross(u, Vec3f(0, 1, 0));
-        torque += corr * (inertia.x * 2.0f);
     } else {
         angVel = angVel * (1.0f - 0.35f * h);
     }

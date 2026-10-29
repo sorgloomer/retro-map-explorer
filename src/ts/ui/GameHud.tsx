@@ -93,7 +93,7 @@ export function GameHud() {
       </div>
       <p class="gh-help">
         <kbd>W</kbd><kbd>S</kbd> gas / brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>R</kbd> upright ·
-        <kbd>C</kbd> camera · <kbd>Esc</kbd> exit — or use a gamepad (RT / LT, left stick, A, Y, Back)
+        <kbd>C</kbd> camera · <kbd>1</kbd> afterburner · <kbd>2</kbd> kangaroo · <kbd>Esc</kbd> exit — or use a gamepad (RT / LT, left stick, A, Y, Back)
       </p>
     </div>
   );
