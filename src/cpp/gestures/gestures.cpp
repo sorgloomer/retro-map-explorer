@@ -7,7 +7,7 @@ namespace {
 
 // Two-finger gestures normally pivot on the midpoint between the fingers. When the second finger touches down at least this
 // long after the first one, the first finger (which was already holding a spot on the map) is the pivot instead.
-constexpr double kFirstFingerPivotDelayMs = 250.0;
+constexpr double kFirstFingerPivotDelayMs = 150.0;
 
 Vec2i clientPos(const EmscriptenMouseEvent* e) { return {e->clientX, e->clientY}; }
 

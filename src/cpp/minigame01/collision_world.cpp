@@ -51,11 +51,11 @@ void CollisionWorld::build(const Scene& scene, float scale, bool bothSides) {
     cellItems.clear();
     nx = nz = 0;
     for (const Batch& b : scene.batches) {
-        if (b.blend == BLEND_ADD || b.blend == BLEND_ALPHA || b.twoSided) continue;
         for (size_t i = 0; i + 2 < b.idx.size(); i += 3) {
             const SceneVertex &va = b.verts[b.idx[i]], &vb = b.verts[b.idx[i + 1]], &vc = b.verts[b.idx[i + 2]];
             Tri t;
-            t.a = Vec3f(va.x, va.y, va.z) * scale;
+            t.twoSided = b.twoSided;
+            t.a =Vec3f(va.x, va.y, va.z) * scale;
             t.e1 = Vec3f(vb.x, vb.y, vb.z) * scale - t.a;
             t.e2 = Vec3f(vc.x, vc.y, vc.z) * scale - t.a;
             Vec3f n = cross(t.e1, t.e2);
@@ -122,7 +122,7 @@ bool CollisionWorld::raycast(const Vec3f& o, const Vec3f& d, float maxT, bool bo
         Vec3f pv = cross(d, t.e2);
         float det = dot(t.e1, pv);
         if (std::fabs(det) < 1e-9f) return;
-        if (!bothSides && !bothSidesSolid && det < 0) return;  // back face (same rule as the renderer's culling)
+        if (!bothSides && !bothSidesSolid && !t.twoSided && det < 0) return;  // back face (same rule as the renderer's culling)
         float inv = 1.0f / det;
         Vec3f tv = o - t.a;
         float u = dot(tv, pv) * inv;

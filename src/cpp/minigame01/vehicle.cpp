@@ -20,13 +20,13 @@ constexpr float kDamper = 3300.0f;      // N s/m
 // --- tyres and engine
 constexpr float kGrip = 1.12f;          // friction coefficient on the road
 constexpr float kSlideGrip = 0.86f;     // part of the grip left while sliding
-constexpr float kEngineForce = 8800.0f; // N at the wheels at low speed
-constexpr float kEnginePower = 210000.0f;  // W
+constexpr float kEngineForce = 10500.0f; // N at the wheels at low speed
+constexpr float kEnginePower = 420000.0f;  // W
 constexpr float kBrakeForce = 1.0f;     // of the friction limit
 constexpr float kRollResist = 0.016f;
-constexpr float kDrag = 0.46f;          // 0.5 * rho * Cd * A
+constexpr float kDrag = 0.25f;         // 0.5 * rho * Cd * A
 constexpr float kDownforce = 0.9f;      // N per (m/s)^2
-constexpr float kMaxSpeed = 95.0f;      // m/s (hard limit)
+constexpr float kMaxSpeed = 500.0f;     // m/s (hard limit)
 constexpr float kRollCentre = 0.30f;    // tyre side forces act this far above the road: less body roll
 
 Vec3f quatRotate(const Quat& q, const Vec3f& v) {
