@@ -202,7 +202,70 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
     bounds(out.wheel[0], wlo, whi);
     out.wheelRadius = std::max(0.2f, std::min(0.6f, 0.5f * (whi.y - wlo.y)));
     out.wheelWidth = whi.x - wlo.x;
+    // each axle's own radius from its mesh (the rear wheels are bigger than the front ones)
+    for (int axle = 0; axle < 2; axle++) {
+        bounds(out.wheel[axle * 2], wlo, whi);
+        const float r = std::max(0.2f, std::min(0.6f, 0.5f * (whi.y - wlo.y)));
+        out.meshWheelRadii[axle * 2] = out.meshWheelRadii[axle * 2 + 1] = r;
+    }
+
+    // The descriptor's wheel blocks: after the comment "Offset instance node" comes the wheel's node name (..._FL, _FR, _RL, _RR),
+    // and further down its radius (m), spring stiffness (N/m) and damper (N s/m), each on the line after its comment.
+    {
+        auto numberAfter = [&](size_t i, float& v) {
+            for (size_t j = i + 1; j < dlines.size() && j < i + 4; j++) {
+                std::istringstream is(stripComment(dlines[j]));
+                if (is >> v) return true;
+            }
+            return false;
+        };
+        int wheel = -1;
+        float springSum = 0, damperSum = 0;
+        int springCount = 0, damperCount = 0;
+        for (size_t i = 0; i < dlines.size(); i++) {
+            if (dlines[i].compare(0, 2, "//") != 0) continue;
+            float v;
+            if (contains(dlines[i], "Offset instance node")) {
+                wheel = -1;
+                for (size_t j = i + 1; j < dlines.size() && j < i + 4; j++) {
+                    auto q = quotedStrings(stripComment(dlines[j]));
+                    if (q.empty()) continue;
+                    const std::string nm = vfs::lower(q[0]);
+                    static const char* tails[4] = {"_wheel_fl", "_wheel_fr", "_wheel_rl", "_wheel_rr"};
+                    for (int k = 0; k < 4; k++)
+                        if (nm.size() >= strlen(tails[k]) && nm.compare(nm.size() - strlen(tails[k]), strlen(tails[k]), tails[k]) == 0) wheel = k;
+                    break;
+                }
+            } else if (wheel >= 0 && contains(dlines[i], "Radius (m)") && numberAfter(i, v) && v > 0.05f) {
+                out.fileWheelRadii[wheel] = v;
+            } else if (contains(dlines[i], "spring stiffness") && numberAfter(i, v) && v > 0) {
+                springSum += v;
+                springCount++;
+            } else if (contains(dlines[i], "shock absorber damping") && numberAfter(i, v) && v > 0) {
+                damperSum += v;
+                damperCount++;
+            }
+        }
+        // the car has one spring and one damper setting in the physics: the mean of its wheels'
+        if (springCount > 0) out.fileSpringK = springSum / (float)springCount;
+        if (damperCount > 0) out.fileDamper = damperSum / (float)damperCount;
+    }
     out.name = "Eagle";
+
+    // The chassis .dcol the descriptor names ("Shadow dcol filename") starts with the car's mass in kg (the kerb weight of its
+    // text file), its width, height and length, and then a vector at byte 24 that looks like the centre of mass: (-0.2, 0.1, 0)
+    // for the Eagle. The axis order is a guess: forward, up, sideways, which gives a spot a little behind the middle of the
+    // wheelbase, inside the body.
+    const std::string dcolName = descriptorValue(dlines, "Shadow dcol filename");
+    const int dcolEntry = dcolName.empty() ? -1 : pk->find(dcolName);
+    std::vector<uint8_t> dcol;
+    if (dcolEntry >= 0 && pk->extract(dcolEntry, dcol) && dcol.size() >= 36) {
+        float f[9];
+        memcpy(f, dcol.data(), sizeof f);
+        if (f[0] > 1.0f) out.mass = f[0];
+        out.centreOfMass = Vec3f(-f[8], f[7], f[6]);  // sideways (mirrored like the rest of the car), up, forward
+        out.hasCentreOfMass = true;
+    }
     return true;
 }
 

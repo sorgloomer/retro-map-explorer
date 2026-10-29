@@ -15,6 +15,7 @@
 #include "gestures/pan.h"
 #include "scene/raycast.h"
 #include "scene/renderer.h"
+#include "scene/subdivide.h"
 #include "scene/ui_options.h"
 #include "vfs.h"
 
@@ -48,6 +49,7 @@ struct App {
     // driving minigame (src/cpp/minigame01)
     minigame01::MiniGame mg;
     bool gameMode = false;
+    int smoothPasses = 0;  // rounds of subdivision for the level's meshes when a level loads (the page reloads the level when it changes)
     Game* currentGame = nullptr;  // the game of the loaded level
     RenderOptions viewerOpt;      // options and camera of the viewer, restored when the minigame ends
     Camera viewerCam;
@@ -306,6 +308,16 @@ void pushGameHud() {
     EM_ASM({
         if (window.RME && window.RME.onGameHud) window.RME.onGameHud($0, $1, $2, $3, $4, $5, $6, UTF8ToString($7), $8);
     }, (double)h.speedKmh, h.score, h.driftScore, (double)h.timeLeft, h.collected, h.total, h.state, h.message, (double)h.messageAge);
+    // the tyres' sideways forces, for the debug panel: [{lat, limit, slide, slip, load}] for FL, FR, RL, RR
+    char json[512];
+    int len = snprintf(json, sizeof json, "[");
+    for (int i = 0; i < 4; i++) {
+        const minigame01::Vehicle::Wheel& w = app.mg.vehicleState().wheel(i);
+        len += snprintf(json + len, sizeof json - len, "%s{\"lat\":%.0f,\"limit\":%.0f,\"slide\":%d,\"slip\":%.3f,\"load\":%.0f}", i ? "," : "",
+                        w.lateralForce, w.lateralLimit, w.sliding ? 1 : 0, w.slip, w.load);
+    }
+    snprintf(json + len, sizeof json - len, "]");
+    EM_ASM({ if (window.RME && window.RME.onGameDebug) window.RME.onGameDebug(UTF8ToString($0)); }, json);
 }
 
 void frame() {
@@ -379,6 +391,8 @@ void frame() {
 // ----- input
 EM_BOOL onKey(int type, const EmscriptenKeyboardEvent* e, void*) {
     if (e->ctrlKey || e->metaKey) return EM_FALSE;
+    // typing into a text field of the page (the parameter editor): the keys are the page's, not the game's
+    if (EM_ASM_INT({ var a = document.activeElement; return a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT') ? 1 : 0; })) return EM_FALSE;
     if (app.gameMode) return app.mg.inputRef().key(e->code, type == EMSCRIPTEN_EVENT_KEYDOWN, e->repeat != 0) ? EM_TRUE : EM_FALSE;
     int k = keyFromCode(e->code);
     bool down = type == EMSCRIPTEN_EVENT_KEYDOWN;
@@ -449,6 +463,12 @@ EMSCRIPTEN_KEEPALIVE int rme_load(const char* gameId, const char* levelId) {
         app.lastError = err.empty() ? "failed to load level" : err;
         return 0;
     }
+    if (app.smoothPasses > 0) {  // the collision meshes follow when they are read (Scene::smoothPasses)
+        const int done = smoothScene(*s, app.smoothPasses);
+        s->info += "\nSmoothed by subdivision: " + std::to_string(done) + " of " + std::to_string(app.smoothPasses) + " passes, " +
+                   std::to_string(s->triCount) + " triangles";
+    }
+    s->smoothPasses = app.smoothPasses;
     stopGame();
     app.mg.forget();
     app.currentGame = game;
@@ -509,6 +529,25 @@ EMSCRIPTEN_KEEPALIVE void rme_game_stick(float x, float y) {
     if (app.gameMode) app.mg.inputRef().touchStick(x, y);
 }
 
+// The minigame's tunable parameters (minigame01/params.h) as a multi-line JSON object; defaults != 0: the built-in values.
+EMSCRIPTEN_KEEPALIVE const char* rme_game_params_json(int defaults) {
+    static std::string text;
+    text = minigame01::paramsToJson(defaults ? minigame01::Params() : minigame01::tuning());
+    return text.c_str();
+}
+
+// Replaces the parameters with the ones in the JSON text (entries left out go back to their default). Returns "" when it was
+// applied, else the reason it was not (with the line number); the car follows at once when a game is running.
+EMSCRIPTEN_KEEPALIVE const char* rme_game_params_apply(const char* json) {
+    static std::string error;
+    error.clear();
+    minigame01::Params p;
+    if (!minigame01::paramsFromJson(json, p, error)) return error.c_str();
+    minigame01::tuning() = p;
+    app.mg.applyTuning();
+    return error.c_str();
+}
+
 // An on-screen button of the minigame went down / up (control = minigame01::Input::Touch).
 EMSCRIPTEN_KEEPALIVE void rme_game_touch(int control, int down) {
     if (app.gameMode) app.mg.inputRef().touch(control, down != 0);
@@ -562,6 +601,7 @@ EMSCRIPTEN_KEEPALIVE void rme_set_option(const char* name, double v) {
     else if (n == "xrayStrength") app.ui.xrayStrength = (float)v;
     else if (n == "geometry") app.ui.showGeometry = v != 0;
     else if (n == "collision") app.ui.showCollision = v != 0;
+    else if (n == "smooth") app.smoothPasses = std::max(0, std::min(3, (int)std::lround(v)));
     else if (n == "powerupMeshes") app.ui.powerupMeshes = v != 0;
     else if (n == "wireframe") app.ui.wireframe = v != 0;
     else if (n == "beams") app.ui.beams = v != 0;

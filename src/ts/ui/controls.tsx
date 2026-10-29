@@ -10,11 +10,11 @@ interface Common {
 }
 
 /** A labelled range slider for the option `optKey`. */
-export function Slider({ optKey, label, min, max, step, disabled, title }: Common & { label: string; min: number; max: number; step: number }) {
+export function Slider({ optKey, label, min, max, step, disabled, title, showValue }: Common & { label: string; min: number; max: number; step: number; showValue?: boolean }) {
   const value = useUi((s) => s.opts[optKey]);
   return (
     <label class="slider" title={title} style={disabled ? { opacity: '.5' } : undefined}>
-      {label}
+      {showValue ? `${label}: ${value}` : label}
       <input type="range" min={min} max={max} step={step} value={value} disabled={disabled}
         onInput={(e) => changeOpt(optKey, parseFloat(e.currentTarget.value))} />
     </label>

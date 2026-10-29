@@ -15,6 +15,7 @@ export const OPTS: OptDef[] = [
   { key: 'optTex', name: 'textured', def: 1 },
   { key: 'optGeo', name: 'geometry', def: 1 },
   { key: 'optCol', name: 'collision', def: 0 },
+  { key: 'optSmooth', name: 'smooth', def: 0 },  // read when a level loads: changing it reloads the level
   { key: 'optWire', name: 'wireframe', def: 0 },
   { key: 'optBack', name: 'backFaces', def: 0 },
 ];

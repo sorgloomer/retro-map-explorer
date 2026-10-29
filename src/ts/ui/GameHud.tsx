@@ -1,7 +1,7 @@
 // The overlay of the driving minigame: back button, score, time, speed and the end-of-round message.
 import type { ComponentChildren } from 'preact';
-import { useRef } from 'preact/hooks';
-import { TOUCH, gameStick, gameTouch, stopGame } from './controller.ts';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { TOUCH, gameParamsJson, gameStick, gameTouch, saveGameParams, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
 import { useUi } from './store.ts';
 
 /** An on-screen button: held while a finger is on it (several can be held at once), or a single press when `tap` is set. */
@@ -56,11 +56,85 @@ function TouchPad() {
   );
 }
 
+const WHEEL_NAMES = ['FL', 'FR', 'RL', 'RR'];
+
+/** Debug panel: the sideways force of each tyre against its limit. A full bar is the grip limit; red: the tyre slides. */
+function LateralForces() {
+  const wheels = useUi((s) => s.wheels);
+  const shown = useUi((s) => s.debugPanel);
+  const playing = useUi((s) => s.gameMode);
+  const total = wheels.reduce((sum, w) => sum + w.lat, 0);
+  // L shows and hides the panel (the game does not use that key)
+  useEffect(() => {
+    if (!playing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.tagName === 'TEXTAREA') return;  // typing in the parameter editor
+      if (e.code === 'KeyL' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) toggleDebugPanel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [playing]);
+  return (
+    <div class={'gh-debug' + (shown ? '' : ' closed')}>
+      <div class="gd-head">
+        <button type="button" class="gd-title" onClick={(e) => { toggleDebugPanel(); e.currentTarget.blur(); }}
+          title="Show or hide the lateral force panel (L)">{shown ? '▾' : '▸'} lateral force{shown ? ' (kN, + = right)' : ''} <kbd>L</kbd></button>
+        <button type="button" class="gd-config" onClick={(e) => { setParamsEditor(true); e.currentTarget.blur(); }}
+          title="Edit the minigame's parameters as JSON">configure</button>
+      </div>
+      {shown && wheels.map((w, i) => (
+        <div class={'gd-row' + (w.slide ? ' slide' : '')}>
+          <span class="gd-name">{WHEEL_NAMES[i]}</span>
+          <span class="gd-bar">
+            <i style={{ left: w.lat < 0 ? `${50 - Math.min(50, (-w.lat / (w.limit || 1)) * 50)}%` : '50%', width: `${Math.min(50, (Math.abs(w.lat) / (w.limit || 1)) * 50)}%` }} />
+          </span>
+          <span class="gd-num">{(w.lat / 1000).toFixed(1)} / {(w.limit / 1000).toFixed(1)}</span>
+          <span class="gd-num">{(w.slip * 57.3).toFixed(0)}°</span>
+        </div>
+      ))}
+      {shown && <div class="gd-total">total {(total / 1000).toFixed(1)} kN</div>}
+    </div>
+  );
+}
+
+/** The minigame's parameters as JSON text to edit. Save applies them at once (the car follows) and remembers them; Reset puts the
+ * built-in values in the text (not saved until Save). A text that is not valid is refused with the line number. */
+function ParamsEditor() {
+  const open = useUi((s) => s.paramsOpen);
+  const [text, setText] = useState('');
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (open) { setText(gameParamsJson()); setMessage(null); }
+  }, [open]);
+  if (!open) return null;
+  const save = () => {
+    const error = saveGameParams(field.current?.value ?? text);  // what is in the field now
+    setMessage(error ? { text: error, error: true } : { text: 'Saved', error: false });
+  };
+  return (
+    <div class="gh-params" role="dialog" aria-label="Minigame parameters">
+      <div class="gp-box">
+        <div class="gp-head">Minigame parameters (JSON: "name": number; a missing name gets its default)</div>
+        <textarea class="gp-text" ref={field} spellcheck={false} value={text} onInput={(e) => { setText(e.currentTarget.value); setMessage(null); }} />
+        <div class="gp-foot">
+          <span class={'gp-msg' + (message?.error ? ' error' : '')}>{message?.text ?? ''}</span>
+          <button type="button" onClick={() => { setText(gameParamsJson(true)); setMessage(null); }}>Reset to defaults</button>
+          <button type="button" class="primary" onClick={save}>Save</button>
+          <button type="button" onClick={() => setParamsEditor(false)}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GameHud() {
   const on = useUi((s) => s.gameMode);
   const hud = useUi((s) => s.hud);
   return (
     <div id="gameHud" hidden={!on}>
+      <LateralForces />
+      <ParamsEditor />
       <button type="button" title="Back to the viewer (Esc)" onClick={stopGame}>← Back</button>
       <div class="gh-stats">
         <div><span>Score</span><b>{hud.score}</b></div>

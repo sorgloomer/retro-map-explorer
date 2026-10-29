@@ -1,4 +1,5 @@
 #include "minigame01/input.h"
+#include "minigame01/params.h"
 #include <emscripten/html5.h>
 #include <algorithm>
 #include <cmath>
@@ -70,12 +71,13 @@ bool Input::exitRequested() {
 }
 
 Controls Input::update(float dt) {
+    const Params& P = tuning();
     Controls c;
     // keyboard: digital keys ramp up and fall back, so steering and throttle are not on / off
     float steerT = (held[H_RIGHT] ? 1.0f : 0.0f) - (held[H_LEFT] ? 1.0f : 0.0f);
-    kbSteer = approach(kbSteer, steerT, steerT == 0 ? 7.0f : (steerT * kbSteer < 0 ? 9.0f : 3.2f), dt);
-    kbAccel = approach(kbAccel, held[H_FWD] ? 1.0f : 0.0f, held[H_FWD] ? 5.0f : 8.0f, dt);
-    kbBrake = approach(kbBrake, held[H_BACK] ? 1.0f : 0.0f, held[H_BACK] ? 7.0f : 10.0f, dt);
+    kbSteer = approach(kbSteer, steerT, steerT == 0 ? P.keySteerReturn : (steerT * kbSteer < 0 ? P.keySteerReverse : P.keySteerRise), dt);
+    kbAccel = approach(kbAccel, held[H_FWD] ? 1.0f : 0.0f, held[H_FWD] ? P.keyAccelRise : P.keyAccelFall, dt);
+    kbBrake = approach(kbBrake, held[H_BACK] ? 1.0f : 0.0f, held[H_BACK] ? P.keyBrakeRise : P.keyBrakeFall, dt);
     c.steer = kbSteer;
     c.accel = kbAccel;
     c.brake = kbBrake;
@@ -103,7 +105,7 @@ Controls Input::update(float dt) {
             auto axis = [&](int a) { return a < g.numAxes ? (float)g.axis[a] : 0.0f; };
             auto btn = [&](int b) { return b < g.numButtons ? (float)g.analogButton[b] : 0.0f; };
             auto down = [&](int b) { return b < g.numButtons && g.digitalButton[b]; };
-            float steer = deadzone(axis(0), 0.12f);
+            float steer = deadzone(axis(0), P.gamepadDeadzone);
             if (down(14)) steer = -1.0f;
             if (down(15)) steer = 1.0f;
             if (std::fabs(steer) > std::fabs(c.steer)) c.steer = steer;

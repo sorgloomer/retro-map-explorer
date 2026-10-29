@@ -8,8 +8,6 @@ namespace minigame01 {
 
 namespace {
 
-constexpr float kRoundSeconds = 90.0f;
-constexpr float kPickupRadius = 3.4f;
 constexpr float kTwoPi = 6.28318531f;
 
 float wrapAngle(float a) {
@@ -65,7 +63,7 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
     };
     carMover[0] = addMover(g0);
     for (int i = 0; i < 4; i++) carMover[1 + i] = addMover(g0 + 1 + i);
-    worldFloor = scene.bmin.y / scale - 60.0f;
+    worldFloor = scene.bmin.y / scale - tuning().worldFloorBelow;
     makePickupIcons(scene);
     isPrepared = true;
     return true;
@@ -112,7 +110,8 @@ void MiniGame::start(Scene& scene, const Vec3f& sceneCenter, bool free) {
 
 void MiniGame::newRound(Scene& scene) {
     hud_ = Hud();
-    hud_.timeLeft = kRoundSeconds;
+    const Params& P = tuning();
+    hud_.timeLeft = P.roundSeconds;
     if (freeDrive) hud_.state = 3;
     pickups.clear();
     for (size_t i = 0; i < scene.movers.size(); i++) {
@@ -122,14 +121,14 @@ void MiniGame::newRound(Scene& scene) {
         Pickup p;
         p.pos = m.path[0] * (1.0f / scale);
         const std::string& id = scene.cats[m.cat].id;
-        p.points = 50;
-        if (id == "notable" || id == "missionitem") { p.points = 150; p.label = id == "notable" ? "Notable powerup" : "Mission item"; }
-        else if (id == "timepowerup") { p.points = 50; p.seconds = 15; p.label = "Time bonus"; }
-        else if (id == "upgrade") { p.points = 500; p.label = "Upgrade"; }
-        else if (id == "credit") { p.points = 300; p.label = "Credits"; }
-        else if (id == "pedpowerup") { p.points = 50; p.label = "Pedestrian powerup"; }
-        else if (id == "pickup") { p.points = 100; p.label = "Pickup"; }
-        else if (id == "star") { p.points = 250; p.label = "Star"; }
+        p.points = (int)P.pointsPowerup;
+        if (id == "notable" || id == "missionitem") { p.points = (int)P.pointsNotable; p.label = id == "notable" ? "Notable powerup" : "Mission item"; }
+        else if (id == "timepowerup") { p.points = (int)P.pointsTimeBonus; p.seconds = P.timeBonusSeconds; p.label = "Time bonus"; }
+        else if (id == "upgrade") { p.points = (int)P.pointsUpgrade; p.label = "Upgrade"; }
+        else if (id == "credit") { p.points = (int)P.pointsCredit; p.label = "Credits"; }
+        else if (id == "pedpowerup") { p.points = (int)P.pointsPowerup; p.label = "Pedestrian powerup"; }
+        else if (id == "pickup") { p.points = (int)P.pointsPickup; p.label = "Pickup"; }
+        else if (id == "star") { p.points = (int)P.pointsStar; p.label = "Star"; }
         p.movers.push_back((int)i);
         pickups.push_back(p);
     }
@@ -224,11 +223,12 @@ void MiniGame::respawn(Scene& scene, Spawn where) {
 }
 
 void MiniGame::collect(Scene& scene) {
+    const Params& P = tuning();
     Vec3f c = vehicle.position();
     for (Pickup& p : pickups) {
         if (p.taken) continue;
         float dx = p.pos.x - c.x, dz = p.pos.z - c.z, dy = p.pos.y - c.y;
-        if (dx * dx + dz * dz > kPickupRadius * kPickupRadius || std::fabs(dy) > 3.4f) continue;
+        if (dx * dx + dz * dz > P.pickupRadius * P.pickupRadius || std::fabs(dy) > P.pickupReachY) continue;
         p.taken = true;
         for (int mi : p.movers) scene.movers[mi].hidden = true;
         hud_.score += p.points;
@@ -241,7 +241,7 @@ void MiniGame::collect(Scene& scene) {
     }
     if (hud_.state == 0 && hud_.total > 0 && hud_.collected == hud_.total) {
         hud_.state = 2;
-        int bonus = (int)(hud_.timeLeft * 10.0f);
+        int bonus = (int)(hud_.timeLeft * P.finishBonusPerSecond);
         hud_.score += bonus;
         char buf[64];
         snprintf(buf, sizeof buf, "All collected!  time bonus +%d", bonus);
@@ -250,24 +250,25 @@ void MiniGame::collect(Scene& scene) {
 }
 
 void MiniGame::updateCamera(float dt, bool snap) {
+    const Params& P = tuning();
     Vec3f pos = vehicle.position();
     Vec3f fwd = vehicle.forward();
     float carYaw = std::atan2(fwd.x, fwd.z);
     Vec3f vel = vehicle.velocity();
     float flat = std::sqrt(vel.x * vel.x + vel.z * vel.z);
     float targetYaw = carYaw;
-    if (flat > 5.0f && vehicle.forwardSpeed() > 0) {  // look where the car is going when it slides
+    if (flat > P.cameraSlideMinSpeed && vehicle.forwardSpeed() > 0) {  // look where the car is going when it slides
         float velYaw = std::atan2(vel.x, vel.z);
-        targetYaw = carYaw + wrapAngle(velYaw - carYaw) * 0.6f;
+        targetYaw = carYaw + wrapAngle(velYaw - carYaw) * P.cameraSlideBlend;
     }
-    float dist = (camMode == 0 ? 6.4f : 11.0f) + std::min(flat, 40.0f) * 0.035f;
-    float height = camMode == 0 ? 2.5f : 5.0f;
+    float dist = (camMode == 0 ? P.cameraDistance : P.cameraFarDistance) + std::min(flat, P.cameraSpeedCap) * P.cameraSpeedDistance;
+    float height = camMode == 0 ? P.cameraHeight : P.cameraFarHeight;
     if (snap) camYaw = targetYaw;
-    else camYaw += wrapAngle(targetYaw - camYaw) * std::min(1.0f, dt * 3.2f);
-    Vec3f lookAt = pos + Vec3f(0, 0.9f, 0) + Vec3f(std::sin(camYaw), 0, std::cos(camYaw)) * 2.2f;
+    else camYaw += wrapAngle(targetYaw - camYaw) * std::min(1.0f, dt * P.cameraYawFollow);
+    Vec3f lookAt = pos + Vec3f(0, P.cameraLookHeight, 0) + Vec3f(std::sin(camYaw), 0, std::cos(camYaw)) * P.cameraLookAhead;
     Vec3f desired = pos + Vec3f(0, height, 0) - Vec3f(std::sin(camYaw), 0, std::cos(camYaw)) * dist;
     if (snap) camPos = desired;
-    else camPos += (desired - camPos) * std::min(1.0f, dt * 7.0f);
+    else camPos += (desired - camPos) * std::min(1.0f, dt * P.cameraPositionFollow);
     // keep the camera out of walls: pull it in along the line to the car
     Vec3f toCam = camPos - lookAt;
     float len = length(toCam);
@@ -275,7 +276,7 @@ void MiniGame::updateCamera(float dt, bool snap) {
         Vec3f dir = toCam * (1.0f / len);
         float t;
         Vec3f n;
-        if (world.raycast(lookAt, dir, len + 0.4f, true, t, n)) camPos = lookAt + dir * std::max(0.6f, t - 0.4f);
+        if (world.raycast(lookAt, dir, len + P.cameraWallMargin, true, t, n)) camPos = lookAt + dir * std::max(0.6f, t - P.cameraWallMargin);
     }
     Vec3f look = lookAt - camPos;
     cam.pos = camPos * scale;
@@ -312,7 +313,8 @@ void MiniGame::syncMovers(Scene& scene) {
 
 void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     if (!running || !isPrepared) return;
-    dt = std::min(dt, 0.05f);
+    const Params& P = tuning();
+    dt = std::min(dt, P.maxFrameSeconds);
     if (c.restart) { newRound(scene); syncMovers(scene); return; }
     if (c.reset) respawn(scene, Spawn::Here);
     if (c.toggleCamera) camMode = 1 - camMode;
@@ -328,7 +330,7 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
 
     // last safe spot (wheels down, upright), for falling out of the world
     safeTimer += dt;
-    if (safeTimer > 0.7f && vehicle.anyGrounded() && !vehicle.upsideDown()) {
+    if (safeTimer > P.safeSpotSeconds && vehicle.anyGrounded() && !vehicle.upsideDown()) {
         Vec3f g;
         if (groundBelow(vehicle.position() + Vec3f(0, 1.0f, 0), g)) {
             safePos = g;
@@ -336,12 +338,12 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
             safeTimer = 0;
         }
     }
-    if (vehicle.upsideDown() && vehicle.speed() < 2.0f) stuckTimer += dt;
+    if (vehicle.upsideDown() && vehicle.speed() < P.stuckMaxSpeed) stuckTimer += dt;
     else stuckTimer = 0;
     if (vehicle.position().y < worldFloor) {  // fell out of the world
         respawn(scene, Spawn::Safe);
         setMessage(hud_, "Back on the road");
-    } else if (stuckTimer > 2.5f) {
+    } else if (stuckTimer > P.stuckSeconds) {
         respawn(scene, Spawn::Here);
         setMessage(hud_, "Back on the road");
     }
@@ -358,7 +360,7 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
 
     // drift points: sliding sideways at speed
     if (vehicle.anyGrounded() && (hud_.state == 0 || hud_.state == 3)) {
-        driftAccum += vehicle.drift() * vehicle.speed() * dt * 0.5f;
+        driftAccum += vehicle.drift() * vehicle.speed() * dt * P.driftPointsFactor;
         int whole = (int)driftAccum;
         if (whole > 0) { driftAccum -= (float)whole; hud_.driftScore += whole; hud_.score += whole; }
     }

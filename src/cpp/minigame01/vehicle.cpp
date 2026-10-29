@@ -6,31 +6,6 @@ namespace minigame01 {
 
 namespace {
 
-constexpr float kGravity = 9.81f;
-constexpr float kStep = 1.0f / 150.0f;  // physics step
-
-// --- suspension (distances along the car's up axis, metres)
-constexpr float kSuspRest = 0.20f;      // wheel centre below the upper mount at rest
-constexpr float kSuspMin = 0.04f;       // fully compressed
-constexpr float kSuspMax = 0.42f;       // fully extended
-constexpr float kSpringFree = 0.33f;    // free spring length (about 13 cm of preload at rest)
-constexpr float kSpringK = 30000.0f;    // N/m
-constexpr float kDamper = 3300.0f;      // N s/m
-
-// --- tyres and engine
-constexpr float kGrip = 1.5f;         // friction coefficient on the road
-constexpr float kSlideGrip = 0.85f;     // part of the grip left while sliding
-constexpr float kEngineForce = 40000.0f; // N at the wheels at low speed (over three times the car's weight)
-constexpr float kEnginePower = 420000.0f;  // W
-constexpr float kBrakeForce = 1.0f;     // of the friction limit
-constexpr float kRollResist = 0.016f;
-constexpr float kDrag = 0.25f;         // 0.5 * rho * Cd * A
-constexpr float kDownforce = 0.9f;      // N per (m/s)^2
-constexpr float kMaxSpeed = 500.0f;     // m/s (hard limit)
-constexpr float kAfterburnerForce = 36000.0f;  // N: about three times the car's weight, in the direction it faces
-constexpr float kKangarooSpeed = 8.0f;         // m/s added upwards per jump (about 3 m high from rest)
-constexpr float kRollCentre =0.30f;    // tyre side forces act this far above the road: less body roll
-
 Vec3f quatRotate(const Quat& q, const Vec3f& v) {
     Vec3f u(q.x, q.y, q.z);
     Vec3f t = cross(u, v) * 2.0f;
@@ -54,16 +29,50 @@ float clampf(float v, float lo, float hi) { return std::max(lo, std::min(hi, v))
 
 void Vehicle::init(const CarModel& m) {
     for (int i = 0; i < 4; i++) wheelRest[i] = m.wheelPos[i];
-    wheelR = m.wheelRadius;
+    fallbackWheelRadius = m.wheelRadius;
+    for (int i = 0; i < 4; i++) {
+        meshWheelRadii[i] = m.meshWheelRadii[i];
+        fileWheelRadii[i] = m.fileWheelRadii[i];
+    }
+    fileSpringK = m.fileSpringK;
+    fileDamper = m.fileDamper;
     bmin = m.boundsMin;
     bmax = m.boundsMax;
-    float frontZ = 0.5f * (m.wheelPos[0].z + m.wheelPos[1].z), rearZ = 0.5f * (m.wheelPos[2].z + m.wheelPos[3].z);
-    float axleY = 0.25f * (m.wheelPos[0].y + m.wheelPos[1].y + m.wheelPos[2].y + m.wheelPos[3].y);
-    // centre of mass: slightly ahead of the middle, about 0.55 m above the road
-    com = Vec3f(0, axleY - wheelR + 0.55f, rearZ + 0.54f * (frontZ - rearZ));
+    fileMass = m.mass;
+    hasFileCom = m.hasCentreOfMass;
+    fileCom = m.centreOfMass;
+    com = Vec3f();  // nothing is placed yet: applyTuning has no position to keep
+    applyTuning();
+    reset(Vec3f(), 0);
+}
+
+// Works out the mass, the centre of mass, the inertia and the hull probes from the car's data and the tunable parameters.
+// Called when the car is set up and whenever the parameters change; the car stays where it is (its origin does not move).
+void Vehicle::applyTuning() {
+    const Params& P = tuning();
+    const Vec3f oldCom = com;
+    // suspension and wheels: the car's own files when they say (and the parameters allow it), else the parameters / the meshes
+    const bool fromFileSuspension = P.suspensionFromFile > 0.5f, fromFileRadius = P.wheelRadiusFromFile > 0.5f;
+    springStiffness = fromFileSuspension && fileSpringK > 0 ? fileSpringK : P.springK;
+    damping = fromFileSuspension && fileDamper > 0 ? fileDamper : P.damper;
+    float radiusSum = 0;
+    for (int i = 0; i < 4; i++) {
+        wheelRadii[i] = fromFileRadius && fileWheelRadii[i] > 0 ? fileWheelRadii[i] : (meshWheelRadii[i] > 0 ? meshWheelRadii[i] : fallbackWheelRadius);
+        radiusSum += wheelRadii[i];
+    }
+    wheelR = radiusSum * 0.25f;
+    float frontZ = 0.5f * (wheelRest[0].z + wheelRest[1].z), rearZ = 0.5f * (wheelRest[2].z + wheelRest[3].z);
+    float axleY = 0.25f * (wheelRest[0].y + wheelRest[1].y + wheelRest[2].y + wheelRest[3].y);
+    if (P.centreOfMassFromFile > 0.5f && hasFileCom) {
+        com = fileCom;  // the car's own files say where it is
+    } else {
+        // low, and towards the rear axle (so the rear tyres, which drive the car, carry more of the weight)
+        com = Vec3f(0, axleY - wheelR + P.centreOfMassHeight, rearZ + P.centreOfMassFromRearAxle * (frontZ - rearZ));
+    }
     float w = bmax.x - bmin.x, h = bmax.y - bmin.y, l = bmax.z - bmin.z;
-    mass = 1250.0f;
-    inertia = Vec3f(mass / 12.0f * (h * h + l * l), mass / 12.0f * (w * w + l * l), mass / 12.0f * (w * w + h * h) * 1.5f);
+    mass = P.mass > 0 ? P.mass : (fileMass > 0 ? fileMass : P.defaultMass);
+    inertia = Vec3f(mass / 12.0f * (h * h + l * l), mass / 12.0f * (w * w + l * l), mass / 12.0f * (w * w + h * h) * P.rollInertiaFactor);
+    probeR = P.probeRadius;
     // hull probes: a lattice of spheres inside the chassis bounds; the lowest row hovers above the road
     probes.clear();
     float groundY = axleY - wheelR;
@@ -78,7 +87,9 @@ void Vehicle::init(const CarModel& m) {
             }
     probes.push_back(Vec3f(0, yHigh, bmin.z + probeR));
     probes.push_back(Vec3f(0, yHigh, bmax.z - probeR));
-    reset(Vec3f(), 0);
+    // pos is the centre of mass: when that moves within the car, move pos with it so that the car itself stays put
+    updateAxes();
+    pos += axes[0] * (com.x - oldCom.x) + axes[1] * (com.y - oldCom.y) + axes[2] * (com.z - oldCom.z);
 }
 
 void Vehicle::reset(const Vec3f& groundPos, float yaw) {
@@ -123,170 +134,207 @@ Vec3f Vehicle::invInertia(const Vec3f& t) const {
 }
 
 void Vehicle::step(float dt, const VehicleInput& in, const CollisionWorld& world) {
-    dt = std::min(dt, 0.1f);
-    int n = std::max(1, (int)std::ceil(dt / kStep));
+    const Params& P = tuning();
+    dt = std::min(dt, P.vehicleMaxFrameSeconds);
+    int n = std::max(1, (int)std::ceil(dt / P.maxPhysicsStep));
     float h = dt / (float)n;
     impact_ = 0;
-    if (in.jump) vel += Vec3f(0, kKangarooSpeed, 0);  // an impulse, once per press: straight up whatever the car's attitude
+    if (in.jump) vel += Vec3f(0, P.kangarooSpeed, 0);  // an impulse, once per press: straight up whatever the car's attitude
     for (int i = 0; i < n; i++) substep(h, in, world);
 }
 
-void Vehicle::substep(float h, const VehicleInput& in, const CollisionWorld& world) {
+// One physics step of `stepSeconds`. Forces and torques are collected over the whole car (they act on the centre of mass, `pos`)
+// and then integrated: first the four wheels (suspension, engine, brakes, tyre grip), then the chassis against the level.
+void Vehicle::substep(float stepSeconds, const VehicleInput& in, const CollisionWorld& world) {
+    const Params& P = tuning();
     updateAxes();
-    const Vec3f r = axes[0], u = axes[1], f = axes[2];
-    float speed = length(vel);
-    float fwdSpeed = dot(vel, f);
+    const Vec3f rightAxis = axes[0], upAxis = axes[1], forwardAxis = axes[2];  // the car's own directions, in world space
+    const float speed = length(vel);                     // m/s, in any direction
+    const float forwardSpeed = dot(vel, forwardAxis);    // m/s along the nose: negative when rolling backwards
 
-    // steering: full lock at a standstill, a fraction of it at speed
-    float maxSteer = 0.58f / (1.0f + std::pow(speed / 20.0f, 1.6f));
-    float target = clampf(in.steer, -1.0f, 1.0f) * maxSteer;
-    steerAngle += (target - steerAngle) * std::min(1.0f, h * 9.0f);
+    // --- steering: full lock at a standstill, a fraction of it at speed; the wheels turn towards that angle smoothly
+    const float maxSteerAngle = P.maxSteerAngle / (1.0f + std::pow(speed / P.steerFadeSpeed, P.steerFadeExponent));  // radians
+    const float targetSteerAngle = clampf(in.steer, -1.0f, 1.0f) * maxSteerAngle;
+    steerAngle += (targetSteerAngle - steerAngle) * std::min(1.0f, stepSeconds * P.steerResponse);
 
-    // engine / brake intent
-    float drive = 0, brake = in.brake, hand = in.handbrake;
-    if (in.accel > 0.01f) {
-        float fmax = std::min(kEngineForce, kEnginePower / std::max(std::fabs(fwdSpeed), 4.0f));
-        drive = in.accel * fmax;
-        if (fwdSpeed < -1.0f) { brake = std::max(brake, in.accel); drive = 0; }  // accelerating while rolling backwards: brake first
-    } else if (in.brake > 0.01f && fwdSpeed < 1.0f) {  // brake pedal doubles as reverse once the car has (almost) stopped
-        drive = -in.brake * std::min(kEngineForce * 0.55f, kEnginePower * 0.4f / std::max(std::fabs(fwdSpeed), 3.0f));
-        brake = 0;
+    // --- engine and brake intent
+    float driveForce = 0;                  // N the engine pushes the car with, summed over the driven wheels (negative: reverse)
+    float brakeInput = in.brake;           // 0..1
+    const float handbrakeInput = in.handbrake;  // 0..1
+    if (in.accel > P.minPedal) {
+        // the engine's push is limited by its force at low speed and by its power (force * speed) at high speed
+        const float maxDriveForce = std::min(P.engineForce, P.enginePower / std::max(std::fabs(forwardSpeed), P.powerMinSpeed));
+        driveForce = in.accel * maxDriveForce;
+        if (forwardSpeed < -1.0f) {  // accelerating while rolling backwards: brake first
+            brakeInput = std::max(brakeInput, in.accel);
+            driveForce = 0;
+        }
+    } else if (in.brake > P.minPedal && forwardSpeed < 1.0f) {  // the brake pedal doubles as reverse once the car has (almost) stopped
+        driveForce = -in.brake * std::min(P.engineForce * P.reverseForceFraction,
+                                          P.enginePower * P.reversePowerFraction / std::max(std::fabs(forwardSpeed), P.reversePowerMinSpeed));
+        brakeInput = 0;
     }
-    if (std::fabs(fwdSpeed) > 55.0f && drive * fwdSpeed > 0) drive *= std::max(0.0f, 1.0f - (std::fabs(fwdSpeed) - 55.0f) / 15.0f);
+    // the engine's push fades out over a speed range, so it has a soft top speed of its own (the afterburner is not affected)
+    if (std::fabs(forwardSpeed) > P.taperStartSpeed && driveForce * forwardSpeed > 0)
+        driveForce *= std::max(0.0f, 1.0f - (std::fabs(forwardSpeed) - P.taperStartSpeed) / P.taperLength);
 
-    Vec3f force(0, -kGravity * mass, 0);
-    Vec3f torque;
-    // drag and downforce
-    force += vel * (-kDrag * speed);
-    force += u * (-kDownforce * speed * speed);
-    if (in.afterburner) force += f * kAfterburnerForce;  // a rocket along the car's nose
+    Vec3f totalForce(0, -P.gravity * mass, 0);  // N, on the centre of mass: starts with gravity
+    Vec3f totalTorque;                         // N m, about the centre of mass
+    // air drag against the velocity, and downforce pressing the car down onto its wheels
+    totalForce += vel * (-P.drag * speed);
+    totalForce += upAxis * (-P.downforce * speed * speed);
+    if (in.afterburner) totalForce += forwardAxis * P.afterburnerForce;  // a rocket along the car's nose
 
+    // --- the wheels
     groundedCount = 0;
-    float maxSlipSide = 0;
+    float largestSlipAngle = 0;  // radians, over the wheels on the ground: how sideways the car slides (see the drift measure below)
     for (int i = 0; i < 4; i++) {
-        Wheel& w = wheels[i];
-        const bool front = i < 2, rear = !front;
-        Vec3f local = wheelRest[i] - com;
-        Vec3f mount = pos + r * local.x + u * (local.y + kSuspRest) + f * local.z;  // upper end of the suspension
-        float rayLen = kSuspMax + wheelR;
-        float t;
-        Vec3f n;
-        w.grounded = false;
-        w.load = 0;
-        float s = kSuspMax;
-        if (world.raycast(mount, u * -1.0f, rayLen, false, t, n)) {
-            s = std::max(kSuspMin, t - wheelR);
-            if (s < kSuspMax) w.grounded = true;
+        Wheel& wheel = wheels[i];
+        const bool isFrontWheel = i < 2, isRearWheel = !isFrontWheel;  // wheels 0, 1 are the front ones, 2, 3 the rear (drive) ones
+        // The suspension is a ray from its upper mount straight down (along the car's down axis): where it hits the road,
+        // and how much of the suspension is left, tells how far the spring is compressed.
+        const Vec3f wheelOffsetFromCentreOfMass = wheelRest[i] - com;  // in car space
+        const Vec3f suspensionMount = pos + rightAxis * wheelOffsetFromCentreOfMass.x +
+                                      upAxis * (wheelOffsetFromCentreOfMass.y + P.suspRest) +
+                                      forwardAxis * wheelOffsetFromCentreOfMass.z;  // world position of the upper end of the suspension
+        const float suspensionRayLength = P.suspMax + wheelRadii[i];  // fully extended suspension plus the wheel's radius
+        float rayHitDistance;     // from the mount to the road
+        Vec3f groundNormal;       // unit normal of the road where the ray hit
+        wheel.grounded = false;
+        wheel.load = 0;
+        float suspensionLength = P.suspMax;  // from the mount to the wheel centre; the maximum when nothing is under the wheel
+        if (world.raycast(suspensionMount, upAxis * -1.0f, suspensionRayLength, false, rayHitDistance, groundNormal)) {
+            suspensionLength = std::max(P.suspMin, rayHitDistance - wheelRadii[i]);
+            if (suspensionLength < P.suspMax) wheel.grounded = true;
         }
-        if (w.grounded) {
+        if (wheel.grounded) {
             groundedCount++;
-            Vec3f contact = mount - u * t;
-            Vec3f rp = contact - pos;
-            Vec3f vMount = vel + cross(angVel, mount - pos);
-            float comp = kSpringFree - s;
-            float fs = kSpringK * comp * (s < kSuspMin + 0.03f ? 4.0f : 1.0f) + kDamper * (-dot(vMount, u));
-            fs = std::max(0.0f, fs);
-            w.load = fs;
-            Vec3f fsv = u * fs;
-            force += fsv;
-            torque += cross(rp, fsv);
+            const Vec3f contactPoint = suspensionMount - upAxis * rayHitDistance;
+            const Vec3f contactOffset = contactPoint - pos;  // from the centre of mass to where the tyre touches the road
+            const Vec3f mountVelocity = vel + cross(angVel, suspensionMount - pos);  // speed of the suspension's upper end
 
-            // wheel axes on the road
-            float st = front ? steerAngle : 0.0f;
-            Vec3f wf0 = f * std::cos(st) + r * std::sin(st);
-            Vec3f wf = normalize(wf0 - n * dot(wf0, n));
-            Vec3f lat = normalize(cross(n, wf));
-            Vec3f vP = vel + cross(angVel, rp);
-            float vlong = dot(vP, wf), vlat = dot(vP, lat);
-            float meff = mass * 0.25f;
+            // spring + damper (stiffer at the bump stop); a suspension cannot pull the car down, so never negative
+            const float springCompression = P.springFree - suspensionLength;
+            float suspensionForce = springStiffness * springCompression * (suspensionLength < P.suspMin + P.bumpStopZone ? P.bumpStopStiffness : 1.0f) +
+                                    damping * (-dot(mountVelocity, upAxis));
+            suspensionForce = std::max(0.0f, suspensionForce);
+            wheel.load = suspensionForce;  // N: how hard the tyre is pressed on the road, which is what limits its grip
+            const Vec3f suspensionForceVector = upAxis * suspensionForce;
+            totalForce += suspensionForceVector;
+            totalTorque += cross(contactOffset, suspensionForceVector);
 
-            float fx = 0;
-            if (rear) fx += drive * 0.5f;
-            float lim = kGrip * fs;
-            float brk = brake * kBrakeForce * lim;
-            if (rear) brk = std::max(brk, hand * 0.85f * lim);
-            float sgn = vlong > 0 ? 1.0f : -1.0f;
-            float brkMax = std::fabs(vlong) * meff / h;                  // never brake past a standstill
-            fx -= sgn * std::min(brk, brkMax) * std::min(1.0f, std::fabs(vlong) * 2.0f);
-            float rr = std::min(kRollResist * fs, std::fabs(vlong) * meff / h);
-            fx -= sgn * rr * (std::fabs(drive) > 1.0f ? 0.3f : 1.0f);
+            // The wheel's own axes on the road: where it rolls (the front wheels are turned by the steering, then the
+            // direction is projected onto the road) and the direction across that.
+            const float wheelSteerAngle = isFrontWheel ? steerAngle : 0.0f;
+            const Vec3f wheelHeading = forwardAxis * std::cos(wheelSteerAngle) + rightAxis * std::sin(wheelSteerAngle);
+            const Vec3f wheelForwardOnRoad = normalize(wheelHeading - groundNormal * dot(wheelHeading, groundNormal));
+            const Vec3f wheelSidewaysOnRoad = normalize(cross(groundNormal, wheelForwardOnRoad));
+            const Vec3f contactVelocity = vel + cross(angVel, contactOffset);  // how fast the road moves under the tyre
+            const float longitudinalSpeed = dot(contactVelocity, wheelForwardOnRoad);  // along the wheel's rolling direction
+            const float lateralSpeed = dot(contactVelocity, wheelSidewaysOnRoad);      // across it: this is skidding
+            const float massPerWheel = mass * 0.25f;  // the part of the car's mass one wheel is responsible for
 
-            float grip = (rear && hand > 0.05f) ? 1.0f - 0.62f * hand : 1.0f;
-            float limY = lim * grip;
-            float fy = -vlat * meff / h * 0.85f;
-            bool sliding = std::fabs(fy) > limY;
-            if (sliding) fy = (fy > 0 ? 1.0f : -1.0f) * limY * kSlideGrip;
-            float limX = std::sqrt(std::max(0.0f, lim * lim - fy * fy));
-            fx = clampf(fx, -limX, limX);
+            // Force along the rolling direction: engine on the rear wheels (half each), brakes, rolling resistance.
+            float longitudinalForce = 0;
+            if (isRearWheel) longitudinalForce += driveForce * 0.5f;
+            const float frictionLimit = P.grip * suspensionForce;  // N: the most the tyre can push with, in any direction
+            float brakingForce = brakeInput * P.brakeForce * frictionLimit;
+            if (isRearWheel) brakingForce = std::max(brakingForce, handbrakeInput * P.handbrakeBrake * frictionLimit);
+            const float rollingDirection = longitudinalSpeed > 0 ? 1.0f : -1.0f;  // brakes and resistance act against the motion
+            const float maxBrakingForce = std::fabs(longitudinalSpeed) * massPerWheel / stepSeconds;  // never brake past a standstill
+            longitudinalForce -= rollingDirection * std::min(brakingForce, maxBrakingForce) * std::min(1.0f, std::fabs(longitudinalSpeed) * 2.0f);
+            const float rollingResistanceForce = std::min(P.rollResist * suspensionForce, std::fabs(longitudinalSpeed) * massPerWheel / stepSeconds);
+            longitudinalForce -= rollingDirection * rollingResistanceForce * (std::fabs(driveForce) > 1.0f ? P.rollResistWhileDriving : 1.0f);
 
-            Vec3f ft = wf * fx + lat * fy;
-            force += ft;
-            Vec3f rpTyre = rp + u * kRollCentre;
-            torque += cross(rpTyre, ft);
+            // Force across the wheel: the force that would stop the sideways slide within one step, limited by the grip
+            // (the rear wheels lose grip with the handbrake); a tyre over the limit slides and keeps only part of it.
+            const float handbrakeGripFactor = (isRearWheel && handbrakeInput > 0.05f) ? 1.0f - P.handbrakeGripLoss * handbrakeInput : 1.0f;
+            const float lateralFrictionLimit = frictionLimit * handbrakeGripFactor;
+            float lateralForce = -lateralSpeed * massPerWheel / stepSeconds * P.lateralStiffness;
+            const bool isSliding = std::fabs(lateralForce) > lateralFrictionLimit;
+            if (isSliding) lateralForce = (lateralForce > 0 ? 1.0f : -1.0f) * lateralFrictionLimit * P.slideGrip;
+            // the friction circle: what the sideways force uses of the grip is not left for pushing along the wheel
+            const float longitudinalFrictionLimit = std::sqrt(std::max(0.0f, frictionLimit * frictionLimit - lateralForce * lateralForce));
+            longitudinalForce = clampf(longitudinalForce, -longitudinalFrictionLimit, longitudinalFrictionLimit);
 
-            w.slip = std::atan2(std::fabs(vlat), std::fabs(vlong) + 1.0f);
-            maxSlipSide = std::max(maxSlipSide, w.slip);
-            w.spin += (vlong / wheelR) * h;
-            if (front) w.steer = st;
+            const Vec3f tyreForce = wheelForwardOnRoad * longitudinalForce + wheelSidewaysOnRoad * lateralForce;
+            totalForce += tyreForce;
+            const Vec3f tyreForceOffset = contactOffset + upAxis * P.rollCentre;  // acts a little above the road: less body roll
+            totalTorque += cross(tyreForceOffset, tyreForce);
+
+            wheel.lateralForce = lateralForce;
+            wheel.lateralLimit = lateralFrictionLimit;
+            wheel.sliding = isSliding;
+            wheel.slip = std::atan2(std::fabs(lateralSpeed), std::fabs(longitudinalSpeed) + 1.0f);  // slip angle, radians (+1: no jump near standstill)
+            largestSlipAngle = std::max(largestSlipAngle, wheel.slip);
+            wheel.spin += (longitudinalSpeed / wheelRadii[i]) * stepSeconds;
+            if (isFrontWheel) wheel.steer = wheelSteerAngle;
         } else {
-            w.spin += (fwdSpeed / wheelR) * h * 0.5f;
-            w.slip = 0;
-            if (front) w.steer = steerAngle;
+            wheel.spin += (forwardSpeed / wheelRadii[i]) * stepSeconds * 0.5f;  // in the air: turns slowly with the car's speed
+            wheel.slip = 0;
+            wheel.lateralForce = wheel.lateralLimit = 0;
+            wheel.sliding = false;
+            if (isFrontWheel) wheel.steer = steerAngle;
         }
-        w.centre = wheelRest[i] + Vec3f(0, kSuspRest - s, 0);  // for drawing: lower when the suspension is extended
+        wheel.centre = wheelRest[i] + Vec3f(0, P.suspRest - suspensionLength, 0);  // for drawing: lower when the suspension is extended
     }
-    drift_ = speed > 8.0f ? clampf((maxSlipSide - 0.12f) / 0.45f, 0.0f, 1.0f) : 0.0f;
+    // drift: 0 up to a slip angle that is just cornering, then rising to 1; never while slow
+    drift_ = speed > P.driftMinSpeed ? clampf((largestSlipAngle - P.driftSlipDeadZone) / P.driftSlipRange, 0.0f, 1.0f) : 0.0f;
 
-    // in the air: a little damping, the car tumbles freely otherwise
+    // damping of the spin: the car tumbles almost freely in the air
     if (groundedCount == 0) {
-        angVel = angVel * (1.0f - 0.6f * h);
+        angVel = angVel * (1.0f - P.airAngularDamping * stepSeconds);
     } else {
-        angVel = angVel * (1.0f - 0.35f * h);
+        angVel = angVel * (1.0f - P.groundAngularDamping * stepSeconds);
     }
 
-    // integrate
-    vel += force * (h / mass);
-    angVel += invInertia(torque) * h;
-    float sp2 = length(vel);
-    if (sp2 > kMaxSpeed) vel = vel * (kMaxSpeed / sp2);
-    pos += vel * h;
-    Quat dq = quatMul({0, angVel.x, angVel.y, angVel.z}, q);
-    q = quatNormalize({q.w + 0.5f * h * dq.w, q.x + 0.5f * h * dq.x, q.y + 0.5f * h * dq.y, q.z + 0.5f * h * dq.z});
+    // --- integrate: forces change the velocity, torques the spin, those move and turn the car
+    vel += totalForce * (stepSeconds / mass);
+    angVel += invInertia(totalTorque) * stepSeconds;
+    const float speedAfterStep = length(vel);
+    if (speedAfterStep > P.maxSpeed) vel = vel * (P.maxSpeed / speedAfterStep);
+    pos += vel * stepSeconds;
+    // the orientation turns with the spin: dq/dt = 0.5 * (0, angVel) * q
+    const Quat orientationRate = quatMul({0, angVel.x, angVel.y, angVel.z}, q);
+    q = quatNormalize({q.w + 0.5f * stepSeconds * orientationRate.w, q.x + 0.5f * stepSeconds * orientationRate.x,
+                       q.y + 0.5f * stepSeconds * orientationRate.y, q.z + 0.5f * stepSeconds * orientationRate.z});
     updateAxes();
 
-    // hull against the level: walls, ceilings, the road when the chassis bottoms out
-    Vec3f origin = pos - (axes[0] * com.x + axes[1] * com.y + axes[2] * com.z);
-    for (const Vec3f& pr : probes) {
-        Vec3f c = origin + axes[0] * pr.x + axes[1] * pr.y + axes[2] * pr.z;
-        Vec3f n;
-        float depth;
-        if (!world.sphereContact(c, probeR, n, depth)) continue;
-        Vec3f rr = c - pos;
-        Vec3f vP = vel + cross(angVel, rr);
-        float vn = dot(vP, n);
-        const bool floor = n.y > 0.7f;
-        if (vn < 0) {
-            Vec3f a = invInertia(cross(rr, n));
-            float denom = 1.0f / mass + dot(n, cross(a, rr));
-            float e = floor ? 0.0f : 0.25f;
-            float j = -(1.0f + e) * vn / denom;
-            vel += n * (j / mass);
-            angVel += invInertia(cross(rr, n * j));
-            impact_ = std::max(impact_, -vn);
-            // Coulomb friction along the surface
-            vP = vel + cross(angVel, rr);
-            Vec3f vt = vP - n * dot(vP, n);
-            float tl = length(vt);
-            if (tl > 1e-4f) {
-                Vec3f tdir = vt * (1.0f / tl);
-                Vec3f at = invInertia(cross(rr, tdir));
-                float denomT = 1.0f / mass + dot(tdir, cross(at, rr));
-                float jt = std::min(tl / denomT, (floor ? 0.9f : 0.5f) * j);
-                vel += tdir * (-jt / mass);
-                angVel += invInertia(cross(rr, tdir * -jt));
+    // --- hull against the level: walls, ceilings, the road when the chassis bottoms out. Each probe sphere that overlaps
+    // the level gets an impulse that stops it moving into the surface, a friction impulse along the surface, and is pushed out.
+    const Vec3f carOrigin = pos - (axes[0] * com.x + axes[1] * com.y + axes[2] * com.z);
+    for (const Vec3f& probeInCarSpace : probes) {
+        const Vec3f probeCentre = carOrigin + axes[0] * probeInCarSpace.x + axes[1] * probeInCarSpace.y + axes[2] * probeInCarSpace.z;
+        Vec3f contactNormal;   // from the level towards the probe
+        float penetrationDepth;
+        if (!world.sphereContact(probeCentre, probeR, contactNormal, penetrationDepth)) continue;
+        const Vec3f probeOffset = probeCentre - pos;  // from the centre of mass to the probe
+        Vec3f probeVelocity = vel + cross(angVel, probeOffset);
+        const float normalSpeed = dot(probeVelocity, contactNormal);  // negative: the probe moves into the surface
+        const bool isFloor = contactNormal.y > P.floorNormalY;
+        if (normalSpeed < 0) {
+            // normal impulse: the usual rigid body formula, with the car's mass and rotation taken into account
+            const Vec3f normalRotationResponse = invInertia(cross(probeOffset, contactNormal));
+            const float normalDenominator = 1.0f / mass + dot(contactNormal, cross(normalRotationResponse, probeOffset));
+            const float restitution = isFloor ? 0.0f : P.wallBounce;
+            const float normalImpulse = -(1.0f + restitution) * normalSpeed / normalDenominator;
+            vel += contactNormal * (normalImpulse / mass);
+            angVel += invInertia(cross(probeOffset, contactNormal * normalImpulse));
+            impact_ = std::max(impact_, -normalSpeed);
+            // Coulomb friction along the surface: stops the sliding, but not by more than a part of the normal impulse
+            probeVelocity = vel + cross(angVel, probeOffset);
+            const Vec3f tangentialVelocity = probeVelocity - contactNormal * dot(probeVelocity, contactNormal);
+            const float tangentialSpeed = length(tangentialVelocity);
+            if (tangentialSpeed > 1e-4f) {
+                const Vec3f tangentDirection = tangentialVelocity * (1.0f / tangentialSpeed);
+                const Vec3f tangentRotationResponse = invInertia(cross(probeOffset, tangentDirection));
+                const float tangentDenominator = 1.0f / mass + dot(tangentDirection, cross(tangentRotationResponse, probeOffset));
+                const float frictionImpulse = std::min(tangentialSpeed / tangentDenominator, (isFloor ? P.floorFriction : P.wallFriction) * normalImpulse);
+                vel += tangentDirection * (-frictionImpulse / mass);
+                angVel += invInertia(cross(probeOffset, tangentDirection * -frictionImpulse));
             }
         }
-        pos += n * std::min(depth * 0.7f, 0.25f);
+        pos += contactNormal * std::min(penetrationDepth * P.hullPushOut, P.hullMaxPushOut);  // out of the surface
     }
 }
 

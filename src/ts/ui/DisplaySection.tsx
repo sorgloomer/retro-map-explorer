@@ -45,6 +45,8 @@ export function DisplaySection() {
       <Group id="grpRendering" title="Rendering">
         <Check optKey="optTex">Textures</Check>
         <Check optKey="optGeo">Level geometry</Check>
+        <Slider optKey="optSmooth" label="Smooth meshes (passes)" min={0} max={3} step={1} showValue
+          title="Subdivision passes for the level's and the collision meshes (hard edges are kept; each pass has four times the triangles). The level loads again." />
         <Check optKey="optCol" disabled={!hasCollision} title={hasCollision ? 'Translucent overlay, coloured by surface type' : 'No collision mesh for this level'}>Collision mesh (game's own)</Check>
         <Check optKey="optWire">Wireframe (level geometry)</Check>
         <Check optKey="optBack" disabled={!canCull} title={canCull ? '' : 'This game draws every face double sided'}>Render back faces</Check>

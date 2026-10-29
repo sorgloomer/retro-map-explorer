@@ -200,6 +200,7 @@ struct Scene : BatchSet {
     BatchSet collision;
     std::function<void(Scene&)> collisionLoader;  // set by a game that has collision files; runs once
     bool collisionRequired = false;  // the physics needs those meshes: without them the level cannot be played
+    int smoothPasses = 0;            // subdivision passes for the collision meshes when they are read (the level's own are done at load)
     std::vector<std::string> collisionErrors;  // collision files that could not be read
     bool hasCollision() const { return !collisionMeshes.empty(); }
     bool collisionAvailable() const { return hasCollision() || (bool)collisionLoader; }

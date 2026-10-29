@@ -96,6 +96,9 @@ function installApi(): RmeApi {
       (document.activeElement as HTMLElement | null)?.blur();
       focusCanvas();
     },
+    onGameDebug(wheelsJson) {
+      update({ wheels: JSON.parse(wheelsJson) });
+    },
     onGameHud(speedKmh, score, drift, timeLeft, collected, total, gameState, message, messageAge) {
       const t = Math.max(0, Math.ceil(timeLeft));
       const hud = {
@@ -193,6 +196,7 @@ export function chooseLevel(id: string): void {
 
 // The wasm loader suspends while reading files, so only one load may run at a time.
 let loadBusy = false, loadAgain = false, autoMinimized = false;
+let keepCamera: number[] | null = null;  // the view to return to after reloading the same level
 async function loadSelected(): Promise<void> {
   if (loadBusy) { loadAgain = true; return; }
   loadBusy = true;
@@ -222,6 +226,10 @@ async function loadSelectedNow(): Promise<void> {
   }
   focusCanvas();
   applyRestore(levelId);
+  if (keepCamera) {
+    call('rme_set_camera', null, ['number', 'number', 'number', 'number', 'number'], keepCamera);
+    keepCamera = null;
+  }
   if (innerWidth < 760 && !state.dockMin && !autoMinimized) {
     autoMinimized = true;
     toggleDock();
@@ -404,6 +412,8 @@ export async function shareView(): Promise<void> {
 export async function startGame(mode: number): Promise<void> {
   busy(true, 'Loading the car…');
   await paint();
+  const saved = store.get(PARAMS_KEY);  // the parameters the player edited earlier (a bad text is just not used)
+  if (saved) applyGameParams(saved);
   let ok = 0;
   try {
     ok = await call('rme_game_start', 'number', ['number'], [mode], true);
@@ -414,6 +424,31 @@ export async function startGame(mode: number): Promise<void> {
   busy(false);
   if (!ok) setStatus('Could not start the game: ' + call('rme_last_error', 'string', [], []), true);
 }
+const PARAMS_KEY = 'rme.params.v1';  // the edited minigame parameters (JSON text)
+/** The minigame's parameters as multi-line JSON (the built-in values with `defaults`). */
+export function gameParamsJson(defaults = false): string {
+  return call('rme_game_params_json', 'string', ['number'], [defaults ? 1 : 0]);
+}
+/** Applies parameters from JSON text; returns '' on success, else the reason (with the line number). */
+export function applyGameParams(text: string): string {
+  return call('rme_game_params_apply', 'string', ['string'], [text]);
+}
+/** Applies the parameters and, when they are valid, remembers them for the next visit. Returns '' or the reason. */
+export function saveGameParams(text: string): string {
+  const error = applyGameParams(text);
+  if (!error) store.set(PARAMS_KEY, text);
+  return error;
+}
+export function setParamsEditor(open: boolean): void {
+  update({ paramsOpen: open });
+}
+
+/** Shows or hides the lateral force panel (remembered). */
+export function toggleDebugPanel(): void {
+  update({ debugPanel: !state.debugPanel });
+  store.set('rme.debugPanel.v1', state.debugPanel ? '1' : '0');
+}
+
 /** Controls of the on-screen buttons; the numbers are minigame01::Input::Touch. */
 export const TOUCH = { handbrake: 0, reset: 1, camera: 2, restart: 3, exit: 4 } as const;
 /** The on-screen stick: x steers (-1 left .. 1 right), y is the throttle (1 gas .. -1 brake / reverse). */
@@ -451,8 +486,13 @@ export function setOpt(key: string, value: number, persist = true): void {
 }
 /** A change made with the controls. */
 export function changeOpt(key: string, value: number): void {
+  const before = state.opts[key];
   setOpt(key, value);
   if (key === 'beams' || key === 'pupMeshes') saveState();  // part of the saved / shared view
+  if (key === 'optSmooth' && sceneLoaded && value !== before) {  // the meshes are smoothed while the level loads: load it again, from the same spot
+    keepCamera = call('rme_camera_state', 'string', [], []).split(',').map(Number);
+    void loadSelected();
+  }
 }
 export function setAnimPaused(paused: boolean): void {
   update({ animPaused: paused });

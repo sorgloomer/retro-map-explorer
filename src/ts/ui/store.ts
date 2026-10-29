@@ -2,7 +2,7 @@
 // parts they use with useUi(selector) and re-render when the selected value changes (compared with Object.is, so nested
 // values are replaced, never mutated).
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { folds } from '../storage.ts';
+import { folds, store } from '../storage.ts';
 import { OPTS } from './options.ts';
 
 export interface LayerRow {
@@ -25,6 +25,9 @@ export interface SceneView {
   canPlay: boolean;
   groups: LayerGroup[];
 }
+
+/** One tyre's sideways force, for the debug panel (N). */
+export interface WheelDebug { lat: number; limit: number; slide: number; slip: number; load: number }
 
 export interface GameHud {
   speed: number;
@@ -66,6 +69,9 @@ export interface UiState {
   share: { url: string; msg: string };
   gameMode: boolean;
   hud: GameHud;
+  wheels: WheelDebug[];  // front left, front right, rear left, rear right
+  debugPanel: boolean;   // the lateral force panel of the game is shown (not just its title)
+  paramsOpen: boolean;   // the minigame parameter editor is open
   tip: { text: string; cat: string; x: number; y: number } | null;
 }
 
@@ -92,6 +98,9 @@ export const state: UiState = {
   share: { url: '', msg: '' },
   gameMode: false,
   hud: { speed: 0, score: 0, drift: 0, pups: '0 / 0', time: '1:30', urgent: false, message: '', messageVisible: false, over: false, overTitle: '', overText: '' },
+  wheels: [],
+  debugPanel: store.get('rme.debugPanel.v1') !== '0',
+  paramsOpen: false,
   tip: null,
 };
 

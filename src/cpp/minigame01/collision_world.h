@@ -50,6 +50,7 @@ private:
     int nx = 0, nz = 0;
 
     void clear();
+    void buildGrid();
 
     template <class F>
     void forCells(const Vec3f& bmin, const Vec3f& bmax, F&& fn) const;

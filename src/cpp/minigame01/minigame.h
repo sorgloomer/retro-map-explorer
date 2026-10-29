@@ -42,6 +42,9 @@ public:
     // World units per metre of the level (the physics runs in metres; Re-Volt's units are much smaller than a metre).
     float unitsPerMetre() const { return scale; }
     const Hud& hud() const { return hud_; }
+    const Vehicle& vehicleState() const { return vehicle; }  // for the debug display
+    // The parameters changed: the car's mass, centre of mass, inertia and probes follow (the car stays where it is).
+    void applyTuning() { if (isPrepared) vehicle.applyTuning(); }
     const Input& inputRef() const { return input; }
     Input& inputRef() { return input; }
 

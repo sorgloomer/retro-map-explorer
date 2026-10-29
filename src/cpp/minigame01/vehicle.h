@@ -5,6 +5,7 @@
 #include <vector>
 #include "minigame01/car_model.h"
 #include "minigame01/collision_world.h"
+#include "minigame01/params.h"
 
 namespace minigame01 {
 
@@ -29,10 +30,15 @@ public:
         float steer = 0;    // radians (front wheels)
         float load = 0;     // N
         float slip = 0;     // slip angle, radians
+        float lateralForce = 0;  // N, across the wheel on the road (positive: towards the car's right); for the debug display
+        float lateralLimit = 0;  // N, the most the tyre could push sideways (grip limit, handbrake included)
+        bool sliding = false;    // the sideways force wanted was over the limit: the tyre slides
         bool grounded = false;
     };
 
     void init(const CarModel& model);
+    // Recomputes mass, centre of mass, inertia and hull probes after the tunable parameters changed (the car stays where it is).
+    void applyTuning();
     // Places the car upright with its wheels' lowest point at `groundY`, heading `yaw` (0 = +z), at rest.
     void reset(const Vec3f& groundPos, float yaw);
     void step(float dt, const VehicleInput& input, const CollisionWorld& world);
@@ -59,8 +65,15 @@ private:
 
     // --- shape
     Vec3f wheelRest[4];
-    float wheelR = 0.34f;
+    float wheelR = 0.34f;         // mean wheel radius (the car's ride height and centre of mass are measured from it)
+    float wheelRadii[4] = {0.34f, 0.34f, 0.34f, 0.34f};  // per wheel, the ones the suspension and the spin use
+    float meshWheelRadii[4] = {0, 0, 0, 0}, fileWheelRadii[4] = {0, 0, 0, 0}, fallbackWheelRadius = 0.34f;
+    float fileSpringK = 0, fileDamper = 0;   // what the car's own files say (0: nothing)
+    float springStiffness = 30000, damping = 3300;  // the ones in use (N/m, N s/m)
     Vec3f com;                    // centre of mass in car space
+    float fileMass = 0;           // what the car's own files say (0: nothing)
+    bool hasFileCom = false;
+    Vec3f fileCom;
     Vec3f bmin, bmax;
     std::vector<Vec3f> probes;    // hull probe centres in car space (relative to the car origin)
     float probeR = 0.3f;

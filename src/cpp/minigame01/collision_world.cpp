@@ -81,6 +81,7 @@ void CollisionWorld::build(const std::vector<CollisionMesh>& meshes, float scale
     clear();
     bothSidesSolid = true;
     for (const CollisionMesh& m : meshes) {
+        const bool tree = !m.nodes.empty();  // a smoothed mesh has none: its triangles go into the grid
         Bvh bv;
         bv.root = m.root;
         bv.polyFirst.reserve(m.polys.size() + 1);
@@ -97,9 +98,10 @@ void CollisionWorld::build(const std::vector<CollisionMesh>& meshes, float scale
                 float l = length(n);
                 if (l < 1e-7f) continue;
                 t.n = n * (1.0f / l);
-                bv.tris.push_back(t);
+                (tree ? bv.tris : tris).push_back(t);
             }
         }
+        if (!tree) continue;
         bv.polyFirst.push_back((int)bv.tris.size());
         bv.nodes.reserve(m.nodes.size());
         for (const CollisionMesh::Node& nd : m.nodes) {
@@ -112,6 +114,7 @@ void CollisionWorld::build(const std::vector<CollisionMesh>& meshes, float scale
         }
         if (!bv.tris.empty()) bvhs.push_back(std::move(bv));
     }
+    buildGrid();
 }
 
 void CollisionWorld::build(const Scene& scene, float scale, bool bothSides) {
@@ -132,6 +135,11 @@ void CollisionWorld::build(const Scene& scene, float scale, bool bothSides) {
             tris.push_back(t);
         }
     }
+    buildGrid();
+}
+
+// The uniform grid over `tris`.
+void CollisionWorld::buildGrid() {
     if (tris.empty()) return;
     // grid bounds from the triangles that are small enough to live in it
     const float kLarge = 80.0f;

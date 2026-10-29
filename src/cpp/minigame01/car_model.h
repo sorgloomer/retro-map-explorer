@@ -13,9 +13,16 @@ struct CarModel {
     BatchSet wheel[4];   // one per wheel (front left, front right, rear left, rear right), centred on the axle
     Vec3f wheelPos[4];    // rest position of the wheel centres, same order
     float unitsPerMetre = 1;  // size of a metre in the game's own units: the model is already in metres, the level is not
-    float wheelRadius = 0.34f;
+    float wheelRadius = 0.34f;      // one radius for all wheels, when nothing better is known
+    float meshWheelRadii[4] = {0, 0, 0, 0};  // measured from each wheel's mesh (0: not measured)
+    float fileWheelRadii[4] = {0, 0, 0, 0};  // from the car's own files (0: the files do not say)
+    float fileSpringK = 0;          // suspension spring stiffness in N/m from the car's own files (0: not said)
+    float fileDamper = 0;           // suspension damping in N s/m from the car's own files (0: not said)
     float wheelWidth = 0.25f;
     Vec3f boundsMin, boundsMax;  // of the chassis
+    float mass = 0;                  // kg, from the car's own files; 0 when they do not say
+    bool hasCentreOfMass = false;
+    Vec3f centreOfMass;              // car space, from the car's own files
 };
 
 }  // namespace minigame01

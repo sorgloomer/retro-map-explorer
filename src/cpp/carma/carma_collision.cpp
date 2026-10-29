@@ -9,6 +9,7 @@
 //   u32 root id (the first node)
 #include <cstring>
 #include "carma/carma_game.h"
+#include "scene/subdivide.h"
 #include "vfs.h"
 
 namespace carma {
@@ -128,6 +129,7 @@ void CarmaGame::findCollision(const std::vector<std::string>& descriptors, Scene
                 s.collisionErrors.push_back(f);
                 continue;
             }
+            if (s.smoothPasses > 0) smoothCollisionMesh(m, s.smoothPasses);
             buildCollisionOverlay(m, s.collision);
             s.collisionMeshes.push_back(std::move(m));
         }
