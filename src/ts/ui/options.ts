@@ -14,6 +14,7 @@ export const OPTS: OptDef[] = [
   { key: 'animSpeed', name: 'animSpeed', def: 1 },  // the C++ side gets the effective rate: 0 while paused
   { key: 'optTex', name: 'textured', def: 1 },
   { key: 'optGeo', name: 'geometry', def: 1 },
+  { key: 'optCol', name: 'collision', def: 0 },
   { key: 'optWire', name: 'wireframe', def: 0 },
   { key: 'optBack', name: 'backFaces', def: 0 },
 ];

@@ -255,6 +255,7 @@ void Renderer::buildShapes() {
 
 void Renderer::clearScene() {
     freeSet(batches);
+    freeSet(collisionGpu);
     for (auto& set : geomGpu) freeSet(set);
     geomGpu.clear();
     for (unsigned t : textures) glDeleteTextures(1, &t);
@@ -319,6 +320,7 @@ void Renderer::setScene(const Scene* s, float radius) {
     }
     // geometry batches (level + moving objects)
     uploadSet(s->batches, batches);
+    uploadSet(s->collision.batches, collisionGpu);
     geomGpu.resize(s->moverGeoms.size());
     for (size_t i = 0; i < s->moverGeoms.size(); i++) uploadSet(s->moverGeoms[i].batches, geomGpu[i]);
     glBindVertexArray(0);
@@ -687,6 +689,30 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         glDisable(GL_BLEND);
         glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
         glDisable(GL_CULL_FACE);
+    }
+
+    // the game's collision mesh: a translucent overlay, nudged towards the camera so it wins against the surfaces it coincides with
+    if (opt.showCollision && !collisionGpu.empty()) {
+        glUseProgram(progWorld);
+        glUniformMatrix4fv(glGetUniformLocation(progWorld, "uVP"), 1, GL_FALSE, vp.viewProj.m);
+        glUniformMatrix4fv(glGetUniformLocation(progWorld, "uModel"), 1, GL_FALSE, Mat4::identity().m);
+        glUniform1f(glGetUniformLocation(progWorld, "uTextured"), 0.f);
+        glUniform1f(glGetUniformLocation(progWorld, "uCutout"), 0.f);
+        glUniform1f(glGetUniformLocation(progWorld, "uBlendAdd"), 0.f);
+        glUniform1f(glGetUniformLocation(progWorld, "uExposure"), 1.0f);
+        glUniform1f(glGetUniformLocation(progWorld, "uFade"), 1.0f);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.0f, -1.0f);
+        for (const GpuBatch& b : collisionGpu) {
+            glBindVertexArray(b.vao);
+            glDrawElements(GL_TRIANGLES, b.count, GL_UNSIGNED_INT, nullptr);
+        }
+        glDisable(GL_POLYGON_OFFSET_FILL);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
     }
 
     // annotations: solid pass, then a faint see-through pass where occluded

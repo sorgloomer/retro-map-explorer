@@ -99,7 +99,7 @@ src/cpp/revolt/        Re-Volt loader (.w .prm .fin .inf .fob .pan .taz .tri .li
 src/cpp/carma/         Carmageddon TDR 2000 loader (.dir/.pak archives, .hie, .mshs, .tga, .lins, .pup, .scol)
                         carma_game.h (class + format notes), carma_files (file lookup, races.txt),
                         carma_geometry (hierarchies to meshes), carma_movers (followers, animated props), carma_level
-                        (the steps of load), carma_pak / carma_formats / carma_text / carma_powerups / carma_paths
+                        (the steps of load), carma_pak / carma_formats / carma_collision (.scol collision meshes) / carma_text / carma_powerups / carma_paths
 src/cpp/renderer.*     WebGL2 renderer (textured geometry, instanced markers, screen-space line ribbons)
 src/cpp/minigame01/    Driving minigame "Powerup Rush": vehicle physics, level collision, input, game rules, and the Eagle loader
 src/cpp/raycast.*      view rays and picking against the level geometry

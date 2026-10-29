@@ -202,6 +202,8 @@ public:
     void readTexAnims(const KeyFile& kf);  // TEXTURE_ANIM_DESCRIPTOR and the .anm scripts it lists
     void openArchives();                                       // track, base track and shared sub folders
     bool readGeometry(const KeyFile& kf, int& meshCount, std::string& err);  // STATIC_MESH_DESCRIPTOR + WATER_MESH
+    void readCollision(const std::vector<std::string>& descriptors);          // the .scol files of the collision descriptors
+    bool addCollisionMesh(const std::vector<uint8_t>& data);
     Cats addCategories(Scene& out);
     void addStart(const KeyFile& kf, Scene& out, const Cats& c);
     void addPowerups(const std::string& name, const KeyFile& race, bool listed, Scene& out, const Cats& c);

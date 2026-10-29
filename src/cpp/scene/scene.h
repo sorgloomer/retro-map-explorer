@@ -151,6 +151,8 @@ struct Scene : BatchSet {
     float pickupBottomY = 0.0f;  // height of its bottom above its origin: the point icons grow from when they are scaled up
     std::vector<BatchSet> moverGeoms;
     std::vector<Mover> movers;
+    BatchSet collision;  // the game's own collision mesh (translucent, coloured by surface type), when the game has one
+    bool hasCollision() const { return !collision.batches.empty(); }
     std::string title;
     std::string info;                 // short multi-line description shown in the UI
     Vec3f background{0.08f, 0.1f, 0.14f};

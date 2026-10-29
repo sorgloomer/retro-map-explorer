@@ -519,6 +519,7 @@ EMSCRIPTEN_KEEPALIVE const char* rme_scene_info() {
         bool pm = false;
         for (const Category& c : s->cats) pm |= c.hasMesh;
         j += std::string("\"canCull\":") + (s->cullBackfaces ? "true" : "false") + ",";
+        j += std::string("\"hasCollision\":") + (s->hasCollision() ? "true" : "false") + ",";
         bool animated = false;
         for (const Mover& mv : s->movers) animated |= !mv.staticModel && !mv.external;
         j += std::string("\"hasMovers\":") + (animated ? "true" : "false") + ",";
@@ -555,6 +556,7 @@ EMSCRIPTEN_KEEPALIVE void rme_set_option(const char* name, double v) {
     else if (n == "lineWidth") app.ui.lineWidth = (float)v;
     else if (n == "xrayStrength") app.ui.xrayStrength = (float)v;
     else if (n == "geometry") app.ui.showGeometry = v != 0;
+    else if (n == "collision") app.ui.showCollision = v != 0;
     else if (n == "powerupMeshes") app.ui.powerupMeshes = v != 0;
     else if (n == "wireframe") app.ui.wireframe = v != 0;
     else if (n == "beams") app.ui.beams = v != 0;

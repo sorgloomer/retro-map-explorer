@@ -28,7 +28,7 @@ function AnimationLine({ enabled }: { enabled: boolean }) {
 
 export function DisplaySection() {
   const scene = useUi((s) => s.scene);
-  const canCull = !!scene?.canCull, hasMeshes = !!scene?.hasPowerupMeshes, hasMovers = !!scene?.hasMovers;
+  const hasCollision = !!scene?.hasCollision, canCull = !!scene?.canCull, hasMeshes = !!scene?.hasPowerupMeshes, hasMovers = !!scene?.hasMovers;
   return (
     <Section id="secDisplay" title="Display" hidden={!scene}>
       <Group id="grpMisc" title="Misc">
@@ -45,6 +45,7 @@ export function DisplaySection() {
       <Group id="grpRendering" title="Rendering">
         <Check optKey="optTex">Textures</Check>
         <Check optKey="optGeo">Level geometry</Check>
+        <Check optKey="optCol" disabled={!hasCollision} title={hasCollision ? 'Translucent overlay, coloured by surface type' : 'No collision mesh for this level'}>Collision mesh (game's own)</Check>
         <Check optKey="optWire">Wireframe (level geometry)</Check>
         <Check optKey="optBack" disabled={!canCull} title={canCull ? '' : 'This game draws every face double sided'}>Render back faces</Check>
         <Slider optKey="optLine" label="Line width" min={1} max={8} step={0.5} />

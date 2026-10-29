@@ -19,6 +19,7 @@ export interface SceneView {
   title: string;
   info: string;
   canCull: boolean;
+  hasCollision: boolean;
   hasPowerupMeshes: boolean;
   hasMovers: boolean;
   canPlay: boolean;

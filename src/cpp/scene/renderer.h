@@ -14,7 +14,8 @@ struct RenderOptions {
     float lineWidth = 3.0f;
     float xrayStrength = 1.0f;  // see-through strength: how visible occluded markers / lines / powerup meshes are
     bool showGeometry = true;
-    bool wireframe = false;   // level geometry as lines
+    bool showCollision = false;  // the game's collision mesh as a translucent overlay (when the scene has one)
+    bool wireframe = false;  // level geometry as lines
     bool backFaces = false;   // draw back faces too (otherwise follow the game and cull them)
     bool beams = false;         // vertical beams above powerup markers
     bool powerupMeshes = true;   // draw powerups with their in-game meshes instead of markers
@@ -71,6 +72,7 @@ private:
     int lost = 0;
     unsigned progWorld = 0, progMarker = 0, progLine = 0;
     std::vector<GpuBatch> batches;
+    std::vector<GpuBatch> collisionGpu;
     std::vector<std::vector<GpuBatch>> geomGpu;  // one per Scene::moverGeoms entry
     std::vector<unsigned> textures;
     std::vector<int> texFrame;  // texture shown for each scene texture: itself, or the current frame of its animation

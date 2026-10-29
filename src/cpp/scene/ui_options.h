@@ -12,6 +12,7 @@ struct UiOptions {
     float lineWidth = 3.0f;
     float xrayStrength = 1.0f;
     bool showGeometry = true;
+    bool showCollision = false;
     bool wireframe = false;
     bool backFaces = false;
     bool beams = false;
@@ -26,6 +27,7 @@ struct UiOptions {
         r.lineWidth = lineWidth;
         r.xrayStrength = xrayStrength;
         r.showGeometry = showGeometry;
+        r.showCollision = showCollision;
         r.wireframe = wireframe;
         r.backFaces = backFaces;
         r.beams = beams;

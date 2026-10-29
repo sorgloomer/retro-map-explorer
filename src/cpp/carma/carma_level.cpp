@@ -60,7 +60,7 @@ void CarmaGame::openArchives() {
 }
 
 bool CarmaGame::readGeometry(const KeyFile& kf, int& meshCount, std::string& err) {
-    std::vector<std::string> hies;
+    std::vector<std::string> hies, collisionDescs;
     {
         std::string md;
         if (!readNamedText(kf.str("STATIC_MESH_DESCRIPTOR"), md)) { err = "cannot read mesh descriptor"; return false; }
@@ -68,6 +68,8 @@ bool CarmaGame::readGeometry(const KeyFile& kf, int& meshCount, std::string& err
             auto q = quotedStrings(stripComment(raw));
             if (q.empty()) continue;
             const std::string& first = q[0];
+            // the rows are: "hierarchy or script" renderNode optimize "collision descriptor" (the numbers are not quoted, "" = none)
+            if (q.size() > 1 && !q[1].empty()) collisionDescs.push_back(q[1]);
             if (endsWith(vfs::lower(first), ".hie")) {
                 hies.push_back(first.substr(0, first.size() - 4));
             } else if (endsWith(vfs::lower(first), ".txt")) {
@@ -89,6 +91,7 @@ bool CarmaGame::readGeometry(const KeyFile& kf, int& meshCount, std::string& err
         }
     }
     for (const std::string& h : hies) emitHie(h, meshCount, vfs::lower(h).find("water") != std::string::npos);
+    readCollision(collisionDescs);
     if (sc->triCount == 0) {
         err = "no geometry found (" + std::to_string(hies.size()) + " hierarchies";
         for (const std::string& m : missing) err += ", missing " + m;

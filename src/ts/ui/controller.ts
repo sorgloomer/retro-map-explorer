@@ -286,6 +286,7 @@ function showSceneInfo(seconds: string): void {
       title: info.title,
       info: `${info.info} · loaded in ${seconds}s`,
       canCull: info.canCull,
+      hasCollision: info.hasCollision,
       hasPowerupMeshes: info.hasPowerupMeshes,
       hasMovers: !!info.hasMovers,
       canPlay: !!call('rme_game_can_play', 'number', [], []),
