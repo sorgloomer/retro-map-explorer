@@ -91,7 +91,7 @@ bool CarmaGame::readGeometry(const KeyFile& kf, int& meshCount, std::string& err
         }
     }
     for (const std::string& h : hies) emitHie(h, meshCount, vfs::lower(h).find("water") != std::string::npos);
-    readCollision(collisionDescs);
+    findCollision(collisionDescs, *sc);
     if (sc->triCount == 0) {
         err = "no geometry found (" + std::to_string(hies.size()) + " hierarchies";
         for (const std::string& m : missing) err += ", missing " + m;

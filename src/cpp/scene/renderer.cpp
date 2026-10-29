@@ -264,6 +264,13 @@ void Renderer::clearScene() {
     catRanges.clear();
 }
 
+// The collision overlay is read on demand, after the scene was set.
+void Renderer::uploadCollision() {
+    freeSet(collisionGpu);
+    if (scene) uploadSet(scene->collision.batches, collisionGpu);
+    glBindVertexArray(0);
+}
+
 void Renderer::freeSet(std::vector<GpuBatch>& set) {
     for (auto& b : set) {
         if (b.lineIbo) glDeleteBuffers(1, &b.lineIbo);
@@ -674,12 +681,24 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 glEnable(GL_BLEND);
                 glDepthMask(GL_FALSE);
             }
+            // The minigame car's see-through parts (windows) go in before the level's, writing depth: the level's blended surfaces
+            // (water) then blend over them where they are nearer, and are rejected where they are behind. Drawn after the
+            // water instead, the windows would paint over it as if nothing was in between.
+            if (pass == 1)
+                for (size_t i = 0; i < scene->movers.size(); i++) {
+                    if (!shown[i] || !scene->movers[i].external) continue;
+                    glUniform1f(locExposure, opt.exposure);
+                    glDepthMask(GL_TRUE);
+                    drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
+                    glDepthMask(GL_FALSE);
+                }
             glUniform1f(locExposure, opt.exposure);  // the movers below change it: reset for the level in every pass
             if (opt.wireframe) { if (pass == 0) drawWire(); }
             else drawSet(batches, pass, Mat4::identity());
             if (pass == 0 && opt.xrayEnabled() && opt.powerupMeshes) drawPowerupGhosts();
             for (size_t i = 0; i < scene->movers.size(); i++) {
                 if (!shown[i]) continue;
+                if (pass == 1 && scene->movers[i].external) continue;  // drawn before the level's blended surfaces
                 glUniform1f(locExposure, scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
                 drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
             }

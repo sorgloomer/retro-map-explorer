@@ -369,6 +369,10 @@ void frame() {
     vp.viewProj = Mat4::mul(vp.proj, vp.view);
     if (app.gameMode) app.hover = -1;
     else updateHover(vp);
+    if (app.opt.showCollision && app.scene && app.scene->collisionLoader) {  // first time the collision overlay is drawn
+        app.scene->ensureCollision();
+        app.renderer.uploadCollision();
+    }
     app.renderer.render(vp, app.opt, app.hover);
 }
 
@@ -519,7 +523,7 @@ EMSCRIPTEN_KEEPALIVE const char* rme_scene_info() {
         bool pm = false;
         for (const Category& c : s->cats) pm |= c.hasMesh;
         j += std::string("\"canCull\":") + (s->cullBackfaces ? "true" : "false") + ",";
-        j += std::string("\"hasCollision\":") + (s->hasCollision() ? "true" : "false") + ",";
+        j += std::string("\"hasCollision\":") + (s->collisionAvailable() ? "true" : "false") + ",";
         bool animated = false;
         for (const Mover& mv : s->movers) animated |= !mv.staticModel && !mv.external;
         j += std::string("\"hasMovers\":") + (animated ? "true" : "false") + ",";

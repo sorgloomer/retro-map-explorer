@@ -2,6 +2,7 @@
 // markers (starts, pickups, paths, zones...). Loaders fill it, the renderer draws it.
 #pragma once
 #include <cmath>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -68,6 +69,24 @@ struct Marker {
 struct Line {
     int cat = 0;
     Vec3f a, b;
+};
+
+// A game's collision mesh: polygons (triangles and quads) under a bounding volume hierarchy of axis-aligned boxes, as the
+// games ship them. A child reference is >= 0 for a node (index into `nodes`) and < 0 for a polygon (~value).
+struct CollisionMesh {
+    struct Poly {
+        uint32_t v[4] = {0, 0, 0, 0};
+        uint8_t n = 3;         // 3 or 4 vertices
+        uint8_t material = 0;  // surface type
+    };
+    struct Node {
+        Vec3f centre, half;  // the box
+        int child[2] = {0, 0};
+    };
+    std::vector<Vec3f> verts;
+    std::vector<Poly> polys;
+    std::vector<Node> nodes;
+    int root = 0;
 };
 
 // A set of batches keyed by (texture, blend mode).
@@ -151,8 +170,21 @@ struct Scene : BatchSet {
     float pickupBottomY = 0.0f;  // height of its bottom above its origin: the point icons grow from when they are scaled up
     std::vector<BatchSet> moverGeoms;
     std::vector<Mover> movers;
-    BatchSet collision;  // the game's own collision mesh (translucent, coloured by surface type), when the game has one
-    bool hasCollision() const { return !collision.batches.empty(); }
+    // The game's own collision meshes, read on first use (ensureCollision): the physics and the collision overlay need them,
+    // the plain viewer does not. `collision` is the overlay (translucent, coloured by surface type).
+    std::vector<CollisionMesh> collisionMeshes;
+    BatchSet collision;
+    std::function<void(Scene&)> collisionLoader;  // set by a game that has collision files; runs once
+    bool hasCollision() const { return !collisionMeshes.empty(); }
+    bool collisionAvailable() const { return hasCollision() || (bool)collisionLoader; }
+    bool ensureCollision() {
+        if (collisionLoader) {
+            auto load = std::move(collisionLoader);
+            collisionLoader = nullptr;
+            load(*this);
+        }
+        return hasCollision();
+    }
     std::string title;
     std::string info;                 // short multi-line description shown in the UI
     Vec3f background{0.08f, 0.1f, 0.14f};

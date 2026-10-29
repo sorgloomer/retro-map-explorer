@@ -28,7 +28,9 @@ void setMessage(Hud& h, const char* text) {
 bool MiniGame::prepare(Scene& scene, const CarModel& model) {
     car = model;
     scale = std::max(1e-3f, car.unitsPerMetre);
-    world.build(scene, 1.0f / scale, !scene.cullBackfaces);
+    // the game's own collision meshes when it has them (read now: the viewer alone never needs them), else the visible triangles
+    if (scene.ensureCollision()) world.build(scene.collisionMeshes, 1.0f / scale);
+    else world.build(scene, 1.0f / scale, !scene.cullBackfaces);
     if (world.empty()) return false;
     vehicle.init(car);
     int g0 = (int)scene.moverGeoms.size();

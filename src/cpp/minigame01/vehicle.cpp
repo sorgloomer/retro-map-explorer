@@ -18,9 +18,9 @@ constexpr float kSpringK = 30000.0f;    // N/m
 constexpr float kDamper = 3300.0f;      // N s/m
 
 // --- tyres and engine
-constexpr float kGrip = 1.12f;          // friction coefficient on the road
-constexpr float kSlideGrip = 0.86f;     // part of the grip left while sliding
-constexpr float kEngineForce = 10500.0f; // N at the wheels at low speed
+constexpr float kGrip = 1.5f;         // friction coefficient on the road
+constexpr float kSlideGrip = 0.85f;     // part of the grip left while sliding
+constexpr float kEngineForce = 40000.0f; // N at the wheels at low speed (over three times the car's weight)
 constexpr float kEnginePower = 420000.0f;  // W
 constexpr float kBrakeForce = 1.0f;     // of the friction limit
 constexpr float kRollResist = 0.016f;

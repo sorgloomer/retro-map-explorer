@@ -37,6 +37,7 @@ class Renderer {
 public:
     bool init(const char* canvasSelector);
     void setScene(const Scene* scene, float radius);  // uploads GPU data; radius = typical level size
+    void uploadCollision();  // after Scene::ensureCollision filled the overlay
     void render(const ViewParams& vp, const RenderOptions& opt, int highlightMarker);
     int contextLost() const { return lost; }
 
