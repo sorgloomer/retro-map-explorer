@@ -44,6 +44,7 @@ public:
 private:
     struct GpuBatch {
         unsigned vao = 0, vbo = 0, ibo = 0;
+        unsigned nbo = 0;  // vertex normals (attribute 3), only for lit sets
         int count = 0;
         int tex = -1;  // gpu texture handle index (or -1)
         Blend blend = BLEND_OPAQUE;
@@ -61,7 +62,7 @@ private:
     void clearScene();
     void drawPivot(const ViewParams& vp, const RenderOptions& opt);
     unsigned pivotBuf = 0;
-    void uploadSet(const std::vector<Batch>& src, std::vector<GpuBatch>& dst);
+    void uploadSet(const std::vector<Batch>& src, std::vector<GpuBatch>& dst, bool lit = false);
     void freeSet(std::vector<GpuBatch>& set);
     void buildShapes();
     unsigned compile(const char* vs, const char* fs);
@@ -71,7 +72,7 @@ private:
 
     const Scene* scene = nullptr;
     int lost = 0;
-    unsigned progWorld = 0, progMarker = 0, progLine = 0;
+    unsigned progWorld = 0, progLit = 0, progMarker = 0, progLine = 0;
     std::vector<GpuBatch> batches;
     std::vector<GpuBatch> collisionGpu;
     std::vector<std::vector<GpuBatch>> geomGpu;  // one per Scene::moverGeoms entry

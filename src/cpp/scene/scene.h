@@ -33,6 +33,7 @@ struct Batch {
     Blend blend = BLEND_OPAQUE;
     bool twoSided = false;  // material flag 1: no back-face culling (foliage, thin objects)
     std::vector<SceneVertex> verts;
+    std::vector<Vec3f> normals;  // the file's vertex normals, parallel to verts; empty when the loader has none (a zero vector = unknown)
     std::vector<uint32_t> idx;
 };
 
@@ -71,12 +72,25 @@ struct Line {
     Vec3f a, b;
 };
 
+// The level's light for the meshes that are shaded (the minigame's car): an ambient term, a directional light and point lights.
+struct PointLight {
+    Vec3f pos;
+    float inner = 0, outer = 1;  // full intensity up to `inner`, fading to zero at `outer`
+    Vec3f color{1, 1, 1};
+};
+struct Lighting {
+    Vec3f ambient{0.35f, 0.35f, 0.35f};
+    Vec3f sunDir{0.3f, 0.8f, 0.5f};  // unit vector pointing towards the sun
+    Vec3f sunColor{0.9f, 0.9f, 0.85f};
+    std::vector<PointLight> lights;
+};
+
 // A game's collision mesh: polygons (triangles and quads) under a bounding volume hierarchy of axis-aligned boxes, as the
 // games ship them. A child reference is >= 0 for a node (index into `nodes`) and < 0 for a polygon (~value).
 struct CollisionMesh {
     struct Poly {
-        uint32_t v[4] = {0, 0, 0, 0};
-        uint8_t n = 3;         // 3 or 4 vertices
+        uint32_t first = 0;    // its vertices are corners[first .. first + n)
+        uint8_t n = 3;         // 3 or more vertices (convex: a fan of triangles)
         uint8_t material = 0;  // surface type
     };
     struct Node {
@@ -84,6 +98,7 @@ struct CollisionMesh {
         int child[2] = {0, 0};
     };
     std::vector<Vec3f> verts;
+    std::vector<uint32_t> corners;  // vertex indices of all polygons
     std::vector<Poly> polys;
     std::vector<Node> nodes;
     int root = 0;
@@ -92,6 +107,7 @@ struct CollisionMesh {
 // A set of batches keyed by (texture, blend mode).
 struct BatchSet {
     std::vector<Batch> batches;
+    bool lit = false;  // drawn with the lighting shader (needs normals: the renderer derives them)
 
     Batch& batchFor(int tex, Blend blend, bool twoSided = false) {
         uint64_t key = ((uint64_t)(uint32_t)(tex + 1) << 9) | (twoSided ? 256u : 0u) | blend;
@@ -104,9 +120,15 @@ struct BatchSet {
         batches.back().twoSided = twoSided;
         return batches.back();
     }
-    void appendIndexed(int tex, Blend blend, const SceneVertex* v, size_t nv, const uint32_t* idx, size_t ni, bool twoSided = false) {
+    // nrm: one normal per vertex when the file has them.
+    void appendIndexed(int tex, Blend blend, const SceneVertex* v, size_t nv, const uint32_t* idx, size_t ni, bool twoSided = false,
+                       const Vec3f* nrm = nullptr) {
         Batch& bt = batchFor(tex, blend, twoSided);
         auto base = static_cast<uint32_t>(bt.verts.size());
+        if (nrm || !bt.normals.empty()) {
+            bt.normals.resize(base, Vec3f(0, 0, 0));
+            for (size_t i = 0; i < nv; i++) bt.normals.push_back(nrm ? nrm[i] : Vec3f(0, 0, 0));
+        }
         bt.verts.insert(bt.verts.end(), v, v + nv);
         for (size_t i = 0; i < ni; i++) bt.idx.push_back(base + idx[i]);
     }
@@ -137,6 +159,7 @@ struct Mover {
     Vec3f pivot;                // keyframe rotations turn about this point
     bool staticModel = false;  // geometry is already in world space (merged props): draw with an identity transform
     bool external = false;     // `model` is set from outside every frame (the minigame's car); `cat` may be -1
+    bool lit = false;          // shaded with the scene's Lighting
     bool hidden = false;       // not drawn (collected pickups, the parked car)
     Mat4 model = Mat4::identity();
 
@@ -170,11 +193,14 @@ struct Scene : BatchSet {
     float pickupBottomY = 0.0f;  // height of its bottom above its origin: the point icons grow from when they are scaled up
     std::vector<BatchSet> moverGeoms;
     std::vector<Mover> movers;
+    Lighting lighting;  // for the meshes marked `lit`; defaults when the game has no light data
     // The game's own collision meshes, read on first use (ensureCollision): the physics and the collision overlay need them,
     // the plain viewer does not. `collision` is the overlay (translucent, coloured by surface type).
     std::vector<CollisionMesh> collisionMeshes;
     BatchSet collision;
     std::function<void(Scene&)> collisionLoader;  // set by a game that has collision files; runs once
+    bool collisionRequired = false;  // the physics needs those meshes: without them the level cannot be played
+    std::vector<std::string> collisionErrors;  // collision files that could not be read
     bool hasCollision() const { return !collisionMeshes.empty(); }
     bool collisionAvailable() const { return hasCollision() || (bool)collisionLoader; }
     bool ensureCollision() {

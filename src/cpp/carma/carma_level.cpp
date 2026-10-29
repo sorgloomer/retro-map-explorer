@@ -372,6 +372,15 @@ void CarmaGame::addRespawns(const KeyFile& kf, const std::string& name, Scene& o
     }
 }
 
+// The level's ambient and sun light, for the shaded meshes (the minigame's car).
+void CarmaGame::readLighting(const KeyFile& kf, Scene& out) {
+    float amb, sun[3], sc3[3];
+    if (kf.nums("AMBIENT_LIGHT", &amb, 1)) out.lighting.ambient = Vec3f(amb, amb, amb);
+    if (kf.nums("SUN_VECTOR", sun, 3)) out.lighting.sunDir = normalize(fixX(Vec3f(-sun[0], -sun[1], -sun[2])));
+    if (kf.nums("SUN_LIGHT_COLOUR", sc3, 3)) out.lighting.sunColor = {sc3[0], sc3[1], sc3[2]};
+}
+
+// The level's point lights: a marker layer, and the lights themselves for the shaded meshes.
 void CarmaGame::addLightMarkers(const KeyFile& kf, Scene& out) {
     int cLight = out.addCategory("light", "Lights (in-game)", rgb(0xfff3a0), SHAPE_DIAMOND, 0.7f, false, true);
     std::string lname = kf.str("LIGHTS_DESCRIPTOR"), lt;
@@ -385,9 +394,16 @@ void CarmaGame::addLightMarkers(const KeyFile& kf, Scene& out) {
             std::string col;
             if (!(is >> x >> y >> z >> r0 >> r1 >> col)) continue;
             uint32_t c = (uint32_t)strtoul(col.c_str(), nullptr, 16);
+            PointLight pl;
+            pl.pos = fixX({x, y, z});
+            pl.inner = r0;
+            pl.outer = std::max(r1, r0 + 0.01f);
+            const Color3f lc = Color3f::from3b(Color3b::from_rgb(c));
+            pl.color = Vec3f(lc.r, lc.g, lc.b);
+            out.lighting.lights.push_back(pl);
             char hex[16];
             snprintf(hex, sizeof hex, "#%06x", c & 0xffffff);
-            out.addMarker(cLight, fixX({x, y, z}), 0, std::string("Light ") + hex + " (radius " + std::to_string((int)r0) + "-" + std::to_string((int)r1) + ")");
+            out.addMarker(cLight, pl.pos, 0, std::string("Light ") + hex + " (radius " + std::to_string((int)r0) + "-" + std::to_string((int)r1) + ")");
         }
     }
 }

@@ -95,10 +95,11 @@ bool parseMshs(const std::vector<uint8_t>& data, std::vector<CMesh>& out) {
                 uint32_t base = (uint32_t)m.nv();
                 for (uint32_t j = 0; j < k; j++) {
                     Vec3f pos = r.vec3();
-                    r.skip(12);
+                    Vec3f nrm = r.vec3();
                     float col[4] = {r.f32(), r.f32(), r.f32(), r.f32()};
                     float u = r.f32(), v = r.f32();
                     m.v.insert(m.v.end(), {pos.x, pos.y, pos.z, col[0], col[1], col[2], col[3], u, v});
+                    m.n.insert(m.n.end(), {nrm.x, nrm.y, nrm.z});
                 }
                 for (uint32_t j = 1; j + 1 < k; j++) m.idx.insert(m.idx.end(), {base, base + j, base + j + 1});
             }
@@ -123,11 +124,12 @@ bool parseMshs(const std::vector<uint8_t>& data, std::vector<CMesh>& out) {
             for (uint32_t t = 0; t < tris; t++, rec += 132) {
                 uint32_t id[3];
                 memcpy(id, rec + 12, 12);
-                const float* rf = (const float*)(rec + 24);  // 3 * rgba, then 3 * uv
+                const float* rf = (const float*)(rec + 24);  // 3 * rgba, 3 * uv, then 3 * vertex normal
                 for (int c = 0; c < 3; c++) {
                     uint32_t i = id[c] < nv2 ? id[c] : 0;
                     m.idx.push_back((uint32_t)m.nv());
                     m.v.insert(m.v.end(), {pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2], rf[c * 4], rf[c * 4 + 1], rf[c * 4 + 2], rf[c * 4 + 3], rf[12 + c * 2], rf[12 + c * 2 + 1]});
+                    m.n.insert(m.n.end(), {rf[18 + c * 3], rf[18 + c * 3 + 1], rf[18 + c * 3 + 2]});
                 }
             }
             out.push_back(std::move(m));

@@ -34,6 +34,59 @@ void main(){
 }
 )";
 
+// The lit variant of the world shader, for the minigame's car: same inputs plus a normal, and the scene's lighting
+// (ambient + one directional light + up to kMaxLights point lights, chosen on the CPU).
+const char* kLitVS = R"(#version 300 es
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec4 aCol;
+layout(location=2) in vec2 aUV;
+layout(location=3) in vec3 aNrm;
+uniform mat4 uVP;
+uniform mat4 uModel;
+out vec4 vCol; out vec2 vUV; out vec3 vWorld; out vec3 vN;
+void main(){
+  vCol=aCol; vUV=aUV;
+  vec4 w = uModel*vec4(aPos,1.0);
+  vWorld = w.xyz;
+  vN = mat3(uModel)*aNrm;
+  gl_Position = uVP*w;
+}
+)";
+
+const char* kLitFS = R"(#version 300 es
+precision highp float;
+#define MAX_LIGHTS 8
+in vec4 vCol; in vec2 vUV; in vec3 vWorld; in vec3 vN;
+uniform sampler2D uTex;
+uniform float uTextured, uCutout, uExposure, uFade, uBlendAdd;
+uniform vec3 uCam;
+uniform vec3 uAmbient, uSunDir, uSunColor;      // uSunDir: unit vector towards the sun
+uniform int uNumLights;
+uniform vec4 uLightPos[MAX_LIGHTS];             // xyz, outer radius
+uniform vec4 uLightCol[MAX_LIGHTS];             // rgb, inner radius
+out vec4 o;
+void main(){
+  vec4 t = uTextured > 0.5 ? texture(uTex, vUV) : vec4(0.8,0.8,0.8,1.0);
+  if (uCutout > 0.5 && t.a < 0.02) discard;
+  // the face looks at the viewer: windows and thin parts are lit from the side that is seen
+  vec3 n = length(vN) > 1e-6 ? normalize(vN) : vec3(0.0, 1.0, 0.0);
+  if (dot(n, uCam - vWorld) < 0.0) n = -n;
+  vec3 light = uAmbient + uSunColor * max(dot(n, uSunDir), 0.0);
+  for (int i = 0; i < MAX_LIGHTS; i++) {
+    if (i >= uNumLights) break;
+    vec3 L = uLightPos[i].xyz - vWorld;
+    float d = length(L);
+    float fall = 1.0 - smoothstep(uLightCol[i].w, uLightPos[i].w, d);
+    light += uLightCol[i].rgb * fall * max(dot(n, L / max(d, 1e-4)), 0.0);
+  }
+  if (uBlendAdd > 0.5) {  // glowing parts (lamps) are not shaded
+    o = vec4(t.rgb * vCol.rgb * (uExposure * vCol.a * t.a * uFade), 1.0);
+  } else {
+    o = vec4(t.rgb * vCol.rgb * light * uExposure, vCol.a * t.a * uFade);
+  }
+}
+)";
+
 const char* kMarkerVS = R"(#version 300 es
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNrm;
@@ -158,6 +211,7 @@ bool Renderer::init(const char* canvasSelector) {
     if (ctx <= 0) return false;
     emscripten_webgl_make_context_current(ctx);
     progWorld = compile(kWorldVS, kWorldFS);
+    progLit = compile(kLitVS, kLitFS);
     progMarker = compile(kMarkerVS, kMarkerFS);
     progLine = compile(kLineVS, kLineFS);
     buildShapes();
@@ -275,13 +329,14 @@ void Renderer::freeSet(std::vector<GpuBatch>& set) {
     for (auto& b : set) {
         if (b.lineIbo) glDeleteBuffers(1, &b.lineIbo);
         glDeleteVertexArrays(1, &b.vao);
+        if (b.nbo) glDeleteBuffers(1, &b.nbo);
         glDeleteBuffers(1, &b.vbo);
         glDeleteBuffers(1, &b.ibo);
     }
     set.clear();
 }
 
-void Renderer::uploadSet(const std::vector<Batch>& src, std::vector<GpuBatch>& dst) {
+void Renderer::uploadSet(const std::vector<Batch>& src, std::vector<GpuBatch>& dst, bool lit) {
     for (const Batch& b : src) {
         GpuBatch g;
         g.tex = b.texture;
@@ -303,6 +358,30 @@ void Renderer::uploadSet(const std::vector<Batch>& src, std::vector<GpuBatch>& d
         glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(SceneVertex), (void*)12);
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(SceneVertex), (void*)16);
+        if (lit) {
+            // smooth vertex normals: the area-weighted mean of the faces that share the vertex
+            std::vector<Vec3f> nrm(b.verts.size(), Vec3f(0, 0, 0));
+            for (size_t i = 0; i + 2 < b.idx.size(); i += 3) {
+                const SceneVertex &a = b.verts[b.idx[i]], &bb = b.verts[b.idx[i + 1]], &c = b.verts[b.idx[i + 2]];
+                Vec3f fn = cross(Vec3f(bb.x - a.x, bb.y - a.y, bb.z - a.z), Vec3f(c.x - a.x, c.y - a.y, c.z - a.z));
+                nrm[b.idx[i]] = nrm[b.idx[i]] + fn;
+                nrm[b.idx[i + 1]] = nrm[b.idx[i + 1]] + fn;
+                nrm[b.idx[i + 2]] = nrm[b.idx[i + 2]] + fn;
+            }
+            for (Vec3f& n : nrm) {
+                float l = length(n);
+                n = l > 1e-12f ? n * (1.0f / l) : Vec3f(0, 1, 0);
+            }
+            // the file's own normals win where it has them (the computed ones are only the fallback)
+            if (b.normals.size() == b.verts.size())
+                for (size_t i = 0; i < nrm.size(); i++)
+                    if (length(b.normals[i]) > 1e-6f) nrm[i] = b.normals[i];
+            glGenBuffers(1, &g.nbo);
+            glBindBuffer(GL_ARRAY_BUFFER, g.nbo);
+            glBufferData(GL_ARRAY_BUFFER, nrm.size() * sizeof(Vec3f), nrm.data(), GL_STATIC_DRAW);
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vec3f), (void*)0);
+        }
         dst.push_back(g);
     }
 }
@@ -329,7 +408,7 @@ void Renderer::setScene(const Scene* s, float radius) {
     uploadSet(s->batches, batches);
     uploadSet(s->collision.batches, collisionGpu);
     geomGpu.resize(s->moverGeoms.size());
-    for (size_t i = 0; i < s->moverGeoms.size(); i++) uploadSet(s->moverGeoms[i].batches, geomGpu[i]);
+    for (size_t i = 0; i < s->moverGeoms.size(); i++) uploadSet(s->moverGeoms[i].batches, geomGpu[i], s->moverGeoms[i].lit);
     glBindVertexArray(0);
 
     sceneRadius = std::max(1.0f, radius);
@@ -505,8 +584,18 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         GLint locWire = glGetUniformLocation(progWorld, "uWire");
         GLint locFade = glGetUniformLocation(progWorld, "uFade");
 
-        glUniform1f(locFade, 1.0f);
-        glUniform1f(locExposure, opt.exposure);
+        // the lit program (the car): its own uniforms, kept in step with the world program's exposure and fade
+        struct WorldLocs { GLint exposure, blendAdd, textured, cutout, model, wire, fade; };
+        const WorldLocs worldLocs{locExposure, locBlendAdd, locTextured, locCutout, locModel, locWire, locFade};
+        const WorldLocs litLocs{glGetUniformLocation(progLit, "uExposure"), glGetUniformLocation(progLit, "uBlendAdd"),
+                                glGetUniformLocation(progLit, "uTextured"), glGetUniformLocation(progLit, "uCutout"),
+                                glGetUniformLocation(progLit, "uModel"), glGetUniformLocation(progLit, "uWire"),
+                                glGetUniformLocation(progLit, "uFade")};
+        float curExposure = opt.exposure, curFade = 1.0f;
+        auto setExposure = [&](float v) { curExposure = v; glUniform1f(locExposure, v); };
+        auto setFade = [&](float v) { curFade = v; glUniform1f(locFade, v); };
+        setFade(1.0f);
+        setExposure(opt.exposure);
         glUniform1f(locBlendAdd, 0.0f);
 
         if (cull) { glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CW); }
@@ -599,9 +688,54 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             shown[i] = 1;
         }
 
-        auto drawSet = [&](const std::vector<GpuBatch>& set, int pass, const Mat4& model) {
-            glUniformMatrix4fv(locModel, 1, GL_FALSE, model.m);
-            glUniform1f(locWire, 0.f);
+        // Lighting of the lit meshes (the car): the sun and ambient light, and the point lights that reach it, nearest first.
+        {
+            const Mover* car = nullptr;
+            Vec3f carPos;
+            for (size_t i = 0; i < scene->movers.size(); i++)
+                if (shown[i] && scene->movers[i].lit) {
+                    car = &scene->movers[i];
+                    carPos = Vec3f(models[i].m[12], models[i].m[13], models[i].m[14]);
+                    break;
+                }
+            if (car) {
+                const Lighting& li = scene->lighting;
+                std::vector<std::pair<float, int>> near;  // (distance beyond the light's reach, index): negative = in reach
+                for (size_t k = 0; k < li.lights.size(); k++) {
+                    float s = length(li.lights[k].pos - carPos) - li.lights[k].outer;
+                    if (s < 0) near.push_back({s, (int)k});
+                }
+                const int n = (int)std::min<size_t>(near.size(), 8);
+                std::partial_sort(near.begin(), near.begin() + n, near.end());
+                float pos[8 * 4] = {}, col[8 * 4] = {};
+                for (int k = 0; k < n; k++) {
+                    const PointLight& pl = li.lights[near[k].second];
+                    pos[k * 4] = pl.pos.x; pos[k * 4 + 1] = pl.pos.y; pos[k * 4 + 2] = pl.pos.z; pos[k * 4 + 3] = pl.outer;
+                    col[k * 4] = pl.color.x; col[k * 4 + 1] = pl.color.y; col[k * 4 + 2] = pl.color.z; col[k * 4 + 3] = pl.inner;
+                }
+                glUseProgram(progLit);
+                glUniformMatrix4fv(glGetUniformLocation(progLit, "uVP"), 1, GL_FALSE, vp.viewProj.m);
+                glUniform1i(glGetUniformLocation(progLit, "uTex"), 0);
+                glUniform3f(glGetUniformLocation(progLit, "uCam"), vp.eye.x, vp.eye.y, vp.eye.z);
+                glUniform3f(glGetUniformLocation(progLit, "uAmbient"), li.ambient.x, li.ambient.y, li.ambient.z);
+                glUniform3f(glGetUniformLocation(progLit, "uSunDir"), li.sunDir.x, li.sunDir.y, li.sunDir.z);
+                glUniform3f(glGetUniformLocation(progLit, "uSunColor"), li.sunColor.x, li.sunColor.y, li.sunColor.z);
+                glUniform1i(glGetUniformLocation(progLit, "uNumLights"), n);
+                glUniform4fv(glGetUniformLocation(progLit, "uLightPos"), 8, pos);
+                glUniform4fv(glGetUniformLocation(progLit, "uLightCol"), 8, col);
+                glUseProgram(progWorld);
+            }
+        }
+
+        auto drawSet = [&](const std::vector<GpuBatch>& set, int pass, const Mat4& model, bool lit = false) {
+            const WorldLocs& L = lit ? litLocs : worldLocs;
+            if (lit) {
+                glUseProgram(progLit);
+                glUniform1f(L.exposure, curExposure);
+                glUniform1f(L.fade, curFade);
+            }
+            glUniformMatrix4fv(L.model, 1, GL_FALSE, model.m);
+            glUniform1f(L.wire, 0.f);
             for (const GpuBatch& b : set) {
                 bool blended = b.blend == BLEND_ALPHA || b.blend == BLEND_ADD;
                 if (blended != (pass == 1)) continue;
@@ -612,9 +746,9 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 if (b.blend == BLEND_ADD) glBlendFunc(GL_SRC_ALPHA, GL_ONE);
                 else glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
                 bool hasTex = opt.textured && b.tex >= 0;
-                glUniform1f(locBlendAdd, b.blend == BLEND_ADD ? 1.0f : 0.0f);
-                glUniform1f(locTextured, hasTex ? 1.f : 0.f);
-                glUniform1f(locCutout, b.blend == BLEND_CUTOUT ? 1.f : 0.f);
+                glUniform1f(L.blendAdd, b.blend == BLEND_ADD ? 1.0f : 0.0f);
+                glUniform1f(L.textured, hasTex ? 1.f : 0.f);
+                glUniform1f(L.cutout, b.blend == BLEND_CUTOUT ? 1.f : 0.f);
                 // Alpha-tested textures use alpha-to-coverage: far away, the small holes average out to partial transparency.
                 if (b.blend == BLEND_CUTOUT) glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
                 else glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
@@ -625,6 +759,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 glBindVertexArray(b.vao);
                 glDrawElements(GL_TRIANGLES, b.count, GL_UNSIGNED_INT, nullptr);
             }
+            if (lit) glUseProgram(progWorld);
         };
         auto drawWire = [&]() {
             glUniformMatrix4fv(locModel, 1, GL_FALSE, Mat4::identity().m);
@@ -659,20 +794,20 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             const bool levelCull = cull;
             cull = !opt.backFaces && !opt.wireframe;
             if (cull) { glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CW); }
-            glUniform1f(locFade, opt.xrayStrength);
+            setFade(opt.xrayStrength);
             glEnable(GL_BLEND);
             glDepthMask(GL_FALSE);
             glDepthFunc(GL_GREATER);
             for (int pass = 0; pass < 2; pass++)
                 for (size_t i = 0; i < scene->movers.size(); i++)
                     if (shown[i] && scene->movers[i].powerupMesh) {
-                        glUniform1f(locExposure, scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
-                        drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
+                        setExposure(scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
+                        drawSet(geomGpu[scene->movers[i].geom], pass, models[i], scene->movers[i].lit);
                     }
             glDepthFunc(GL_LEQUAL);
             glDepthMask(GL_TRUE);
             glDisable(GL_BLEND);
-            glUniform1f(locFade, 1.0f);
+            setFade(1.0f);
             cull = levelCull;
             if (!cull) glDisable(GL_CULL_FACE);
         };
@@ -687,23 +822,23 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             if (pass == 1)
                 for (size_t i = 0; i < scene->movers.size(); i++) {
                     if (!shown[i] || !scene->movers[i].external) continue;
-                    glUniform1f(locExposure, opt.exposure);
+                    setExposure(opt.exposure);
                     glDepthMask(GL_TRUE);
-                    drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
+                    drawSet(geomGpu[scene->movers[i].geom], pass, models[i], scene->movers[i].lit);
                     glDepthMask(GL_FALSE);
                 }
-            glUniform1f(locExposure, opt.exposure);  // the movers below change it: reset for the level in every pass
+            setExposure(opt.exposure);  // the movers below change it: reset for the level in every pass
             if (opt.wireframe) { if (pass == 0) drawWire(); }
             else drawSet(batches, pass, Mat4::identity());
             if (pass == 0 && opt.xrayEnabled() && opt.powerupMeshes) drawPowerupGhosts();
             for (size_t i = 0; i < scene->movers.size(); i++) {
                 if (!shown[i]) continue;
                 if (pass == 1 && scene->movers[i].external) continue;  // drawn before the level's blended surfaces
-                glUniform1f(locExposure, scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
-                drawSet(geomGpu[scene->movers[i].geom], pass, models[i]);
+                setExposure(scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
+                drawSet(geomGpu[scene->movers[i].geom], pass, models[i], scene->movers[i].lit);
             }
         }
-        glUniform1f(locExposure, opt.exposure);
+        setExposure(opt.exposure);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
         glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);

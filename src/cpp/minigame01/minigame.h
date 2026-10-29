@@ -27,7 +27,8 @@ class MiniGame {
 public:
     bool prepared() const { return isPrepared; }
     // Adds the car to the scene (once per scene) and builds the collision world from the level.
-    bool prepare(Scene& scene, const CarModel& car);
+    // False with a reason in `error` when the level cannot be played (no collision meshes, or some could not be read).
+    bool prepare(Scene& scene, const CarModel& car, std::string& error);
     // Forgets everything about the current scene (call when a new level replaced it).
     void forget();
 

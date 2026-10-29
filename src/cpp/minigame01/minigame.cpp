@@ -25,22 +25,39 @@ void setMessage(Hud& h, const char* text) {
 
 }  // namespace
 
-bool MiniGame::prepare(Scene& scene, const CarModel& model) {
+bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) {
     car = model;
     scale = std::max(1e-3f, car.unitsPerMetre);
     // the game's own collision meshes when it has them (read now: the viewer alone never needs them), else the visible triangles
-    if (scene.ensureCollision()) world.build(scene.collisionMeshes, 1.0f / scale);
+    const bool haveMeshes = scene.ensureCollision();
+    if (scene.collisionRequired && (!haveMeshes || !scene.collisionErrors.empty())) {
+        // without them the car would fall through the level: do not start
+        if (scene.collisionErrors.empty()) {
+            error = "this level has no collision mesh";
+        } else {
+            error = "the collision mesh could not be loaded (";
+            for (size_t i = 0; i < scene.collisionErrors.size(); i++) error += (i ? ", " : "") + scene.collisionErrors[i];
+            error += ")";
+        }
+        return false;
+    }
+    if (haveMeshes) world.build(scene.collisionMeshes, 1.0f / scale);
     else world.build(scene, 1.0f / scale, !scene.cullBackfaces);
-    if (world.empty()) return false;
+    if (world.empty()) {
+        error = "this level has no solid ground to drive on";
+        return false;
+    }
     vehicle.init(car);
     int g0 = (int)scene.moverGeoms.size();
     scene.moverGeoms.push_back(car.body);
     for (int i = 0; i < 4; i++) scene.moverGeoms.push_back(car.wheel[i]);
+    for (int i = g0; i < (int)scene.moverGeoms.size(); i++) scene.moverGeoms[i].lit = true;  // the car is shaded by the level's light
     auto addMover = [&](int geom) {
         Mover m;
         m.geom = geom;
         m.cat = -1;
         m.external = true;
+        m.lit = true;
         m.hidden = true;
         m.name = "minigame car";
         scene.movers.push_back(m);

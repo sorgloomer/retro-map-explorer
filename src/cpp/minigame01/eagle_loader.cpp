@@ -112,7 +112,17 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
         }
         flipped.assign(m.idx.begin(), m.idx.end());
         for (size_t i = 0; i + 2 < flipped.size(); i += 3) std::swap(flipped[i + 1], flipped[i + 2]);  // the mirror reverses the winding
-        dst.appendIndexed(tex, bl, vs.data(), vs.size(), flipped.data(), flipped.size(), (flags & 1) != 0);
+        // the file's vertex normals, moved and mirrored like the vertices
+        std::vector<Vec3f> ns;
+        if (m.n.size() == m.nv() * 3) {
+            ns.resize(m.nv());
+            for (size_t i = 0; i < m.nv(); i++) {
+                Vec3f d = mat.transformDirection({m.n[i * 3], m.n[i * 3 + 1], m.n[i * 3 + 2]});
+                float l = length(d);
+                ns[i] = l > 1e-9f ? Vec3f(-d.x / l, d.y / l, d.z / l) : Vec3f(0, 0, 0);
+            }
+        }
+        dst.appendIndexed(tex, bl, vs.data(), vs.size(), flipped.data(), flipped.size(), (flags & 1) != 0, ns.empty() ? nullptr : ns.data());
     };
 
     // wheels (their own nodes) are drawn separately from the chassis

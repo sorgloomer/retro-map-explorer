@@ -484,7 +484,8 @@ EMSCRIPTEN_KEEPALIVE int rme_game_start(int mode) {
         if (!provider) provider = app.currentGame;
         if (!provider->loadCarModel(*app.scene, car)) { app.lastError = "cannot load the car"; return 0; }
         if (provider != app.currentGame) car.unitsPerMetre = app.currentGame->unitsPerMetre();  // fit the car to this game's scale
-        if (!app.mg.prepare(*app.scene, car)) { app.lastError = "this level has no solid ground to drive on"; return 0; }
+        std::string why;
+        if (!app.mg.prepare(*app.scene, car, why)) { app.lastError = why; return 0; }
         app.renderer.setScene(app.scene.get(), app.sceneRadius);  // uploads the car
     }
     app.viewerOpt = app.opt;

@@ -29,6 +29,7 @@ struct Hie {
 
 struct CMesh {
     std::vector<float> v;  // 9 floats per vertex: pos(3) rgba(4) uv(2)
+    std::vector<float> n;  // 3 floats per vertex: the file's vertex normals; empty for layouts that have none
     std::vector<uint32_t> idx;
     size_t nv() const { return v.size() / 9; }
 };

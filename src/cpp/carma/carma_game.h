@@ -216,6 +216,7 @@ public:
     void addMovers(const KeyFile& kf, Scene& out);                          // path followers, animated props
     void addPeds(const KeyFile& kf, Scene& out, const Cats& c);
     void addRespawns(const KeyFile& kf, const std::string& name, Scene& out, const Cats& c);
+    void readLighting(const KeyFile& kf, Scene& out);
     void addLightMarkers(const KeyFile& kf, Scene& out);
     void addProps(const KeyFile& kf, Scene& out);                           // breakables and movable objects
     std::string summary(const Scene& out, int meshCount) const;

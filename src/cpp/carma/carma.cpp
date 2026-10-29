@@ -35,6 +35,7 @@ bool CarmaGame::load(const std::string& levelId, Scene& out, std::string& err) {
     addMovers(kf, out);
     addPeds(kf, out, c);
     addRespawns(kf, name, out, c);
+    readLighting(kf, out);
     addLightMarkers(kf, out);
     addProps(kf, out);
     out.info = summary(out, meshCount);

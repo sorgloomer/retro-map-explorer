@@ -47,6 +47,12 @@ struct Mat4 {
                 m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13],
                 m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14]};
     }
+    // The rotation / scale part only (directions, normals of a matrix without shear).
+    Vec3f transformDirection(const Vec3f& d) const {
+        return {m[0] * d.x + m[4] * d.y + m[8] * d.z,
+                m[1] * d.x + m[5] * d.y + m[9] * d.z,
+                m[2] * d.x + m[6] * d.y + m[10] * d.z};
+    }
     // Left-handed perspective, clip z in [-1, 1].
     static Mat4 perspective(float fovY, float aspect, float zn, float zf) {
         Mat4 r{};

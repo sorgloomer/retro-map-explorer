@@ -86,12 +86,13 @@ void CollisionWorld::build(const std::vector<CollisionMesh>& meshes, float scale
         bv.polyFirst.reserve(m.polys.size() + 1);
         for (const CollisionMesh::Poly& p : m.polys) {
             bv.polyFirst.push_back((int)bv.tris.size());
-            for (int k = 2; k < p.n; k++) {  // a fan: (0 1 2), (0 2 3)
+            const uint32_t* c = &m.corners[p.first];
+            for (int k = 2; k < p.n; k++) {  // a fan: (0 1 2), (0 2 3), ...
                 Tri t;
                 t.twoSided = true;
-                t.a = m.verts[p.v[0]] * scale;
-                t.e1 = m.verts[p.v[k - 1]] * scale - t.a;
-                t.e2 = m.verts[p.v[k]] * scale - t.a;
+                t.a = m.verts[c[0]] * scale;
+                t.e1 = m.verts[c[k - 1]] * scale - t.a;
+                t.e2 = m.verts[c[k]] * scale - t.a;
                 Vec3f n = cross(t.e1, t.e2);
                 float l = length(n);
                 if (l < 1e-7f) continue;

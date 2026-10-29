@@ -1,7 +1,7 @@
 // The level's static collision meshes (.scol): what the game's physics collides with, kept apart from the visible meshes.
 //   u32 vertexCount, vertexCount * {f32 x, y, z}
 //   u32 polygonCount, u32 total vertex references, u32 node count + 1 (polygons + nodes + 1 = ids in the tree)
-//   polygonCount * { f32 centre[3], f32 half[3] (box), u32 flags, u32 n (3 or 4), u32 vertex[n] }
+//   polygonCount * { f32 centre[3], f32 half[3] (box), u32 flags, u32 n (3 or more: mostly 3 and 4, a few 5 and 6), u32 vertex[n] }
 //       flags: low 16 bits = collision material (the order of the .h file next to it), high bits = per-edge flags
 //   (polygonCount - 1) * { f32 centre[3], f32 half[3] (box), u32 childA, u32 childB }   a bounding volume hierarchy
 //       a child id below polygonCount is that polygon, otherwise it is node (id - polygonCount); each node box is the exact
@@ -53,12 +53,16 @@ bool CarmaGame::parseCollisionMesh(const std::vector<uint8_t>& d, CollisionMesh&
         float box[6];
         uint32_t flags, n;
         for (float& f : box) if (!r.f32(f)) return false;
-        if (!r.u32(flags) || !r.u32(n) || (n != 3 && n != 4)) return false;
+        if (!r.u32(flags) || !r.u32(n) || n < 3 || n > 64) return false;  // triangles and quads, a few levels have 5 and 6 sided ones
         CollisionMesh::Poly& poly = m.polys[k];
+        poly.first = (uint32_t)m.corners.size();
         poly.n = (uint8_t)n;
         poly.material = (uint8_t)(flags & 0xff);
-        for (uint32_t i = 0; i < n; i++)
-            if (!r.u32(poly.v[i]) || poly.v[i] >= nv) return false;
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t v;
+            if (!r.u32(v) || v >= nv) return false;
+            m.corners.push_back(v);
+        }
     }
     // the tree: a node reference is a polygon below np, else a node
     const size_t nn = np - 1;
@@ -92,15 +96,14 @@ void CarmaGame::buildCollisionOverlay(const CollisionMesh& m, BatchSet& out) {
         const uint32_t rgb = kMaterialColours[poly.material & 7];
         const uint32_t base = (uint32_t)b.verts.size();
         for (int i = 0; i < poly.n; i++) {
-            const Vec3f& p = m.verts[poly.v[i]];
+            const Vec3f& p = m.verts[m.corners[poly.first + i]];
             SceneVertex v;
             v.x = p.x; v.y = p.y; v.z = p.z;
             v.r = (uint8_t)(rgb >> 16); v.g = (uint8_t)(rgb >> 8); v.b = (uint8_t)rgb; v.a = 150;
             v.u = v.v = 0;
             b.verts.push_back(v);
         }
-        b.idx.insert(b.idx.end(), {base, base + 2, base + 1});
-        if (poly.n == 4) b.idx.insert(b.idx.end(), {base, base + 3, base + 2});
+        for (int i = 2; i < poly.n; i++) b.idx.insert(b.idx.end(), {base, base + (uint32_t)i, base + (uint32_t)i - 1});  // a fan
     }
 }
 
@@ -115,12 +118,16 @@ void CarmaGame::findCollision(const std::vector<std::string>& descriptors, Scene
             for (const std::string& s : quotedStrings(stripComment(line)))
                 if (endsWith(vfs::lower(s), ".scol")) files.push_back(s);
     }
+    out.collisionRequired = true;  // the minigame drives on these meshes only
     if (files.empty()) return;
     out.collisionLoader = [this, files](Scene& s) {
         for (const std::string& f : files) {
             std::vector<uint8_t> data;
             CollisionMesh m;
-            if (!readNamed(f, data) || !parseCollisionMesh(data, m)) continue;
+            if (!readNamed(f, data) || !parseCollisionMesh(data, m)) {
+                s.collisionErrors.push_back(f);
+                continue;
+            }
             buildCollisionOverlay(m, s.collision);
             s.collisionMeshes.push_back(std::move(m));
         }
