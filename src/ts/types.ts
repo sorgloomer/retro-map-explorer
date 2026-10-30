@@ -79,7 +79,9 @@ export interface RmeApi {
   onCameraMode(mode: number): void;
   onTouchMode(): void;
   onGameMode(on: number): void;
-  onGameDebug(wheelsJson: string): void;
+  onGameDebug(wheelsJson: string, torqueJson: string): void;
+  /** The engine asks for the numbers of the car it is about to drive: what its game files say in, the final settings (JSON) out. */
+  configureCar(car: number, fileJson: string): string;
   onGameHud(speedKmh: number, score: number, drift: number, timeLeft: number, collected: number, total: number, state: number, message: string, messageAge: number): void;
   onFatal(message: string): void;
   onHover(text: string | null, category: string | null, x: number, y: number): void;

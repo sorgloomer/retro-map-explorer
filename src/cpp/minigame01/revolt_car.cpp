@@ -47,9 +47,9 @@ std::string baseName(std::string path) {
     return s == std::string::npos ? path : path.substr(s + 1);
 }
 
-// The car folder to use: Adeon when present (a well-behaved all-rounder), otherwise the first one.
+// The car folder to use: RC Bandit (folder "rc", a rookie car) when present, otherwise the first one.
 std::string findCarParameters() {
-    std::string first, adeon;
+    std::string first, preferred;
     for (const auto& e : vfs::files()) {
         const std::string& l = e.lower;
         static const std::string kParams = "/parameters.txt";
@@ -58,9 +58,9 @@ std::string findCarParameters() {
         std::string dir = vfs::dirOf(e.path);
         if (vfs::findIn(dir, "body.prm") < 0) continue;
         if (first.empty()) first = e.path;
-        if (vfs::lower(vfs::baseOf(dir)) == "adeon") adeon = e.path;
+        if (vfs::lower(vfs::baseOf(dir)) == "rc") preferred = e.path;
     }
-    return adeon.empty() ? first : adeon;
+    return preferred.empty() ? first : preferred;
 }
 
 }  // namespace
@@ -113,7 +113,15 @@ bool loadRevoltCar(Scene& scene, CarModel& out) {
         int fi = vfs::findIn(dir, tpage);
         std::vector<uint8_t> data;
         Image img;
-        if (fi >= 0 && vfs::read(fi, data) && decodeBMP(data.data(), data.size(), img)) tex = scene.addTexture(std::move(img));
+        if (fi >= 0 && vfs::read(fi, data) && decodeBMP(data.data(), data.size(), img)) {
+            // Re-Volt colour-keys pure black: those texels are see-through (as in the levels)
+            for (size_t i = 0; i + 3 < img.rgba.size(); i += 4)
+                if (img.rgba[i] == 0 && img.rgba[i + 1] == 0 && img.rgba[i + 2] == 0) {
+                    img.rgba[i + 3] = 0;
+                    img.hasAlpha = true;
+                }
+            tex = scene.addTexture(std::move(img));
+        }
     }
 
     auto loadModel = [&](const std::string& name, Prm& m) {
@@ -125,17 +133,16 @@ bool loadRevoltCar(Scene& scene, CarModel& out) {
     for (int i = 0; i < 5; i++)
         if (!loadModel(models[i], parts[i])) return false;
 
-    // metres: size the car like a 4.3 m car, whatever the game's units are
-    float zmin = 1e30f, zmax = -1e30f;
-    for (const Vec3f& v : parts[0].verts) { zmin = std::min(zmin, v.z); zmax = std::max(zmax, v.z); }
-    const float s = std::max(1.0f, (zmax - zmin) / 4.3f);
-    out.unitsPerMetre = s;
+    // real metres: the model is the toy car as it is, a few decimetres long (the levels of the game are made for it)
+    const float s = kRevoltUnitsPerRealMetre;  // units per metre
+    out.isToy = true;
 
     auto emit = [&](const Prm& m, BatchSet& dst) {
         for (const Poly& p : m.polys) {
             Blend bl = BLEND_OPAQUE;
             if (p.type & 0x100) bl = BLEND_ADD;
             else if (p.type & 0x4) bl = BLEND_ALPHA;
+            if (bl == BLEND_OPAQUE && p.tex >= 0 && tex >= 0 && scene.textures[tex].hasAlpha) bl = BLEND_CUTOUT;  // keyed texels are cut out
             int n = (p.type & 1) ? 4 : 3;
             SceneVertex v[4];
             for (int k = 0; k < n; k++) {
@@ -143,7 +150,7 @@ bool loadRevoltCar(Scene& scene, CarModel& out) {
                 uint32_t c = p.col[k];
                 v[k].x = pos.x / s; v[k].y = -pos.y / s; v[k].z = pos.z / s;  // y is down in Re-Volt
                 v[k].r = (c >> 16) & 255; v[k].g = (c >> 8) & 255; v[k].b = c & 255;
-                v[k].a = bl == BLEND_OPAQUE || bl == BLEND_ADD ? 255 : (uint8_t)(c >> 24 ? c >> 24 : 128);
+                v[k].a = bl == BLEND_OPAQUE || bl == BLEND_CUTOUT || bl == BLEND_ADD ? 255 : (uint8_t)(c >> 24 ? c >> 24 : 128);
                 v[k].u = p.uv[k][0];
                 v[k].v = p.uv[k][1];
             }
@@ -165,7 +172,7 @@ bool loadRevoltCar(Scene& scene, CarModel& out) {
         }
     out.boundsMin = lo;
     out.boundsMax = hi;
-    out.wheelWidth = 0.25f;
+    out.wheelWidth = 0.03f;
     out.name = vfs::baseOf(dir);
     return true;
 }

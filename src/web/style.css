@@ -229,3 +229,28 @@ body.playing #canvas { cursor: default; }
 .group.collapsed .chev { transform: rotate(-45deg); }
 .group.collapsed .groupbody { display: none; }
 .levelname { margin: 0; font-weight: 600; }
+.gd-forces { pointer-events: auto; display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 2px 0 4px; }
+.gd-forces input { margin: 0; }
+.gd-ground { min-width: 8px; text-align: center; color: #8fd68f; }
+.gd-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+.gd-checks .gd-forces { margin: 0; }
+.gd-info { position: relative; pointer-events: auto; cursor: help; color: #9ec5ff; outline: none; }
+.gd-pop { display: none; position: absolute; left: -8px; top: 1.6em; z-index: 30; width: 250px; padding: 6px 8px; border-radius: 6px;
+  background: rgba(8, 10, 14, .96); border: 1px solid rgba(255, 255, 255, .25); color: #fff; font: 11px/1.5 ui-monospace, Consolas, monospace;
+  white-space: normal; text-shadow: none; text-transform: none; letter-spacing: normal; }
+.gd-info:hover .gd-pop, .gd-info:focus .gd-pop { display: block; }
+.gd-key { white-space: nowrap; }
+
+/* the tyre table: one grid, the legend (two rows) and the wheel rows share its columns; the legend starts where the cells start */
+.gd-table { display: grid; grid-template-columns: 22px 62px 92px 84px 84px 40px 62px; column-gap: 10px; row-gap: 1px; align-items: center; }
+.gd-table .gd-row { display: contents; }
+.gd-h { color: var(--muted); white-space: nowrap; }
+.gd-h.gd-sub { font-size: 10px; opacity: .8; }
+.gd-pair { display: flex; align-items: baseline; gap: 3px; }
+.gd-pair i { font-style: normal; opacity: .6; }
+.gd-n { display: inline-block; width: 5.2ch; text-align: right; font-variant-numeric: tabular-nums; }
+.gd-row.slide .gd-n { color: #ff8a8a; }
+.gd-pair.gd-susp .gd-n { color: #9ec5ff; }
+.gd-sums { display: grid; grid-template-columns: 78px repeat(3, 62px); column-gap: 10px; row-gap: 1px; margin-top: 3px; }
+.gd-sums .gd-n { width: 6.2ch; }
+.gd-sums.gd-totals { grid-template-columns: 78px 66px 86px 66px; }

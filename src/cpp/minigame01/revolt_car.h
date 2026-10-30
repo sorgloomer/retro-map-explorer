@@ -4,6 +4,9 @@
 
 namespace minigame01 {
 
+// Re-Volt levels are made for radio controlled cars: a car of 0.43 m (an Adeon is 123 units long) is 286 units per real metre.
+constexpr float kRevoltUnitsPerRealMetre = 286.0f;
+
 bool revoltCanDrive();                                // the file set holds at least one car
 bool loadRevoltCar(Scene& scene, CarModel& out);     // adds the car's texture to `scene`
 

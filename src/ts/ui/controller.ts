@@ -9,6 +9,8 @@ import {
   MODE_KEY, STORE_KEY, absorbSecretFromHash, folds, prefs, readLocalView, saveFolds, setLayerPrefs, setOptPref,
   store, storedSecret,
 } from '../storage.ts';
+import { CAR_IDS, config } from '../config/config.ts';
+import type { CarId, GameFileCar } from '../config/config.ts';
 import type { Catalog, RmeApi, RmeModule, SavedView, SceneInfo, ViewSnapshot } from '../types.ts';
 import { OPTS } from './options.ts';
 import { state, update } from './store.ts';
@@ -97,8 +99,11 @@ function installApi(): RmeApi {
       (document.activeElement as HTMLElement | null)?.blur();
       focusCanvas();
     },
-    onGameDebug(wheelsJson) {
-      update({ wheels: JSON.parse(wheelsJson) });
+    configureCar(car, fileJson) {
+      return configureCarSettings(car, fileJson);
+    },
+    onGameDebug(wheelsJson, torqueJson) {
+      update({ wheels: JSON.parse(wheelsJson), torque: JSON.parse(torqueJson) });
     },
     onGameHud(speedKmh, score, drift, timeLeft, collected, total, gameState, message, messageAge) {
       const t = Math.max(0, Math.ceil(timeLeft));
@@ -299,6 +304,7 @@ function showSceneInfo(seconds: string): void {
       hasPowerupMeshes: info.hasPowerupMeshes,
       hasMovers: !!info.hasMovers,
       canPlay: !!call('rme_game_can_play', 'number', [], []),
+      cars: call('rme_game_cars', 'number', [], []),
       groups,
     },
   });
@@ -417,7 +423,9 @@ export async function startGame(mode: number): Promise<void> {
   if (saved) applyGameParams(saved);
   let ok = 0;
   try {
-    ok = await call('rme_game_start', 'number', ['number'], [mode], true);
+    ok = await call('rme_game_start', 'number', ['number', 'number'], [mode, carToDrive()], true);
+    call('rme_game_show_forces', null, ['number'], [state.debugForces ? 1 : 0]);
+    call('rme_game_show_spheres', null, ['number'], [state.debugSpheres ? 1 : 0]);
   } catch (e) {
     console.error(e);
     setStatus('Could not start the game: ' + errorMessage(e), true);
@@ -425,14 +433,43 @@ export async function startGame(mode: number): Promise<void> {
   busy(false);
   if (!ok) setStatus('Could not start the game: ' + call('rme_last_error', 'string', [], []), true);
 }
-const PARAMS_KEY = 'rme.params.v1';  // the edited minigame parameters (JSON text)
-/** The minigame's parameters as multi-line JSON (the built-in values with `defaults`). */
-export function gameParamsJson(defaults = false): string {
-  return call('rme_game_params_json', 'string', ['number'], [defaults ? 1 : 0]);
+const PARAMS_KEY = 'rme.params.v2';  // the edited minigame configuration (JSON text; v1 was the flat format of the first version)
+
+// The car that was configured last (the engine asks for it when a game starts) with what its game files said: the engine's numbers
+// are computed again from that when the player changes the configuration.
+let configuredCar: { id: CarId; file: GameFileCar } | null = null;
+
+/** The numbers for the car the engine is about to drive: JSON of {globals, car}, or "ERROR: ..." when they cannot be made. */
+function configureCarSettings(car: number, fileJson: string): string {
+  try {
+    const id = CAR_IDS[car];
+    if (!id) return `ERROR: there is no car ${car}`;
+    const file = JSON.parse(fileJson) as GameFileCar;
+    configuredCar = { id, file };
+    return JSON.stringify(config.resolveCar(id, file));
+  } catch (e) {
+    return 'ERROR: ' + errorMessage(e);
+  }
 }
-/** Applies parameters from JSON text; returns '' on success, else the reason (with the line number). */
+
+/** Sends the engine the numbers of the car it drives, after the configuration changed. '' or the reason it did not work. */
+function pushSettings(): string {
+  if (!configuredCar) return '';  // no game has been started yet: the engine asks when it does
+  try {
+    return call('rme_config_apply', 'string', ['string'], [JSON.stringify(config.resolveCar(configuredCar.id, configuredCar.file))]);
+  } catch (e) {
+    return errorMessage(e);
+  }
+}
+
+/** The configuration as multi-line JSON, sorted (the defaults with `defaults`). */
+export function gameParamsJson(defaults = false): string {
+  return config.text(defaults);
+}
+/** Applies the configuration from JSON text; returns '' on success, else the reason (with the line number). */
 export function applyGameParams(text: string): string {
-  return call('rme_game_params_apply', 'string', ['string'], [text]);
+  const error = config.apply(text);
+  return error || pushSettings();
 }
 /** Applies the parameters and, when they are valid, remembers them for the next visit. Returns '' or the reason. */
 export function saveGameParams(text: string): string {
@@ -444,6 +481,32 @@ export function setParamsEditor(open: boolean): void {
   update({ paramsOpen: open });
 }
 
+/** The car to drive: the chosen one, or the other when only that one's files are there. */
+function carToDrive(): number {
+  const cars = state.scene?.cars ?? 0;
+  return cars & (1 << state.car) ? state.car : cars & 1 ? 0 : 1;
+}
+/** Chooses the car (remembered). A car other than the one the loaded level was prepared with needs the level to load again. */
+export function chooseCar(car: number): void {
+  update({ car });
+  store.set('rme.car.v1', String(car));
+  if (sceneLoaded && call('rme_game_prepared_car', 'number', [], []) >= 0 && call('rme_game_prepared_car', 'number', [], []) !== carToDrive()) {
+    keepCamera = call('rme_camera_state', 'string', [], []).split(',').map(Number);
+    void loadSelected();
+  }
+}
+/** Draws or hides the hull's collision spheres (remembered); the ones touching the level are red. */
+export function setDebugSpheres(on: boolean): void {
+  update({ debugSpheres: on });
+  store.set('rme.debugSpheres.v1', on ? '1' : '0');
+  call('rme_game_show_spheres', null, ['number'], [on ? 1 : 0]);
+}
+/** Draws or hides the arrows of the forces the wheels push the car with (remembered). */
+export function setDebugForces(on: boolean): void {
+  update({ debugForces: on });
+  store.set('rme.debugForces.v1', on ? '1' : '0');
+  call('rme_game_show_forces', null, ['number'], [on ? 1 : 0]);
+}
 /** Shows or hides the lateral force panel (remembered). */
 export function toggleDebugPanel(): void {
   update({ debugPanel: !state.debugPanel });
@@ -660,6 +723,13 @@ export function start(): void {
   installDropTarget();
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  // A press on the canvas takes the keyboard back from any input, select or button that had it (the game reads the keys while the
+  // canvas has the focus; the mouse handlers of the canvas stop the browser from moving the focus there by itself).
+  canvas.addEventListener('pointerdown', () => {
+    const active = document.activeElement as HTMLElement | null;
+    if (active && active !== canvas && active !== document.body) active.blur();
+    canvas.focus();
+  });
   canvas.addEventListener('mouseleave', () => update({ tip: null }));
 
   const useAssetArchives = !!storedSecret();

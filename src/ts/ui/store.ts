@@ -23,11 +23,12 @@ export interface SceneView {
   hasPowerupMeshes: boolean;
   hasMovers: boolean;
   canPlay: boolean;
+  cars: number;  // bit mask of the cars that can be driven: 1 = the Carmageddon Eagle, 2 = the Re-Volt RC Bandit
   groups: LayerGroup[];
 }
 
 /** One tyre's sideways force, for the debug panel (N). */
-export interface WheelDebug { lat: number; limit: number; lon: number; fric: number; slide: number; slip: number; load: number }
+export interface WheelDebug { lat: number; limit: number; lon: number; fric: number; slide: number; g: number; slip: number; load: number }
 
 export interface GameHud {
   speed: number;
@@ -69,7 +70,11 @@ export interface UiState {
   share: { url: string; msg: string };
   gameMode: boolean;
   hud: GameHud;
+  torque: { wheels: number[]; hull: number[]; spin: number[]; toy: number };  // about the centre of mass: kN m (N m for the toy car, toy = 1) (pitch, yaw, roll) by source, and rad/s
   wheels: WheelDebug[];  // front left, front right, rear left, rear right
+  car: number;           // the car to drive: 0 = the Carmageddon Eagle, 1 = the Re-Volt RC Bandit (a rookie RC car)
+  debugSpheres: boolean;  // the hull's collision spheres are drawn in the game
+  debugForces: boolean;  // the wheel force arrows are drawn in the game
   debugPanel: boolean;   // the lateral force panel of the game is shown (not just its title)
   paramsOpen: boolean;   // the minigame parameter editor is open
   tip: { text: string; cat: string; x: number; y: number } | null;
@@ -98,7 +103,11 @@ export const state: UiState = {
   share: { url: '', msg: '' },
   gameMode: false,
   hud: { speed: 0, score: 0, drift: 0, pups: '0 / 0', time: '1:30', urgent: false, message: '', messageVisible: false, over: false, overTitle: '', overText: '' },
+  torque: { wheels: [0, 0, 0], hull: [0, 0, 0], spin: [0, 0, 0], toy: 0 },
   wheels: [],
+  car: store.get('rme.car.v1') === '1' ? 1 : 0,
+  debugSpheres: store.get('rme.debugSpheres.v1') === '1',
+  debugForces: store.get('rme.debugForces.v1') === '1',
   debugPanel: store.get('rme.debugPanel.v1') !== '0',
   paramsOpen: false,
   tip: null,

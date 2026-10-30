@@ -1,7 +1,7 @@
 // The overlay of the driving minigame: back button, score, time, speed and the end-of-round message.
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { TOUCH, gameParamsJson, gameStick, gameTouch, saveGameParams, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
+import { TOUCH, gameParamsJson, gameStick, gameTouch, saveGameParams, setDebugForces, setDebugSpheres, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
 import { useUi } from './store.ts';
 
 /** An on-screen button: held while a finger is on it (several can be held at once), or a single press when `tap` is set. */
@@ -56,12 +56,31 @@ function TouchPad() {
   );
 }
 
+/** A small (i) that shows its text in a popup on hover, focus or touch. */
+function Info({ children }: { children: ComponentChildren }) {
+  return (
+    <span class="gd-info" tabIndex={0} role="note" aria-label="Info" onClick={(e) => e.preventDefault()}>
+      ⓘ<span class="gd-pop">{children}</span>
+    </span>
+  );
+}
+
+/** One number of the table: a fixed width, aligned to the right, so the digits of the rows line up. */
+function Num({ v, digits = 1, unit = '' }: { v: number; digits?: number; unit?: string }) {
+  return <span class="gd-n">{v.toFixed(digits)}{unit}</span>;
+}
+
 const WHEEL_NAMES = ['FL', 'FR', 'RL', 'RR'];
 
 /** Debug panel: the sideways force of each tyre against its limit. A full bar is the grip limit; red: the tyre slides. */
 function LateralForces() {
   const wheels = useUi((s) => s.wheels);
   const shown = useUi((s) => s.debugPanel);
+  const forces = useUi((s) => s.debugForces);
+  const torque = useUi((s) => s.torque);
+  // the forces are in kN, and in N for the toy car (the RC Bandit: its forces are a few newtons)
+  const div = torque.toy ? 1 : 1000, unit = torque.toy ? 'N' : 'kN', torqueDigits = torque.toy ? 2 : 1;
+  const spheres = useUi((s) => s.debugSpheres);
   const playing = useUi((s) => s.gameMode);
   const total = wheels.reduce((sum, w) => sum + w.lat, 0);
   // L shows and hides the panel (the game does not use that key)
@@ -78,28 +97,83 @@ function LateralForces() {
     <div class={'gh-debug' + (shown ? '' : ' closed')}>
       <div class="gd-head">
         <button type="button" class="gd-title" onClick={(e) => { toggleDebugPanel(); e.currentTarget.blur(); }}
-          title="Show or hide the lateral force panel (L)">{shown ? '▾' : '▸'} tyre forces{shown ? ' (kN): lateral / limit (+ = right), longitudinal / limit (+ = forward), slip, suspension' : ''} <kbd>L</kbd></button>
+          title="Show or hide the lateral force panel (L)">{shown ? '▾' : '▸'} tyre forces <kbd>L</kbd></button>
         <button type="button" class="gd-config" onClick={(e) => { setParamsEditor(true); e.currentTarget.blur(); }}
           title="Edit the minigame's parameters as JSON">configure</button>
       </div>
-      {shown && wheels.map((w, i) => (
-        <div class={'gd-row' + (w.slide ? ' slide' : '')}>
-          <span class="gd-name">{WHEEL_NAMES[i]}</span>
-          <span class="gd-bars">
-          <span class="gd-bar">
-            <i style={{ left: w.lat < 0 ? `${50 - Math.min(50, (-w.lat / (w.limit || 1)) * 50)}%` : '50%', width: `${Math.min(50, (Math.abs(w.lat) / (w.limit || 1)) * 50)}%` }} />
-          </span>
-          <span class="gd-bar gd-long">
-            <i style={{ left: w.lon < 0 ? `${50 - Math.min(50, (-w.lon / (w.fric || 1)) * 50)}%` : '50%', width: `${Math.min(50, (Math.abs(w.lon) / (w.fric || 1)) * 50)}%` }} />
-          </span>
-          </span>
-          <span class="gd-num">{(w.lat / 1000).toFixed(1)} / {(w.limit / 1000).toFixed(1)}</span>
-          <span class="gd-num">{(w.lon / 1000).toFixed(1)} / {(w.fric / 1000).toFixed(1)}</span>
-          <span class="gd-num">{(w.slip * 57.3).toFixed(0)}°</span>
-          <span class="gd-num gd-susp">{(w.load / 1000).toFixed(1)}</span>
+      {shown && (
+        <div class="gd-table">
+          <span class="gd-h gd-name" />
+          <span class="gd-h" title="T: the wheel is on the ground">grounded</span>
+          <span class="gd-h">force bars</span>
+          <span class="gd-h">lateral</span>
+          <span class="gd-h">longitudinal</span>
+          <span class="gd-h">slip</span>
+          <span class="gd-h">suspension</span>
+          <span class="gd-h gd-name" />
+          <span class="gd-h gd-sub" title="T: the wheel is on the road">T = yes</span>
+          <span class="gd-h gd-sub" title="green: sideways force, amber: force along the wheel; a full half bar is the grip limit">side / along</span>
+          <span class="gd-h gd-sub" title={'sideways force / its limit, in ' + unit + '; + is towards the right'}>{unit} / limit</span>
+          <span class="gd-h gd-sub" title={'force along the wheel / the friction limit, in ' + unit + '; + is forward'}>{unit} / limit</span>
+          <span class="gd-h gd-sub" title="slip angle">deg</span>
+          <span class="gd-h gd-sub" title="suspension force, the load on the tyre">{unit}</span>
+          {wheels.map((w, i) => (
+            <div class={'gd-row' + (w.slide ? ' slide' : '')}>
+              <span class="gd-name">{WHEEL_NAMES[i]}</span>
+              <span class="gd-ground">{w.g ? 'T' : '.'}</span>
+              <span class="gd-bars">
+                <span class="gd-bar">
+                  <i style={{ left: w.lat < 0 ? `${50 - Math.min(50, (-w.lat / (w.limit || 1)) * 50)}%` : '50%', width: `${Math.min(50, (Math.abs(w.lat) / (w.limit || 1)) * 50)}%` }} />
+                </span>
+                <span class="gd-bar gd-long">
+                  <i style={{ left: w.lon < 0 ? `${50 - Math.min(50, (-w.lon / (w.fric || 1)) * 50)}%` : '50%', width: `${Math.min(50, (Math.abs(w.lon) / (w.fric || 1)) * 50)}%` }} />
+                </span>
+              </span>
+              <span class="gd-pair"><Num v={w.lat / div} /><i>/</i><Num v={w.limit / div} /></span>
+              <span class="gd-pair"><Num v={w.lon / div} /><i>/</i><Num v={w.fric / div} /></span>
+              <span class="gd-pair"><Num v={w.slip * 57.3} digits={0} unit="°" /></span>
+              <span class="gd-pair gd-susp"><Num v={w.load / div} /></span>
+            </div>
+          ))}
         </div>
-      ))}
-      {shown && <div class="gd-total">total lateral {(total / 1000).toFixed(1)} kN · longitudinal {(wheels.reduce((sum, w) => sum + w.lon, 0) / 1000).toFixed(1)} kN · suspension {(wheels.reduce((sum, w) => sum + w.load, 0) / 1000).toFixed(1)} kN</div>}
+      )}
+      {shown && (
+        <div class="gd-sums gd-totals">
+          <span class="gd-h">totals {unit}</span><span class="gd-h">lateral</span><span class="gd-h">longitudinal</span><span class="gd-h">suspension</span>
+          <span class="gd-h" />
+          <span class="gd-pair"><Num v={total / div} /></span>
+          <span class="gd-pair"><Num v={wheels.reduce((sum, w) => sum + w.lon, 0) / div} /></span>
+          <span class="gd-pair gd-susp"><Num v={wheels.reduce((sum, w) => sum + w.load, 0) / div} /></span>
+        </div>
+      )}
+      {shown && (
+        <div class="gd-sums" title="Torque about the centre of mass around the car's right (pitch), up (yaw) and forward (roll) axes. Gravity, air drag, downforce and the afterburner push at the centre of mass itself and turn nothing.">
+          <span class="gd-h">hull torque {unit} m</span><span class="gd-h">pitch</span><span class="gd-h">yaw</span><span class="gd-h">roll</span>
+          <span class="gd-h">from wheels</span>{torque.wheels.map((x) => <span class="gd-pair"><Num v={x} digits={torqueDigits} /></span>)}
+          <span class="gd-h">from hull collisions</span>{torque.hull.map((x) => <span class="gd-pair"><Num v={x} digits={torqueDigits} /></span>)}
+          <span class="gd-h">spin rad/s</span>{torque.spin.map((x) => <span class="gd-pair"><Num v={x} digits={torqueDigits} /></span>)}
+        </div>
+      )}
+      {shown && (
+        <div class="gd-checks">
+          <label class="gd-forces">
+            <input type="checkbox" checked={forces} onChange={(e) => setDebugForces(e.currentTarget.checked)} /> force vectors
+            <Info>
+              Arrows from each tyre (suspension and tyre together) and from the centre of mass. A car's weight is 4 m long.
+              <span class="gd-key" style={{ color: '#ffdc3c' }}>■ wheels</span> <span class="gd-key" style={{ color: '#4678ff' }}>■ gravity</span>{' '}
+              <span class="gd-key" style={{ color: '#ff4646' }}>■ air drag</span> <span class="gd-key" style={{ color: '#3ce6e6' }}>■ downforce</span>{' '}
+              <span class="gd-key" style={{ color: '#ff961e' }}>■ afterburner</span> <span class="gd-key" style={{ color: '#bebebe' }}>■ hull contact</span>
+            </Info>
+          </label>
+          <label class="gd-forces">
+            <input type="checkbox" checked={spheres} onChange={(e) => setDebugSpheres(e.currentTarget.checked)} /> collision spheres
+            <Info>
+              The spheres the chassis collides with: <span class="gd-key" style={{ color: '#3cdc5a' }}>■ green</span> free,{' '}
+              <span class="gd-key" style={{ color: '#ff3c3c' }}>■ red</span> touching the level (during the last frame).
+            </Info>
+          </label>
+        </div>
+      )}
     </div>
   );
 }
@@ -122,7 +196,7 @@ function ParamsEditor() {
   return (
     <div class="gh-params" role="dialog" aria-label="Minigame parameters">
       <div class="gp-box">
-        <div class="gp-head">Minigame parameters (JSON: "name": number; a missing name gets its default)</div>
+        <div class="gp-head">Minigame parameters (JSON: "name": number, the cars under "cars"; a missing name gets its default)</div>
         <textarea class="gp-text" ref={field} spellcheck={false} value={text} onInput={(e) => { setText(e.currentTarget.value); setMessage(null); }} />
         <div class="gp-foot">
           <span class={'gp-msg' + (message?.error ? ' error' : '')}>{message?.text ?? ''}</span>

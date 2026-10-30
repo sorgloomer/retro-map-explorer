@@ -12,7 +12,10 @@ struct CarModel {
     BatchSet body;       // chassis, windows, driver...
     BatchSet wheel[4];   // one per wheel (front left, front right, rear left, rear right), centred on the axle
     Vec3f wheelPos[4];    // rest position of the wheel centres, same order
-    float unitsPerMetre = 1;  // size of a metre in the game's own units: the model is already in metres, the level is not
+    float unitsPerMetre = 1;  // level units per metre of the model: set when the car is placed in a level (the game's real metre)
+    // A toy (the radio controlled cars of Re-Volt): the model is in real metres, a few decimetres long, and the physics runs at that
+    // size, with the car's own small-car parameters (mass of a couple of kilograms, newtons of engine force, ...).
+    bool isToy = false;
     float wheelRadius = 0.34f;      // one radius for all wheels, when nothing better is known
     float meshWheelRadii[4] = {0, 0, 0, 0};  // measured from each wheel's mesh (0: not measured)
     float fileWheelRadii[4] = {0, 0, 0, 0};  // from the car's own files (0: the files do not say)

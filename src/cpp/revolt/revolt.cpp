@@ -188,7 +188,7 @@ public:
     const char* name() const override { return "Re-Volt"; }
     const char* dropHint() const override { return "Re-Volt game folder (the one containing levels/)"; }
     bool canDrive() override { return minigame01::revoltCanDrive(); }
-    float unitsPerMetre() const override { return 28.6f; }  // an Adeon is 123 units long: about 4.3 m
+    float unitsPerMetre() const override { return minigame01::kRevoltUnitsPerRealMetre; }  // real metres: levels are made for RC cars
     bool loadCarModel(Scene& scene, minigame01::CarModel& out) override { return minigame01::loadRevoltCar(scene, out); }
 
     // Level directories: <anything>/levels/<x>/<x>.w

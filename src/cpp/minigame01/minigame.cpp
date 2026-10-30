@@ -16,23 +16,6 @@ float wrapAngle(float a) {
     return a;
 }
 
-// A small octahedron in pink, for the debug marker of the car's centre of mass (radius in metres).
-BatchSet makeCentreOfMassMarker(float radius) {
-    auto vertex = [&](float x, float y, float z) {
-        SceneVertex v;
-        v.x = x; v.y = y; v.z = z;
-        v.r = 255; v.g = 105; v.b = 180; v.a = 255;  // hot pink
-        v.u = v.v = 0;
-        return v;
-    };
-    const float r = radius;
-    const SceneVertex corners[6] = {vertex(r, 0, 0), vertex(-r, 0, 0), vertex(0, r, 0), vertex(0, -r, 0), vertex(0, 0, r), vertex(0, 0, -r)};
-    const uint32_t indices[24] = {2, 0, 4, 2, 4, 1, 2, 1, 5, 2, 5, 0, 3, 4, 0, 3, 1, 4, 3, 5, 1, 3, 0, 5};
-    BatchSet marker;
-    marker.appendIndexed(-1, BLEND_OPAQUE, corners, 6, indices, 24, true);
-    return marker;
-}
-
 void setMessage(Hud& h, const char* text) {
     snprintf(h.message, sizeof h.message, "%s", text);
     h.messageAge = 0;
@@ -80,11 +63,89 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
     };
     carMover[0] = addMover(g0);
     for (int i = 0; i < 4; i++) carMover[1 + i] = addMover(g0 + 1 + i);
-    // the debug marker of the centre of mass: not shaded, and drawn on top of everything so it shows through the hull
-    scene.moverGeoms.push_back(makeCentreOfMassMarker(0.14f));
-    carMover[5] = addMover((int)scene.moverGeoms.size() - 1);
-    scene.movers[carMover[5]].lit = false;
-    scene.movers[carMover[5]].alwaysOnTop = true;
+    // the debug arrows of the forces: a long pointed shape along +z (length 1), unshaded and seen through everything. Yellow for
+    // the wheels, then blue gravity, red air drag, cyan downforce, orange afterburner, grey what the level pushes the hull with.
+    {
+        auto makeArrow = [&](uint8_t r, uint8_t g, uint8_t b) {
+            auto vertex = [&](float x, float y, float z) {
+                SceneVertex v;
+                v.x = x; v.y = y; v.z = z;
+                v.r = r; v.g = g; v.b = b; v.a = 255;
+                v.u = v.v = 0;
+                return v;
+            };
+            // a thin square shaft from z = 0 to 0.95 and a pointed head from there to the tip at z = 1: the head is 5% of the length
+            const float shaft = 0.15f, head = 0.5f;
+            const SceneVertex corners[13] = {
+                vertex(shaft, shaft, 0), vertex(-shaft, shaft, 0), vertex(-shaft, -shaft, 0), vertex(shaft, -shaft, 0),
+                vertex(shaft, shaft, 0.95f), vertex(-shaft, shaft, 0.95f), vertex(-shaft, -shaft, 0.95f), vertex(shaft, -shaft, 0.95f),
+                vertex(head, 0, 0.95f), vertex(0, head, 0.95f), vertex(-head, 0, 0.95f), vertex(0, -head, 0.95f), vertex(0, 0, 1)};
+            std::vector<uint32_t> indices;
+            for (uint32_t i = 0; i < 4; i++) {
+                const uint32_t j = (i + 1) % 4;
+                indices.insert(indices.end(), {i, j, 4 + j, i, 4 + j, 4 + i});   // a side of the shaft
+                indices.insert(indices.end(), {8 + i, 8 + j, 12});               // a side of the head
+            }
+            indices.insert(indices.end(), {0, 1, 2, 0, 2, 3, 8, 9, 10, 8, 10, 11});  // the tail, and the underside of the head
+            BatchSet arrow;
+            arrow.appendIndexed(-1, BLEND_OPAQUE, corners, 13, indices.data(), indices.size(), true);
+            scene.moverGeoms.push_back(arrow);
+            return (int)scene.moverGeoms.size() - 1;
+        };
+        const uint8_t colours[10][3] = {{255, 220, 60}, {255, 220, 60}, {255, 220, 60}, {255, 220, 60}, {70, 120, 255},
+                                        {255, 70, 70}, {60, 230, 230}, {255, 150, 30}, {190, 190, 190}, {0, 0, 0}};
+        int geomOf[9];
+        for (int i = 0; i < 9; i++) geomOf[i] = i == 0 || i >= 4 ? makeArrow(colours[i][0], colours[i][1], colours[i][2]) : -1;
+        for (int i = 0; i < 8; i++) {
+            carMover[5 + i] = addMover(geomOf[i < 4 ? 0 : i]);
+            scene.movers[carMover[5 + i]].lit = false;
+            scene.movers[carMover[5 + i]].alwaysOnTop = true;
+        }
+        hullArrowGeom = geomOf[8];  // grey: one arrow per force the level puts on the hull, as many as there are hull spheres
+        hullArrowMovers.clear();
+        for (int i = 0; i < vehicle.probeCount(); i++) {
+            hullArrowMovers.push_back(addMover(hullArrowGeom));
+            scene.movers[hullArrowMovers.back()].lit = false;
+            scene.movers[hullArrowMovers.back()].alwaysOnTop = true;
+        }
+    }
+    // the debug spheres of the hull: a unit sphere, green or red (translucent), one mover per collision sphere
+    {
+        auto makeSphere = [&](uint8_t r, uint8_t g, uint8_t b) {
+            std::vector<Vec3f> pts = {Vec3f(1, 0, 0), Vec3f(-1, 0, 0), Vec3f(0, 1, 0), Vec3f(0, -1, 0), Vec3f(0, 0, 1), Vec3f(0, 0, -1)};
+            const uint32_t tris[24] = {2, 0, 4, 2, 4, 1, 2, 1, 5, 2, 5, 0, 3, 4, 0, 3, 1, 4, 3, 5, 1, 3, 0, 5};
+            std::vector<uint32_t> fine;
+            for (size_t t = 0; t < 24; t += 3) {  // one round of subdivision, the new points pushed out to the sphere
+                uint32_t v[3] = {tris[t], tris[t + 1], tris[t + 2]}, m[3];
+                for (int k = 0; k < 3; k++) {
+                    pts.push_back(normalize(pts[v[k]] + pts[v[(k + 1) % 3]]));
+                    m[k] = (uint32_t)pts.size() - 1;
+                }
+                const uint32_t quad[12] = {v[0], m[0], m[2], m[0], v[1], m[1], m[2], m[1], v[2], m[0], m[1], m[2]};
+                fine.insert(fine.end(), quad, quad + 12);
+            }
+            std::vector<SceneVertex> verts;
+            for (const Vec3f& p : pts) {
+                SceneVertex v;
+                v.x = p.x; v.y = p.y; v.z = p.z;
+                v.r = r; v.g = g; v.b = b; v.a = 90;
+                v.u = v.v = 0;
+                verts.push_back(v);
+            }
+            BatchSet sphere;
+            sphere.appendIndexed(-1, BLEND_ALPHA, verts.data(), verts.size(), fine.data(), fine.size(), true);
+            scene.moverGeoms.push_back(sphere);
+            return (int)scene.moverGeoms.size() - 1;
+        };
+        sphereGeoms[0] = makeSphere(60, 220, 90);
+        sphereGeoms[1] = makeSphere(255, 60, 60);
+        sphereMovers.clear();
+        for (int i = 0; i < vehicle.probeCount(); i++) {
+            sphereMovers.push_back(addMover(sphereGeoms[0]));
+            scene.movers[sphereMovers.back()].lit = false;
+            scene.movers[sphereMovers.back()].alwaysOnTop = true;
+        }
+    }
     worldFloor = scene.bmin.y / scale - tuning().worldFloorBelow;
     makePickupIcons(scene);
     isPrepared = true;
@@ -97,6 +158,8 @@ void MiniGame::forget() {
     pickups.clear();
     iconCats.clear();
     for (int& m : carMover) m = -1;
+    sphereMovers.clear();
+    hullArrowMovers.clear();
     input.releaseAll();
 }
 
@@ -115,7 +178,8 @@ void MiniGame::start(Scene& scene, const Vec3f& sceneCenter, bool free) {
     for (const Marker& m : scene.markers)
         if (scene.cats[m.cat].id == "start") { p = m.pos * (1.0f / scale); yaw = m.yaw; break; }
     Vec3f g;
-    if (groundBelow(p + Vec3f(0, 3, 0), g) || groundBelow(p + Vec3f(0, 60, 0), g)) startPos = g;
+    const float dropScale = carSettings().dropScale;  // the heights the ground is looked for from follow the size of the car
+    if (groundBelow(p + Vec3f(0, 3 * dropScale, 0), g) || groundBelow(p + Vec3f(0, 60 * dropScale, 0), g)) startPos = g;
     else startPos = p;
     startYaw = yaw;
     running = true;
@@ -212,6 +276,10 @@ void MiniGame::stop(Scene& scene) {
     for (size_t i = 0; i < iconCats.size() && i < iconCatShown.size(); i++) scene.cats[iconCats[i]].visible = iconCatShown[i] != 0;
     for (int m : carMover)
         if (m >= 0 && m < (int)scene.movers.size()) scene.movers[m].hidden = true;
+    for (int m : sphereMovers)
+        if (m >= 0 && m < (int)scene.movers.size()) scene.movers[m].hidden = true;
+    for (int m : hullArrowMovers)
+        if (m >= 0 && m < (int)scene.movers.size()) scene.movers[m].hidden = true;
     for (Pickup& p : pickups)
         for (int mi : p.movers) scene.movers[mi].hidden = false;
     pickups.clear();
@@ -236,7 +304,7 @@ void MiniGame::respawn(Scene& scene, Spawn where) {
     float yaw = safeYaw;
     if (where == Spawn::Here) {  // upright on the ground below, heading as before
         Vec3f below;
-        if (groundBelow(vehicle.position() + Vec3f(0, 1.5f, 0), below) && vehicle.position().y > worldFloor) {
+        if (groundBelow(vehicle.position() + Vec3f(0, 1.5f * carSettings().dropScale, 0), below) && vehicle.position().y > worldFloor) {
             g = below;
             yaw = std::atan2(vehicle.forward().x, vehicle.forward().z);
         }
@@ -246,11 +314,12 @@ void MiniGame::respawn(Scene& scene, Spawn where) {
 
 void MiniGame::collect(Scene& scene) {
     const Params& P = tuning();
+    const CarSettings& C = carSettings();
     Vec3f c = vehicle.position();
     for (Pickup& p : pickups) {
         if (p.taken) continue;
         float dx = p.pos.x - c.x, dz = p.pos.z - c.z, dy = p.pos.y - c.y;
-        if (dx * dx + dz * dz > P.pickupRadius * P.pickupRadius || std::fabs(dy) > P.pickupReachY) continue;
+        if (dx * dx + dz * dz > C.pickupRadius * C.pickupRadius || std::fabs(dy) > C.pickupReachY) continue;  // the reach of a car follows its size
         p.taken = true;
         for (int mi : p.movers) scene.movers[mi].hidden = true;
         hud_.score += p.points;
@@ -271,34 +340,48 @@ void MiniGame::collect(Scene& scene) {
     }
 }
 
+void MiniGame::orbitCamera(float dYaw, float dPitch) {
+    orbitYaw = wrapAngle(orbitYaw + dYaw);
+    orbitPitch = std::max(-0.6f, std::min(1.2f, orbitPitch + dPitch));
+}
+
+void MiniGame::zoomCamera(float factor) { zoomScale = std::max(0.25f, std::min(6.0f, zoomScale * factor)); }
+
 void MiniGame::updateCamera(float dt, bool snap) {
     const Params& P = tuning();
+    const CarSettings& C = carSettings();
     Vec3f pos = vehicle.position();
     Vec3f fwd = vehicle.forward();
     float carYaw = std::atan2(fwd.x, fwd.z);
     Vec3f vel = vehicle.velocity();
     float flat = std::sqrt(vel.x * vel.x + vel.z * vel.z);
     float targetYaw = carYaw;
-    if (flat > P.cameraSlideMinSpeed && vehicle.forwardSpeed() > 0) {  // look where the car is going when it slides
+    if (flat > C.cameraSlideMinSpeed && vehicle.forwardSpeed() > 0) {  // look where the car is going when it slides
         float velYaw = std::atan2(vel.x, vel.z);
         targetYaw = carYaw + wrapAngle(velYaw - carYaw) * P.cameraSlideBlend;
     }
-    float dist = (camMode == 0 ? P.cameraDistance : P.cameraFarDistance) + std::min(flat, P.cameraSpeedCap) * P.cameraSpeedDistance;
-    float height = camMode == 0 ? P.cameraHeight : P.cameraFarHeight;
+    float dist = (camMode == 0 ? C.cameraDistance : C.cameraFarDistance) + std::min(flat, C.cameraSpeedCap) * P.cameraSpeedDistance;
+    float height = camMode == 0 ? C.cameraHeight : C.cameraFarHeight;
     if (snap) camYaw = targetYaw;
     else camYaw += wrapAngle(targetYaw - camYaw) * std::min(1.0f, dt * P.cameraYawFollow);
-    Vec3f lookAt = pos + Vec3f(0, P.cameraLookHeight, 0) + Vec3f(std::sin(camYaw), 0, std::cos(camYaw)) * P.cameraLookAhead;
-    Vec3f desired = pos + Vec3f(0, height, 0) - Vec3f(std::sin(camYaw), 0, std::cos(camYaw)) * dist;
+    Vec3f lookAt = pos + Vec3f(0, C.cameraLookHeight, 0) + Vec3f(std::sin(camYaw), 0, std::cos(camYaw)) * C.cameraLookAhead;
+    // the player's turn and zoom: the camera moves on a sphere around the car's chase point
+    const float elevation = std::max(-0.1f, std::min(1.45f, std::atan2(height, dist) + orbitPitch));
+    const float radius = std::sqrt(dist * dist + height * height) * zoomScale;
+    dist = radius * std::cos(elevation);
+    height = radius * std::sin(elevation);
+    const float viewYaw = camYaw + orbitYaw;
+    Vec3f desired = pos + Vec3f(0, height, 0) - Vec3f(std::sin(viewYaw), 0, std::cos(viewYaw)) * dist;
     if (snap) camPos = desired;
     else camPos += (desired - camPos) * std::min(1.0f, dt * P.cameraPositionFollow);
     // keep the camera out of walls: pull it in along the line to the car
     Vec3f toCam = camPos - lookAt;
     float len = length(toCam);
-    if (len > 0.5f) {
+    if (len > C.cameraWallCheckLength) {
         Vec3f dir = toCam * (1.0f / len);
         float t;
         Vec3f n;
-        if (world.raycast(lookAt, dir, len + P.cameraWallMargin, true, t, n)) camPos = lookAt + dir * std::max(0.6f, t - P.cameraWallMargin);
+        if (world.raycast(lookAt, dir, len + C.cameraWallMargin, true, t, n)) camPos = lookAt + dir * std::max(C.cameraMinDistance, t - C.cameraWallMargin);
     }
     Vec3f look = lookAt - camPos;
     cam.pos = camPos * scale;
@@ -315,13 +398,6 @@ void MiniGame::syncMovers(Scene& scene) {
     };
     scene.movers[carMover[0]].model = toLevel(M);
     scene.movers[carMover[0]].hidden = false;
-    {  // the centre of mass marker sits at that point of the car
-        Mat4 L = Mat4::identity();
-        const Vec3f centre = vehicle.centreOfMassInCarSpace();
-        L.m[12] = centre.x; L.m[13] = centre.y; L.m[14] = centre.z;
-        scene.movers[carMover[5]].model = toLevel(Mat4::mul(M, L));
-        scene.movers[carMover[5]].hidden = false;
-    }
     for (int i = 0; i < 4; i++) {
         const Vehicle::Wheel& w = vehicle.wheel(i);
         float cs = std::cos(w.steer), sn = std::sin(w.steer);
@@ -338,15 +414,64 @@ void MiniGame::syncMovers(Scene& scene) {
         m.model = toLevel(Mat4::mul(M, L));
         m.hidden = false;
     }
+    // the hull's collision spheres: at their centres in the car, red when they touched the level during the last frame
+    for (size_t i = 0; i < sphereMovers.size(); i++) {
+        Mover& m = scene.movers[sphereMovers[i]];
+        m.hidden = !showSpheres_ || (int)i >= vehicle.probeCount();
+        if (m.hidden) continue;
+        const float r = vehicle.probeRadius((int)i);
+        const Vec3f c = vehicle.probeCentre((int)i);
+        Mat4 S = Mat4::identity();
+        S.m[0] = r; S.m[5] = r; S.m[10] = r;
+        S.m[12] = c.x; S.m[13] = c.y; S.m[14] = c.z;
+        m.geom = sphereGeoms[vehicle.probeTouched((int)i) ? 1 : 0];
+        m.model = toLevel(Mat4::mul(M, S));
+    }
+    // the force arrows: from the contact point along the force, one car weight per tuning length (params), thin
+    const CarSettings& C = carSettings();
+    // the four wheels at their contact points, then the forces on the whole car at its centre of mass
+    struct Arrow { Vec3f from, force; bool on; };
+    const Vec3f centre = vehicle.position();
+    std::vector<Arrow> arrows(8);
+    std::vector<int> arrowMover(8);
+    for (int i = 0; i < 8; i++) arrowMover[i] = carMover[5 + i];
+    for (int i = 0; i < 4; i++) arrows[i] = {vehicle.wheel(i).contactPoint, vehicle.wheel(i).force, vehicle.wheel(i).grounded};
+    arrows[4] = {centre, vehicle.gravityForce(), true};
+    arrows[5] = {centre, vehicle.dragForce(), true};
+    arrows[6] = {centre, vehicle.downforce(), true};
+    arrows[7] = {centre, vehicle.thrustForce(), true};
+    // one grey arrow per force of the level on the hull, from the point of the sphere that touched it
+    for (int i = 0; i < vehicle.probeCount() && i < (int)hullArrowMovers.size(); i++) {
+        arrows.push_back({vehicle.probeContactPoint(i), vehicle.probeForce(i), vehicle.probeTouched(i)});
+        arrowMover.push_back(hullArrowMovers[i]);
+    }
+    for (size_t i = 0; i < arrows.size(); i++) {
+        Mover& m = scene.movers[arrowMover[i]];
+        const float magnitude = length(arrows[i].force);
+        m.hidden = !showForces_ || !arrows[i].on || magnitude < 1.0f;
+        if (m.hidden) continue;
+        const Vec3f dir = arrows[i].force * (1.0f / magnitude);
+        const Vec3f helper = std::fabs(dir.y) < 0.9f ? Vec3f(0, 1, 0) : Vec3f(1, 0, 0);
+        const Vec3f side = normalize(cross(helper, dir)), up = cross(dir, side);
+        const float arrowLength = magnitude / (vehicle.weight()) * C.forceArrowLength;
+        const float thickness = std::max(0.1f * arrowLength, 0.04f * vehicle.sizeScale());
+        Mat4 A = Mat4::identity();
+        A.m[0] = side.x * thickness; A.m[1] = side.y * thickness; A.m[2] = side.z * thickness;
+        A.m[4] = up.x * thickness;   A.m[5] = up.y * thickness;   A.m[6] = up.z * thickness;
+        A.m[8] = dir.x * arrowLength; A.m[9] = dir.y * arrowLength; A.m[10] = dir.z * arrowLength;
+        A.m[12] = arrows[i].from.x; A.m[13] = arrows[i].from.y; A.m[14] = arrows[i].from.z;
+        m.model = toLevel(A);
+    }
 }
 
 void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     if (!running || !isPrepared) return;
     const Params& P = tuning();
+    const CarSettings& C = carSettings();
     dt = std::min(dt, P.maxFrameSeconds);
     if (c.restart) { newRound(scene); syncMovers(scene); return; }
     if (c.reset) respawn(scene, Spawn::Here);
-    if (c.toggleCamera) camMode = 1 - camMode;
+    if (c.toggleCamera) { camMode = 1 - camMode; orbitYaw = orbitPitch = 0; zoomScale = 1; }
 
     VehicleInput vi;
     vi.accel = c.accel;
@@ -361,13 +486,13 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     safeTimer += dt;
     if (safeTimer > P.safeSpotSeconds && vehicle.anyGrounded() && !vehicle.upsideDown()) {
         Vec3f g;
-        if (groundBelow(vehicle.position() + Vec3f(0, 1.0f, 0), g)) {
+        if (groundBelow(vehicle.position() + Vec3f(0, 1.0f * C.dropScale, 0), g)) {
             safePos = g;
             safeYaw = std::atan2(vehicle.forward().x, vehicle.forward().z);
             safeTimer = 0;
         }
     }
-    if (vehicle.upsideDown() && vehicle.speed() < P.stuckMaxSpeed) stuckTimer += dt;
+    if (vehicle.upsideDown() && vehicle.speed() < C.stuckMaxSpeed) stuckTimer += dt;
     else stuckTimer = 0;
     if (vehicle.position().y < worldFloor) {  // fell out of the world
         respawn(scene, Spawn::Safe);
@@ -393,7 +518,7 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
         int whole = (int)driftAccum;
         if (whole > 0) { driftAccum -= (float)whole; hud_.driftScore += whole; hud_.score += whole; }
     }
-    hud_.speedKmh = vehicle.speed() * 3.6f;
+    hud_.speedKmh = vehicle.worldSpeed() * 3.6f;  // in the world's metres, not the car's
     hud_.messageAge += dt;
     syncMovers(scene);
     updateCamera(dt, false);

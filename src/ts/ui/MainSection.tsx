@@ -1,5 +1,5 @@
 // The first section: share link, game and level, the minigame, opening game files and the camera.
-import { cameraCommand, chooseGame, chooseLevel, chooseZip, openFolder, setCameraMode, shareView, startGame } from './controller.ts';
+import { cameraCommand, chooseCar, chooseGame, chooseLevel, chooseZip, openFolder, setCameraMode, shareView, startGame } from './controller.ts';
 import { Section } from './Section.tsx';
 import { useUi } from './store.ts';
 
@@ -70,15 +70,30 @@ export function MainSection() {
   const share = useUi((s) => s.share);
   const status = useUi((s) => s.status);
   const canPlay = useUi((s) => !!s.scene?.canPlay);
+  const cars = useUi((s) => s.scene?.cars ?? 0);
+  const car = useUi((s) => s.car);
+  const chosen = cars & (1 << car) ? car : cars & 1 ? 0 : 1;  // the other one when the chosen car's game is not open
   return (
     <Section id="secMain" title="Retro Map Explorer">
       <button type="button" title="Copy a link to this exact view" onClick={() => { void shareView(); }}>Share this view</button>
       <input id="shareUrl" type="text" readOnly hidden={!share.url} value={share.url} aria-label="Shareable link" onFocus={(e) => e.currentTarget.select()} />
       <p class="muted">{share.msg}</p>
       <Selectors />
+      {canPlay && (
+        <label title="Open both games' folders to have both cars. The cars keep their real size: the Eagle is a big car on a Re-Volt table, the RC car is smaller than a pedestrian in Carmageddon.">Car
+          <select value={chosen} onChange={(e) => { chooseCar(Number(e.currentTarget.value)); e.currentTarget.blur(); }}>
+            <optgroup label="Carmageddon TDR 2000">
+              <option value="0" disabled={!(cars & 1)}>Eagle</option>
+            </optgroup>
+            <optgroup label="Re-Volt">
+              <option value="1" disabled={!(cars & 2)}>RC Bandit</option>
+            </optgroup>
+          </select>
+        </label>
+      )}
       <div class="row" hidden={!canPlay}>
-        <button class="play" type="button" title="Drive the Eagle through this level and collect the powerups before time runs out" onClick={() => { void startGame(0); }}>▶ Powerup Rush</button>
-        <button class="play alt" type="button" title="Drive the Eagle around this level with no time limit" onClick={() => { void startGame(1); }}>Free drive</button>
+        <button class="play" type="button" title="Drive the car through this level and collect the powerups before time runs out" onClick={() => { void startGame(0); }}>▶ Powerup Rush</button>
+        <button class="play alt" type="button" title="Drive the car around this level with no time limit" onClick={() => { void startGame(1); }}>Free drive</button>
       </div>
       <div class="row">
         <button type="button" onClick={() => { void openFolder(); }}>Open game folder…</button>

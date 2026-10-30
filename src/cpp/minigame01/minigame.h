@@ -41,7 +41,14 @@ public:
     Camera camera() const { return cam; }
     // World units per metre of the level (the physics runs in metres; Re-Volt's units are much smaller than a metre).
     float unitsPerMetre() const { return scale; }
+    // The size of the car against a car of 4.3 m (see Vehicle::sizeScale): the near plane of the camera follows it.
+    float sizeScale() const { return vehicle.sizeScale(); }
     const Hud& hud() const { return hud_; }
+    // The player's own view of the chase camera: turns it around the car (radians), and makes it closer or farther (factor)
+    void orbitCamera(float dYaw, float dPitch);
+    void zoomCamera(float factor);
+    void showSpheres(bool on) { showSpheres_ = on; }  // debug: the hull's collision spheres, red where they touch the level
+    void showForces(bool on) { showForces_ = on; }  // debug: an arrow per wheel for the force it pushes the car with
     const Vehicle& vehicleState() const { return vehicle; }  // for the debug display
     // The parameters changed: the car's mass, centre of mass, inertia and probes follow (the car stays where it is).
     void applyTuning() { if (isPrepared) vehicle.applyTuning(); }
@@ -76,7 +83,13 @@ private:
     CarModel car;
     Vehicle vehicle;
     Input input;
-    int carMover[6] = {-1, -1, -1, -1, -1, -1};  // body, FL, FR, RL, RR, the centre of mass marker (debug)
+    // body, FL, FR, RL, RR, then the debug arrows: the four wheels' forces, then gravity, air drag, downforce, afterburner, hull contact
+    int carMover[13] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    bool showForces_ = false, showSpheres_ = false;
+    std::vector<int> hullArrowMovers;  // a grey arrow for each hull sphere that is pushed by the level (debug)
+    int hullArrowGeom = -1;
+    std::vector<int> sphereMovers;  // one per hull collision sphere (debug)
+    int sphereGeoms[2] = {-1, -1};  // green: free, red: touching
     std::vector<Pickup> pickups;
     Hud hud_;
     Vec3f startPos;
@@ -85,6 +98,7 @@ private:
     float safeYaw = 0, safeTimer = 0, stuckTimer = 0, worldFloor = -1000.0f;
     Camera cam;
     float camYaw = 0;
+    float orbitYaw = 0, orbitPitch = 0, zoomScale = 1;  // set by the gestures; the camera key (C) puts them back
     Vec3f camPos;
     int camMode = 0;
     float driftAccum = 0;

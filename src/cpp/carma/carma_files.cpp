@@ -231,16 +231,23 @@ bool CarmaGame::readRacePup(const KeyFile& race, std::string& text) {
     std::string folder = b == std::string::npos ? "" : save.substr(b + 1, e - b - 1);
     std::string tracks = vfs::dirOf(trackDir);
     std::vector<uint8_t> d;
-    if (!folder.empty())
-        for (const std::string& sd : vfs::subdirs(tracks)) {
-            if (vfs::lower(sd) != vfs::lower(folder)) continue;
-            std::string dir = tracks + "/" + sd;
-            int li = vfs::findIn(dir, file);
-            if (li >= 0 && vfs::read(li, d)) { text.assign((const char*)d.data(), d.size()); return true; }
-            std::vector<std::unique_ptr<Pak>> tmp;
-            openDirPaks(dir, tmp);
-            if (readFromPaks(tmp, file, d)) { text.assign((const char*)d.data(), d.size()); return true; }
-        }
+    // The game opens the file by its name (POWERUPS); the save name is only where the editor wrote it, and it is wrong for some
+    // levels (the Red Mist mission lists BackOfBeyond_Race2.pup but saves it under BackOfBeyond_Race1). So: the folder of the save
+    // name first, then the folder named like the file, then every track folder.
+    std::string stem = vfs::lower(file);
+    if (endsWith(stem, ".pup")) stem.resize(stem.size() - 4);
+    std::vector<std::string> folders;
+    for (const std::string& sd : vfs::subdirs(tracks)) if (!folder.empty() && vfs::lower(sd) == vfs::lower(folder)) folders.push_back(sd);
+    for (const std::string& sd : vfs::subdirs(tracks)) if (vfs::lower(sd) == stem) folders.push_back(sd);
+    for (const std::string& sd : vfs::subdirs(tracks)) folders.push_back(sd);
+    for (const std::string& sd : folders) {
+        std::string dir = tracks + "/" + sd;
+        int li = vfs::findIn(dir, file);
+        if (li >= 0 && vfs::read(li, d)) { text.assign((const char*)d.data(), d.size()); return true; }
+        std::vector<std::unique_ptr<Pak>> tmp;
+        openDirPaks(dir, tmp);
+        if (readFromPaks(tmp, file, d)) { text.assign((const char*)d.data(), d.size()); return true; }
+    }
     return readNamedText(file, text);  // the level's own archives
 }
 

@@ -198,14 +198,28 @@ void setCameraMode(int mode) {
 
 // What the mouse / touch gestures do to the camera (see gestures.h).
 struct CameraGestures : GestureTarget {
-    bool enabled() const override { return !app.gameMode; }
-    bool orbitMode() const override { return app.camMode == 1; }
-    void pickPivot(Vec2i at) override { ::pickPivot(at); }
-    void beginPan() override { ::beginPan(); }
-    void panTo(Vec2i at) override { ::panTo(at); }
-    void rotateView(Vec2f angles) override { ::rotateView(angles.x, angles.y); }
-    void orbitReposition() override { ::orbitReposition(); }
+    // In the game the gestures steer the chase camera instead: a drag (or one finger) turns it around the car, the wheel and the pinch
+    // zoom it. The mouse drag rotates whatever the camera mode is, so the orbit mode of the viewer does not apply there.
+    bool enabled() const override { return true; }
+    bool orbitMode() const override { return !app.gameMode && app.camMode == 1; }
+    Vec2i gameDragLast;
+    void pickPivot(Vec2i at) override { if (app.gameMode) gameDragLast = at; else ::pickPivot(at); }
+    void beginPan() override { if (!app.gameMode) ::beginPan(); }
+    void panTo(Vec2i at) override {  // one finger
+        if (app.gameMode) {
+            app.mg.orbitCamera(-(float)(at.x - gameDragLast.x) * 0.006f, (float)(at.y - gameDragLast.y) * 0.004f);
+            gameDragLast = at;
+        } else {
+            ::panTo(at);
+        }
+    }
+    void rotateView(Vec2f angles) override {
+        if (app.gameMode) app.mg.orbitCamera(-angles.x * 1.6f, angles.y * 1.2f);  // a drag to the right looks from the right
+        else ::rotateView(angles.x, angles.y);
+    }
+    void orbitReposition() override { if (!app.gameMode) ::orbitReposition(); }
     void wheelZoom(Vec2i at, float amount) override {
+        if (app.gameMode) { app.mg.zoomCamera(amount > 0 ? 0.9f : 1.0f / 0.9f); return; }
         if (app.camMode == 1) {
             // Zoom towards whatever is under the cursor right now (not the last clicked pivot).
             ::pickPivot(at);
@@ -217,6 +231,11 @@ struct CameraGestures : GestureTarget {
         }
     }
     void pinchTilt(float dYaw, float dPitch, float zoom) override {
+        if (app.gameMode) {
+            app.mg.orbitCamera(-dYaw, -dPitch);
+            app.mg.zoomCamera(1.0f / zoom);
+            return;
+        }
         app.cam.yaw += dYaw;
         app.cam.pitch = std::max(-kMaxPitch, std::min(kMaxPitch, app.cam.pitch + dPitch));
         Vec3f off = app.orbitOff * (1.0f / zoom);
@@ -308,16 +327,23 @@ void pushGameHud() {
     EM_ASM({
         if (window.RME && window.RME.onGameHud) window.RME.onGameHud($0, $1, $2, $3, $4, $5, $6, UTF8ToString($7), $8);
     }, (double)h.speedKmh, h.score, h.driftScore, (double)h.timeLeft, h.collected, h.total, h.state, h.message, (double)h.messageAge);
-    // the tyres' sideways forces, for the debug panel: [{lat, limit, lon, fric, slide, slip, load}] for FL, FR, RL, RR
+    // the tyres' sideways forces, for the debug panel: [{lat, limit, lon, fric, slide, g, slip, load}] for FL, FR, RL, RR
     char json[768];
     int len = snprintf(json, sizeof json, "[");
     for (int i = 0; i < 4; i++) {
         const minigame01::Vehicle::Wheel& w = app.mg.vehicleState().wheel(i);
-        len += snprintf(json + len, sizeof json - len, "%s{\"lat\":%.0f,\"limit\":%.0f,\"lon\":%.0f,\"fric\":%.0f,\"slide\":%d,\"slip\":%.3f,\"load\":%.0f}", i ? "," : "",
-                        w.lateralForce, w.lateralLimit, w.longitudinalForce, w.frictionLimit, w.sliding ? 1 : 0, w.slip, w.load);
+        len += snprintf(json + len, sizeof json - len, "%s{\"lat\":%.0f,\"limit\":%.0f,\"lon\":%.0f,\"fric\":%.0f,\"slide\":%d,\"g\":%d,\"slip\":%.3f,\"load\":%.0f}", i ? "," : "",
+                        w.lateralForce, w.lateralLimit, w.longitudinalForce, w.frictionLimit, w.sliding ? 1 : 0, w.grounded ? 1 : 0, w.slip, w.load);
     }
     snprintf(json + len, sizeof json - len, "]");
-    EM_ASM({ if (window.RME && window.RME.onGameDebug) window.RME.onGameDebug(UTF8ToString($0)); }, json);
+    // the torques about the centre of mass about the car's right, up and forward axes (pitch, yaw, roll): in kN m, in N m for the toy car
+    // (the page shows the forces in the same unit), and the spin (rad/s)
+    const minigame01::Vehicle& v = app.mg.vehicleState();
+    const float torqueUnit = v.isToy() ? 1.0f : 0.001f;
+    const Vec3f tw = v.inCarAxes(v.torqueFromWheels()) * torqueUnit, th = v.inCarAxes(v.torqueFromHull()) * torqueUnit, sp = v.inCarAxes(v.spin());
+    char torque[256];
+    snprintf(torque, sizeof torque, "{\"wheels\":[%.2f,%.2f,%.2f],\"hull\":[%.2f,%.2f,%.2f],\"spin\":[%.2f,%.2f,%.2f],\"toy\":%d}", tw.x, tw.y, tw.z, th.x, th.y, th.z, sp.x, sp.y, sp.z, v.isToy() ? 1 : 0);
+    EM_ASM({ if (window.RME && window.RME.onGameDebug) window.RME.onGameDebug(UTF8ToString($0), UTF8ToString($1)); }, json, torque);
 }
 
 void frame() {
@@ -375,7 +401,7 @@ void frame() {
     vp.eye = app.cam.pos;
     vp.view = Mat4::lookAt(app.cam.pos, app.cam.forward(), Vec3f(0, 1, 0));
     // the chase camera sits close to the car: a much nearer clipping plane than the viewer's
-    float zNear = app.gameMode ? 0.4f * app.mg.unitsPerMetre() : nearPlane(app.sceneRadius);
+    float zNear = app.gameMode ? 0.4f * app.mg.unitsPerMetre() * app.mg.sizeScale() : nearPlane(app.sceneRadius);
     float zFar = app.gameMode ? std::min(app.farDist, 12000.0f * app.mg.unitsPerMetre()) : app.farDist;
     vp.proj = Mat4::perspective(vp.fovY, (float)w / (float)h, zNear, zFar);
     vp.viewProj = Mat4::mul(vp.proj, vp.view);
@@ -483,29 +509,88 @@ EMSCRIPTEN_KEEPALIVE int rme_load(const char* gameId, const char* levelId) {
 }
 
 // ---- driving minigame (see src/cpp/minigame01)
-// The game whose car the minigame prefers (any game's levels can be driven with it), else null.
-Game* featuredCarGame() {
+// The cars to choose from: 0 = the Carmageddon Eagle, 1 = the Re-Volt RC Bandit (the first rookie car). Each comes from its own game's
+// files, so it is there when those files were opened, whichever game's level is loaded. Both are modelled in real metres (the Eagle
+// 4.4 m long, the RC Bandit a few decimetres) and the level is fitted by its own real metre (Game::unitsPerMetre): an Eagle is a big car
+// on a Re-Volt table, the RC car a toy on a Carmageddon street.
+constexpr int kCarCount = 2;
+Game* carGame(int car) {
+    const char* id = car == 0 ? "carma" : "revolt";
     for (auto& g : app.games)
-        if (g->featuredCar() && g->canDrive()) return g.get();
+        if (!strcmp(g->id(), id) && g->canDrive()) return g.get();
     return nullptr;
 }
+int availableCars() {
+    int mask = 0;
+    for (int i = 0; i < kCarCount; i++) if (carGame(i)) mask |= 1 << i;
+    return mask;
+}
+int preparedCar = -1;  // the car the minigame was prepared with in the loaded level
 
-// 1 when the loaded level can be played: a car is available, the featured one from any game or the level's own.
-EMSCRIPTEN_KEEPALIVE int rme_game_can_play() { return app.scene && app.currentGame && (featuredCarGame() || app.currentGame->canDrive()) ? 1 : 0; }
+// Bit i set when car i can be driven (see carGame), 0 when the loaded level cannot be played.
+EMSCRIPTEN_KEEPALIVE int rme_game_cars() { return app.scene && app.currentGame ? availableCars() : 0; }
+
+// 1 when the loaded level can be played: a car is available.
+EMSCRIPTEN_KEEPALIVE int rme_game_can_play() { return rme_game_cars() != 0 ? 1 : 0; }
+
+// The car the minigame was prepared with in this level (-1: none yet): changing it takes the level to be loaded again.
+EMSCRIPTEN_KEEPALIVE int rme_game_prepared_car() { return app.mg.prepared() ? preparedCar : -1; }
+
+// What the game files say about a car, as JSON for the configuration manager, which decides which of it is used (mass, spring, damper,
+// wheel radii, centre of mass, ...), and the numbers it computes for the car, which the physics runs on (minigame01/params.h).
+bool configureCar(int car, const minigame01::CarModel& model) {
+    std::string file;
+    char buf[64];
+    auto num = [&](float v) {
+        snprintf(buf, sizeof buf, "%.9g", (double)v);
+        return std::string(buf);
+    };
+    auto vec = [&](const Vec3f& v) { return "[" + num(v.x) + "," + num(v.y) + "," + num(v.z) + "]"; };
+    auto four = [&](const float* v) { return "[" + num(v[0]) + "," + num(v[1]) + "," + num(v[2]) + "," + num(v[3]) + "]"; };
+    file += "{\"toy\":" + std::string(model.isToy ? "1" : "0");
+    file += ",\"mass\":" + num(model.mass) + ",\"springK\":" + num(model.fileSpringK) + ",\"damper\":" + num(model.fileDamper);
+    file += ",\"wheelRadiusFile\":" + four(model.fileWheelRadii) + ",\"wheelRadiusMesh\":" + four(model.meshWheelRadii);
+    file += ",\"wheelRadiusFallback\":" + num(model.wheelRadius);
+    file += ",\"hasCentreOfMass\":" + std::string(model.hasCentreOfMass ? "1" : "0") + ",\"centreOfMass\":" + vec(model.centreOfMassOffset);
+    file += ",\"hasHullBox\":" + std::string(model.hasHullBox ? "1" : "0") + ",\"hullMin\":" + vec(model.hullBoxMin) + ",\"hullMax\":" + vec(model.hullBoxMax);
+    file += ",\"boundsMin\":" + vec(model.boundsMin) + ",\"boundsMax\":" + vec(model.boundsMax);
+    file += ",\"wheelPos\":[" + vec(model.wheelPos[0]) + "," + vec(model.wheelPos[1]) + "," + vec(model.wheelPos[2]) + "," + vec(model.wheelPos[3]) + "]}";
+    // the answer is written into a buffer (a few KB of JSON)
+    std::string settings(1 << 16, '\0');
+    EM_ASM({
+        let answer;
+        try {
+            answer = window.RME.configureCar($0, UTF8ToString($1));
+        } catch (e) {
+            answer = "ERROR: " + e;
+        }
+        stringToUTF8(answer, $2, $3);
+    }, car, file.c_str(), settings.data(), (int)settings.size());
+    settings.resize(strlen(settings.c_str()));
+    if (settings.empty()) settings = "ERROR: no answer from the configuration manager";
+    std::string why;
+    if (settings.compare(0, 6, "ERROR:") == 0) { app.lastError = settings; return false; }
+    if (!minigame01::settingsFromJson(settings, why)) { app.lastError = "the configuration is not usable: " + why; return false; }
+    return true;
+}
 
 // Starts the minigame in the loaded level; returns 1 on success. Suspends while the car is read.
-// mode 0 = Powerup Rush (timed), 1 = free drive.
-EMSCRIPTEN_KEEPALIVE int rme_game_start(int mode) {
+// mode 0 = Powerup Rush (timed), 1 = free drive; car: see carGame (one that is not there is replaced by the other).
+EMSCRIPTEN_KEEPALIVE int rme_game_start(int mode, int car) {
     if (!app.scene || !app.currentGame) { app.lastError = "no level loaded"; return 0; }
     if (app.gameMode) return 1;
+    if (app.mg.prepared() && preparedCar != car) { app.lastError = "load the level again to change the car"; return 0; }
     if (!app.mg.prepared()) {
-        minigame01::CarModel car;
-        Game* provider = featuredCarGame();
-        if (!provider) provider = app.currentGame;
-        if (!provider->loadCarModel(*app.scene, car)) { app.lastError = "cannot load the car"; return 0; }
-        if (provider != app.currentGame) car.unitsPerMetre = app.currentGame->unitsPerMetre();  // fit the car to this game's scale
+        minigame01::CarModel model;
+        Game* provider = carGame(car);
+        if (!provider) { car = car == 0 ? 1 : 0; provider = carGame(car); }
+        if (!provider) { app.lastError = "no car files found"; return 0; }
+        if (!provider->loadCarModel(*app.scene, model)) { app.lastError = "cannot load the car"; return 0; }
+        model.unitsPerMetre = app.currentGame->unitsPerMetre();  // fit the car (in real metres) to this game's scale
+        if (!configureCar(car, model)) return 0;
         std::string why;
-        if (!app.mg.prepare(*app.scene, car, why)) { app.lastError = why; return 0; }
+        if (!app.mg.prepare(*app.scene, model, why)) { app.lastError = why; return 0; }
+        preparedCar = car;
         app.renderer.setScene(app.scene.get(), app.sceneRadius);  // uploads the car
     }
     app.viewerOpt = app.opt;
@@ -529,24 +614,21 @@ EMSCRIPTEN_KEEPALIVE void rme_game_stick(float x, float y) {
     if (app.gameMode) app.mg.inputRef().touchStick(x, y);
 }
 
-// The minigame's tunable parameters (minigame01/params.h) as a multi-line JSON object; defaults != 0: the built-in values.
-EMSCRIPTEN_KEEPALIVE const char* rme_game_params_json(int defaults) {
-    static std::string text;
-    text = minigame01::paramsToJson(defaults ? minigame01::Params() : minigame01::tuning());
-    return text.c_str();
-}
-
-// Replaces the parameters with the ones in the JSON text (entries left out go back to their default). Returns "" when it was
-// applied, else the reason it was not (with the line number); the car follows at once when a game is running.
-EMSCRIPTEN_KEEPALIVE const char* rme_game_params_apply(const char* json) {
+// The numbers the minigame runs on, from the page's configuration manager (see minigame01/params.h): {"globals": {...}, "car": {...}}.
+// Returns "" when they were applied (the car follows at once when a game is running), else the reason they were not.
+EMSCRIPTEN_KEEPALIVE const char* rme_config_apply(const char* json) {
     static std::string error;
     error.clear();
-    minigame01::Params p;
-    if (!minigame01::paramsFromJson(json, p, error)) return error.c_str();
-    minigame01::tuning() = p;
+    if (!minigame01::settingsFromJson(json, error)) return error.c_str();
     app.mg.applyTuning();
     return error.c_str();
 }
+
+// Debug: draws the hull's collision spheres (red where they touch the level).
+EMSCRIPTEN_KEEPALIVE void rme_game_show_spheres(int on) { app.mg.showSpheres(on != 0); }
+
+// Debug: draws an arrow per wheel for the force it pushes the car with.
+EMSCRIPTEN_KEEPALIVE void rme_game_show_forces(int on) { app.mg.showForces(on != 0); }
 
 // An on-screen button of the minigame went down / up (control = minigame01::Input::Touch).
 EMSCRIPTEN_KEEPALIVE void rme_game_touch(int control, int down) {

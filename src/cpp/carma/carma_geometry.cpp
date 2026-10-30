@@ -146,7 +146,8 @@ void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int
             idx = flipped.data();
         }
         // Material flag 1 is "double sided": leaves, thin boards and the like are drawn without culling.
-        bool two = st.mat >= 0 && st.mat < (int)hie.matFlags.size() && (hie.matFlags[st.mat] & 1);
+        // The water surface is seen from below as well (swimming under it, the car underwater): always two sided.
+        bool two = water || (st.mat >= 0 && st.mat < (int)hie.matFlags.size() && (hie.matFlags[st.mat] & 1));
         if (corona) coronaDst->appendIndexed(tex, bl, vs.data(), vs.size(), idx, m.idx.size(), true);
         else if (dst) dst->appendIndexed(tex, bl, vs.data(), vs.size(), idx, m.idx.size(), two);
         else sc->addIndexed(tex, bl, vs.data(), vs.size(), idx, m.idx.size(), two);

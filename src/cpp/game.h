@@ -22,9 +22,7 @@ struct Game {
     virtual bool load(const std::string& levelId, Scene& out, std::string& error) = 0;
     // Driving minigame: true when the game's files contain a car the minigame can use.
     virtual bool canDrive() { return false; }
-    // True for the game whose car the minigame prefers in every game's levels (when its files are present).
-    virtual bool featuredCar() const { return false; }
-    // Size of a metre in this game's level units (the minigame scales a car from another game to fit).
+    // Size of a real metre in this game's level units (the minigame scales every car to fit).
     virtual float unitsPerMetre() const { return 1.0f; }
     // Adds the car's meshes and textures to `scene` (the scene that `load` produced) and describes the car. May read files.
     virtual bool loadCarModel(Scene& scene, minigame01::CarModel& out) { (void)scene; (void)out; return false; }

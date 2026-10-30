@@ -1,22 +1,83 @@
 #include "minigame01/params.h"
 #include <cctype>
-#include <cstdio>
 #include <cstdlib>
-#include <cstring>
+#include <functional>
+#include <vector>
 
 namespace minigame01 {
 
 namespace {
 
-struct Entry {
-    const char* name;
-    float Params::*field;
+struct GlobalEntry { const char* name; float Params::*field; };
+struct CarEntry { const char* name; float CarSettings::*field; };
+
+const GlobalEntry kGlobals[] = {
+#define X(name) {#name, &Params::name},
+    MINIGAME_GLOBALS(X)
+#undef X
 };
 
-const Entry kEntries[] = {
-#define X(name, def) {#name, &Params::name},
-    MINIGAME_PARAMS(X)
+const CarEntry kCar[] = {
+#define X(name) {#name, &CarSettings::name},
+    MINIGAME_CAR(X)
 #undef X
+};
+
+// A reader of the JSON text: objects of numbers (and an object of objects at the top).
+struct Reader {
+    const std::string& text;
+    size_t p = 0;
+    int line = 1;
+    std::string error;
+
+    explicit Reader(const std::string& t) : text(t) {}
+
+    bool fail(const std::string& why) {
+        error = "line " + std::to_string(line) + ": " + why;
+        return false;
+    }
+    void skip() {
+        while (p < text.size() && std::isspace((unsigned char)text[p])) {
+            if (text[p] == '\n') line++;
+            p++;
+        }
+    }
+    // '{' members '}' : for each member the name is read, then `member(name)` reads the value after the colon
+    bool object(const std::function<bool(const std::string&)>& member) {
+        skip();
+        if (p >= text.size() || text[p] != '{') return fail("expected '{'");
+        p++;
+        bool first = true;
+        while (true) {
+            skip();
+            if (p >= text.size()) return fail("the object is not closed, expected '}'");
+            if (text[p] == '}') { p++; return true; }
+            if (!first) {
+                if (text[p] != ',') return fail("expected ',' or '}'");
+                p++;
+                skip();
+            }
+            first = false;
+            if (p >= text.size() || text[p] != '"') return fail("expected a \"name\"");
+            const size_t end = text.find('"', p + 1);
+            if (end == std::string::npos) return fail("the name is not closed");
+            const std::string name = text.substr(p + 1, end - p - 1);
+            p = end + 1;
+            skip();
+            if (p >= text.size() || text[p] != ':') return fail("expected ':' after \"" + name + "\"");
+            p++;
+            skip();
+            if (!member(name)) return false;
+        }
+    }
+    bool number(const std::string& name, double& value) {
+        const char* start = text.c_str() + p;
+        char* stop = nullptr;
+        value = std::strtod(start, &stop);
+        if (stop == start) return fail("expected a number for \"" + name + "\"");
+        p += (size_t)(stop - start);
+        return true;
+    }
 };
 
 }  // namespace
@@ -26,76 +87,44 @@ Params& tuning() {
     return p;
 }
 
-std::string paramsToJson(const Params& p) {
-    std::string out = "{\n";
-    const size_t n = sizeof kEntries / sizeof kEntries[0];
-    for (size_t i = 0; i < n; i++) {
-        // the shortest text that reads back as the same float (0.05, not 0.0500000007)
-        const float value = p.*kEntries[i].field;
-        char number[32];
-        for (int digits = 6; digits <= 9; digits++) {
-            snprintf(number, sizeof number, "%.*g", digits, (double)value);
-            if ((float)std::strtod(number, nullptr) == value) break;
-        }
-        char line[160];
-        snprintf(line, sizeof line, "  \"%s\": %s%s\n", kEntries[i].name, number, i + 1 < n ? "," : "");
-        out += line;
-    }
-    out += "}\n";
-    return out;
+CarSettings& carSettings() {
+    static CarSettings c;
+    return c;
 }
 
-bool paramsFromJson(const std::string& text, Params& out, std::string& error) {
-    Params result;  // the defaults: what the text leaves out
-    size_t p = 0;
-    int line = 1;
-    auto fail = [&](const std::string& why) {
-        error = "line " + std::to_string(line) + ": " + why;
-        return false;
-    };
-    auto skip = [&]() {
-        while (p < text.size() && std::isspace((unsigned char)text[p])) {
-            if (text[p] == '\n') line++;
-            p++;
+bool settingsFromJson(const std::string& text, std::string& error) {
+    Params globals;
+    CarSettings car;
+    std::vector<bool> haveGlobal(sizeof kGlobals / sizeof kGlobals[0], false), haveCar(sizeof kCar / sizeof kCar[0], false);
+    Reader r(text);
+    const bool ok = r.object([&](const std::string& section) {
+        if (section == "globals") {
+            return r.object([&](const std::string& name) {
+                double v;
+                if (!r.number(name, v)) return false;
+                for (size_t i = 0; i < haveGlobal.size(); i++)
+                    if (name == kGlobals[i].name) { globals.*kGlobals[i].field = (float)v; haveGlobal[i] = true; return true; }
+                return r.fail("unknown value \"" + name + "\" in globals");
+            });
         }
-    };
-    skip();
-    if (p >= text.size() || text[p] != '{') return fail("expected '{'");
-    p++;
-    bool first = true;
-    while (true) {
-        skip();
-        if (p >= text.size()) return fail("the object is not closed, expected '}'");
-        if (text[p] == '}') { p++; break; }
-        if (!first) {
-            if (text[p] != ',') return fail("expected ',' or '}'");
-            p++;
-            skip();
-            if (p < text.size() && text[p] == '}') return fail("a ',' before '}' is not allowed");
+        if (section == "car") {
+            return r.object([&](const std::string& name) {
+                double v;
+                if (!r.number(name, v)) return false;
+                for (size_t i = 0; i < haveCar.size(); i++)
+                    if (name == kCar[i].name) { car.*kCar[i].field = (float)v; haveCar[i] = true; return true; }
+                return r.fail("unknown value \"" + name + "\" in car");
+            });
         }
-        first = false;
-        if (p >= text.size() || text[p] != '"') return fail("expected a \"name\"");
-        size_t end = text.find('"', p + 1);
-        if (end == std::string::npos) return fail("the name is not closed");
-        const std::string name = text.substr(p + 1, end - p - 1);
-        p = end + 1;
-        skip();
-        if (p >= text.size() || text[p] != ':') return fail("expected ':' after \"" + name + "\"");
-        p++;
-        skip();
-        const char* start = text.c_str() + p;
-        char* stop = nullptr;
-        const double value = std::strtod(start, &stop);
-        if (stop == start) return fail("expected a number for \"" + name + "\"");
-        p += (size_t)(stop - start);
-        bool known = false;
-        for (const Entry& e : kEntries)
-            if (name == e.name) { result.*e.field = (float)value; known = true; break; }
-        if (!known) return fail("unknown parameter \"" + name + "\"");
-    }
-    skip();
-    if (p < text.size()) return fail("unexpected text after the closing '}'");
-    out = result;
+        return r.fail("unknown section \"" + section + "\"");
+    });
+    if (!ok) { error = r.error; return false; }
+    for (size_t i = 0; i < haveGlobal.size(); i++)
+        if (!haveGlobal[i]) { error = std::string("the value \"") + kGlobals[i].name + "\" is missing in globals"; return false; }
+    for (size_t i = 0; i < haveCar.size(); i++)
+        if (!haveCar[i]) { error = std::string("the value \"") + kCar[i].name + "\" is missing in car"; return false; }
+    tuning() = globals;
+    carSettings() = car;
     return true;
 }
 

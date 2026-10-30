@@ -847,6 +847,12 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         glDisable(GL_DEPTH_TEST);
         for (size_t i = 0; i < scene->movers.size(); i++)
             if (shown[i] && scene->movers[i].alwaysOnTop) drawSet(geomGpu[scene->movers[i].geom], 0, models[i], false);
+        glEnable(GL_BLEND);  // then the translucent ones (the collision spheres)
+        glDepthMask(GL_FALSE);
+        for (size_t i = 0; i < scene->movers.size(); i++)
+            if (shown[i] && scene->movers[i].alwaysOnTop) drawSet(geomGpu[scene->movers[i].geom], 1, models[i], false);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
     }
 
