@@ -95,7 +95,7 @@ private:
     Vec3f startPos;
     float startYaw = 0;
     Vec3f safePos;
-    float safeYaw = 0, safeTimer = 0, stuckTimer = 0, worldFloor = -1000.0f;
+    float safeYaw = 0, safeTimer = 0, worldFloor = -1000.0f;
     Camera cam;
     float camYaw = 0;
     float orbitYaw = 0, orbitPitch = 0, zoomScale = 1;  // set by the gestures; the camera key (C) puts them back

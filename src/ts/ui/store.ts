@@ -27,9 +27,6 @@ export interface SceneView {
   groups: LayerGroup[];
 }
 
-/** One tyre's sideways force, for the debug panel (N). */
-export interface WheelDebug { lat: number; limit: number; lon: number; fric: number; slide: number; g: number; slip: number; load: number }
-
 export interface GameHud {
   speed: number;
   score: number;
@@ -70,8 +67,11 @@ export interface UiState {
   share: { url: string; msg: string };
   gameMode: boolean;
   hud: GameHud;
-  torque: { wheels: number[]; hull: number[]; spin: number[]; toy: number };  // about the centre of mass: kN m (N m for the toy car, toy = 1) (pitch, yaw, roll) by source, and rad/s
-  wheels: WheelDebug[];  // front left, front right, rear left, rear right
+  gameDebug: {
+    torque: { wheels: number[]; hull: number[]; spin: number[]; toy: number };  // about the centre of mass: kN m (N m * 10^-3 for the toy car, toy = 1) (pitch, yaw, roll) by source, and rad/s
+    wheels: { lat: number; limit: number; lon: number; fric: number; slide: number; g: number; slip: number; load: number }[];  // front left, front right, rear left, rear right
+    toy: number;
+  };
   car: number;           // the car to drive: 0 = the Carmageddon Eagle, 1 = the Re-Volt RC Bandit (a rookie RC car)
   debugSpheres: boolean;  // the hull's collision spheres are drawn in the game
   debugForces: boolean;  // the wheel force arrows are drawn in the game
@@ -103,8 +103,11 @@ export const state: UiState = {
   share: { url: '', msg: '' },
   gameMode: false,
   hud: { speed: 0, score: 0, drift: 0, pups: '0 / 0', time: '1:30', urgent: false, message: '', messageVisible: false, over: false, overTitle: '', overText: '' },
-  torque: { wheels: [0, 0, 0], hull: [0, 0, 0], spin: [0, 0, 0], toy: 0 },
-  wheels: [],
+  gameDebug: {
+    torque: { wheels: [0, 0, 0], hull: [0, 0, 0], spin: [0, 0, 0], toy: 0 },
+    wheels: [],
+    toy: 0,
+  },
   car: store.get('rme.car.v1') === '1' ? 1 : 0,
   debugSpheres: store.get('rme.debugSpheres.v1') === '1',
   debugForces: store.get('rme.debugForces.v1') === '1',

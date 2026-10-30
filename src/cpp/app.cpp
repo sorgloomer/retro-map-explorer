@@ -323,27 +323,32 @@ void stopGame() {
 
 // Sends the minigame's heads-up display values to the page.
 void pushGameHud() {
+    const minigame01::Vehicle& v = app.mg.vehicleState();
     const minigame01::Hud& h = app.mg.hud();
     EM_ASM({
         if (window.RME && window.RME.onGameHud) window.RME.onGameHud($0, $1, $2, $3, $4, $5, $6, UTF8ToString($7), $8);
     }, (double)h.speedKmh, h.score, h.driftScore, (double)h.timeLeft, h.collected, h.total, h.state, h.message, (double)h.messageAge);
     // the tyres' sideways forces, for the debug panel: [{lat, limit, lon, fric, slide, g, slip, load}] for FL, FR, RL, RR
-    char json[768];
-    int len = snprintf(json, sizeof json, "[");
+    char json[1024];
+    int len = 0;
+    len += snprintf(json + len, sizeof json - len, R"({"toy":%d,"wheels":[)", v.isToy() ? 1 : 0);
     for (int i = 0; i < 4; i++) {
         const minigame01::Vehicle::Wheel& w = app.mg.vehicleState().wheel(i);
-        len += snprintf(json + len, sizeof json - len, "%s{\"lat\":%.0f,\"limit\":%.0f,\"lon\":%.0f,\"fric\":%.0f,\"slide\":%d,\"g\":%d,\"slip\":%.3f,\"load\":%.0f}", i ? "," : "",
-                        w.lateralForce, w.lateralLimit, w.longitudinalForce, w.frictionLimit, w.sliding ? 1 : 0, w.grounded ? 1 : 0, w.slip, w.load);
+        len += snprintf(
+            json + len,
+            sizeof json - len,
+            "%s{\"lat\":%f,\"limit\":%f,\"lon\":%f,\"fric\":%f,\"slide\":%d,\"g\":%d,\"slip\":%f,\"load\":%f}",
+            i ? "," : "",
+            w.lateralForce, w.lateralLimit, w.longitudinalForce, w.frictionLimit, w.sliding ? 1 : 0, w.grounded ? 1 : 0, w.slip, w.load);
     }
-    snprintf(json + len, sizeof json - len, "]");
-    // the torques about the centre of mass about the car's right, up and forward axes (pitch, yaw, roll): in kN m, in N m for the toy car
+    // the torques about the centre of mass about the car's right, up and forward axes (pitch, yaw, roll): in kN m, in N m * 10^-3 for the toy car
     // (the page shows the forces in the same unit), and the spin (rad/s)
-    const minigame01::Vehicle& v = app.mg.vehicleState();
-    const float torqueUnit = v.isToy() ? 1.0f : 0.001f;
-    const Vec3f tw = v.inCarAxes(v.torqueFromWheels()) * torqueUnit, th = v.inCarAxes(v.torqueFromHull()) * torqueUnit, sp = v.inCarAxes(v.spin());
-    char torque[256];
-    snprintf(torque, sizeof torque, "{\"wheels\":[%.2f,%.2f,%.2f],\"hull\":[%.2f,%.2f,%.2f],\"spin\":[%.2f,%.2f,%.2f],\"toy\":%d}", tw.x, tw.y, tw.z, th.x, th.y, th.z, sp.x, sp.y, sp.z, v.isToy() ? 1 : 0);
-    EM_ASM({ if (window.RME && window.RME.onGameDebug) window.RME.onGameDebug(UTF8ToString($0), UTF8ToString($1)); }, json, torque);
+    const Vec3f tw = v.inCarAxes(v.torqueFromWheels()), th = v.inCarAxes(v.torqueFromHull()), sp = v.inCarAxes(v.spin());
+    len += snprintf(
+        json + len, sizeof json - len,
+        R"(],"torque":{"wheels":[%f,%f,%f],"hull":[%f,%f,%f],"spin":[%f,%f,%f]}})",
+        tw.x, tw.y, tw.z, th.x, th.y, th.z, sp.x, sp.y, sp.z);
+    EM_ASM({ if (window.RME && window.RME.onGameDebug) window.RME.onGameDebug(UTF8ToString($0)); }, json);
 }
 
 void frame() {

@@ -6,6 +6,7 @@
 //     single object of final values. Where a file value can be overridden, the decision is made here and only here.
 import { CAR_BUILTIN, CAR_DEFAULTS, CAR_IDS, GLOBAL_DEFAULTS } from './defaults.ts';
 import type { CarId } from './defaults.ts';
+import {sum} from "../utils/math.ts";
 
 export type { CarId };
 export { CAR_IDS };
@@ -38,7 +39,7 @@ export interface EngineSettings {
 // What goes to the engine as it is, and what is only an input of the car's computation (the numbers of the cars that are set for a
 // car of 4.3 m and made to fit the size of the car that is driven, ...).
 const COMPUTED_FROM_GLOBALS = new Set([
-  'suspensionRayLift', 'suspensionDampingRatio', 'powerMinSpeed', 'reversePowerMinSpeed', 'driftMinSpeed', 'hullMaxPushOut', 'stuckMaxSpeed',
+  'suspensionRayLift', 'suspensionDampingRatio', 'driftMinSpeed', 'hullMaxPushOut',
   'pickupRadius', 'pickupReachY', 'cameraDistance', 'cameraHeight', 'cameraFarDistance', 'cameraFarHeight', 'cameraLookAhead', 'cameraLookHeight',
   'cameraWallMargin', 'cameraSlideMinSpeed', 'cameraSpeedCap', 'forceArrowLength',
 ]);
@@ -240,7 +241,7 @@ export class ConfigManager {
       need('wheelRadiusFromFile') > 0.5 && file.wheelRadiusFile[i] > 0
         ? file.wheelRadiusFile[i]
         : file.wheelRadiusMesh[i] > 0 ? file.wheelRadiusMesh[i] : file.wheelRadiusFallback);
-    const wheelR = radii.reduce((a, b) => a + b, 0) / 4;
+    const wheelR = sum(radii) / 4;
 
     // centre of mass, from the car's origin: the files' own (lowered), else a low point towards the rear axle
     let centreOfMass: number[];
@@ -267,8 +268,9 @@ export class ConfigManager {
       centreOfMassX: centreOfMass[0],
       centreOfMassY: centreOfMass[1],
       centreOfMassZ: centreOfMass[2],
-      engineForce: need('engineForce') * need('engineTorqueScale'),
-      enginePower: need('enginePower') * need('engineTorqueScale'),
+      engineForce: need('engineForce'),
+      enginePower: need('enginePower'),
+      gravity: need('gravity'),
       grip: need('grip'),
       drag: need('drag'),
       afterburnerForce: need('afterburnerForce'),
@@ -282,9 +284,12 @@ export class ConfigManager {
       bumpStopZone: need('bumpStopZone'),
       rayLift: g.suspensionRayLift * (suspMax / Math.max(1e-3, eagleTravel)),
       wheelRadius0: radii[0], wheelRadius1: radii[1], wheelRadius2: radii[2], wheelRadius3: radii[3],
+      steerAngleMax: need('steerAngleMax'),
+      steerFadeExponent: need('steerFadeExponent'),
+      steerResponse: need('steerResponse'),
       steerFadeSpeed: need('steerFadeSpeed'),
-      taperStartSpeed: need('taperStartSpeed'),
-      taperLength: need('taperLength'),
+      engineTaperStartSpeed: need('engineTaperStartSpeed'),
+      engineTaperLength: need('engineTaperLength'),
       slipFloorSpeed: need('slipFloorSpeed'),
       downforceRate: need('downforceRate'),
       downforceKnee: need('downforceKnee'),
@@ -293,11 +298,8 @@ export class ConfigManager {
       middleSphereScale: need('middleSphereScale'),
       rearSphereScale: need('rearSphereScale'),
       // the speeds and lengths that are set for a car of 4.3 m follow the size of the car
-      powerMinSpeed: g.powerMinSpeed * sz,
-      reversePowerMinSpeed: g.reversePowerMinSpeed * sz,
       driftMinSpeed: g.driftMinSpeed * sz,
       hullMaxPushOut: g.hullMaxPushOut * sz,
-      stuckMaxSpeed: g.stuckMaxSpeed * sz,
       pickupRadius: g.pickupRadius * sz,
       pickupReachY: g.pickupReachY * sz,
       forceArrowLength: g.forceArrowLength * sz,

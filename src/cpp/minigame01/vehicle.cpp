@@ -25,8 +25,10 @@ Quat quatNormalize(Quat q) {
 
 float clampf(float v, float lo, float hi) { return std::max(lo, std::min(hi, v)); }
 
-}  // namespace
+float smoothStep(float x);
+float smoothInterpolate(float y0, float y1, float x);
 
+}  // namespace
 void Vehicle::init(const CarModel& m) {
     for (int i = 0; i < 4; i++) wheelRest[i] = m.wheelPos[i];
     bmin = m.boundsMin;
@@ -47,7 +49,7 @@ void Vehicle::applyTuning() {
     const Vec3f previousCentreOfMass = centreOfMass;
     toy_ = C.toy > 0.5f;
     sizeScale_ = C.sizeScale;
-    gravity_ = P.gravity;
+    gravity_ = C.gravity;
     engineForce_ = C.engineForce;
     enginePower_ = C.enginePower;
     grip_ = C.grip;
@@ -85,10 +87,10 @@ void Vehicle::applyTuning() {
         const int iz = rearAtLowZ ? row : 4 - row;
         for (int ix = 0; ix < 3; ix++) {
             const float r = row == 0 ? rearR : (ix == 1 && row >= 1 && row <= 3) ? middleR : baseR;
-            const float x = 0.5f * (hullLo.x + hullHi.x) + (ix - 1) * (0.5f * hullW - r);
-            float z = hullLo.z + baseR + (hullL - 2 * baseR) * (float)iz / 4.0f;
+            const float x = 0.5f * (hullLo.x + hullHi.x) + static_cast<float>(ix - 1) * (0.5f * hullW - r);
+            float z = hullLo.z + baseR + (hullL - 2 * baseR) * static_cast<float>(iz) / 4.0f;
             if (row == 0) z = rearAtLowZ ? hullLo.z + r : hullHi.z - r;  // the big ones stay inside the hull at the rear
-            probes.push_back(Vec3f(x, hullLo.y + r, z));
+            probes.emplace_back(x, hullLo.y + r, z);
             probeRadii.push_back(r);
         }
     }
@@ -113,6 +115,13 @@ void Vehicle::reset(const Vec3f& groundPos, float yaw) {
         wheels[i] = Wheel();
         wheels[i].centre = wheelRest[i];
     }
+}
+
+void Vehicle::liftAndRoll(float metres) {
+    constexpr float kHalfAngleSin = 0.70710678f, kHalfAngleCos = 0.70710678f;  // half of 90 degrees
+    q = quatNormalize(quatMul(q, Quat{kHalfAngleCos, 0, 0, kHalfAngleSin}));  // turn about the car's own forward (z) axis
+    pos.y += metres;
+    updateAxes();
 }
 
 void Vehicle::updateAxes() {
@@ -154,6 +163,7 @@ void Vehicle::step(float dt, const VehicleInput& in, const CollisionWorld& world
     for (size_t i = 0; i < probes.size(); i++) probeForce_[i] = probeImpulse_[i] * (1.0f / dt);
 }
 
+
 // One physics step of `stepSeconds`. Forces and torques are collected over the whole car (they act on the centre of mass, `pos`)
 // and then integrated: first the four wheels (suspension, engine, brakes, tyre grip), then the chassis against the level.
 void Vehicle::substep(float stepSeconds, const VehicleInput& in, const CollisionWorld& world) {
@@ -165,17 +175,19 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     const float forwardSpeed = dot(vel, forwardAxis);    // m/s along the nose: negative when rolling backwards
 
     // --- steering: full lock at a standstill, a fraction of it at speed; the wheels turn towards that angle smoothly
-    const float maxSteerAngle = P.maxSteerAngle / (1.0f + std::pow(speed / C.steerFadeSpeed, P.steerFadeExponent));  // radians
-    const float targetSteerAngle = clampf(in.steer, -1.0f, 1.0f) * maxSteerAngle;
-    steerAngle += (targetSteerAngle - steerAngle) * std::min(1.0f, stepSeconds * P.steerResponse);
+    const float steerFadeSpeedFraction = std::abs(speed) / C.steerFadeSpeed;  // (never 0: 1 / 0 is infinite, and 0 * infinity is NaN, which would stay in steerAngle)
+    const float steerAngleMaxAtSpeed = C.steerAngleMax * smoothInterpolate(1, 1.0f / (1.0f + steerFadeSpeedFraction), steerFadeSpeedFraction);  // radians
+    const float targetSteerAngle = clampf(in.steer, -1.0f, 1.0f) * steerAngleMaxAtSpeed;
+    steerAngle += (targetSteerAngle - steerAngle) * std::min(1.0f, stepSeconds * C.steerResponse);
 
     // --- engine and brake intent
+    constexpr float kMinPowerSpeed = 1e-3f;  // m/s: only so that power / speed is finite when the car stands still
     float driveForce = 0;                  // N the engine pushes the car with, summed over the driven wheels (negative: reverse)
     float brakeInput = in.brake;           // 0..1
     const float handbrakeInput = in.handbrake;  // 0..1
     if (in.accel > P.minPedal) {
         // the engine's push is limited by its force at low speed and by its power (force * speed) at high speed
-        const float maxDriveForce = std::min(engineForce_, enginePower_ / std::max(std::fabs(forwardSpeed), C.powerMinSpeed));
+        const float maxDriveForce = std::min(engineForce_, enginePower_ / std::max(std::fabs(forwardSpeed), kMinPowerSpeed));
         driveForce = in.accel * maxDriveForce;
         if (forwardSpeed < -1.0f) {  // accelerating while rolling backwards: brake first
             brakeInput = std::max(brakeInput, in.accel);
@@ -183,12 +195,12 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         }
     } else if (in.brake > P.minPedal && forwardSpeed < 1.0f) {  // the brake pedal doubles as reverse once the car has (almost) stopped
         driveForce = -in.brake * std::min(engineForce_ * P.reverseForceFraction,
-                                          enginePower_ * P.reversePowerFraction / std::max(std::fabs(forwardSpeed), C.reversePowerMinSpeed));
+                                          enginePower_ * P.reversePowerFraction / std::max(std::fabs(forwardSpeed), kMinPowerSpeed));
         brakeInput = 0;
     }
     // the engine's push fades out over a speed range, so it has a soft top speed of its own (the afterburner is not affected)
-    if (std::fabs(forwardSpeed) > C.taperStartSpeed && driveForce * forwardSpeed > 0)
-        driveForce *= std::max(0.0f, 1.0f - (std::fabs(forwardSpeed) - C.taperStartSpeed) / C.taperLength);
+    if (std::fabs(forwardSpeed) > C.engineTaperStartSpeed && driveForce * forwardSpeed > 0)
+        driveForce *= std::max(0.0f, 1.0f - (std::fabs(forwardSpeed) - C.engineTaperStartSpeed) / C.engineTaperLength);
 
     Vec3f totalForce(0, -gravity() * mass, 0);  // N, on the centre of mass: starts with gravity
     Vec3f totalTorque;                         // N m, about the centre of mass
@@ -198,7 +210,9 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     // the way and without the runaway of a square at high speed.
     const float downforceMagnitude = C.downforceRate * (std::sqrt(speed * speed + C.downforceKnee * C.downforceKnee) - C.downforceKnee);
     downforce_ = upAxis * -downforceMagnitude;
-    thrustForce_ = in.afterburner ? forwardAxis * afterburnerForce_ : Vec3f();  // a rocket along the car's nose
+    thrustForce_ = Vec3f();  // rockets at the centre of mass: the afterburner along the car's nose, the side thrust towards its right
+    if (in.afterburner) thrustForce_ += forwardAxis * afterburnerForce_;
+    if (in.sideThrust) thrustForce_ += rightAxis * afterburnerForce_;
     gravityForce_ = Vec3f(0, -gravity() * mass, 0);
     totalForce += dragForce_ + downforce_ + thrustForce_;
 
@@ -425,6 +439,19 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         }
         pos += contactNormal * std::min(penetrationDepth * P.hullPushOut, C.hullMaxPushOut);  // out of the surface
     }
+
 }
+
+
+namespace {
+    float smoothStep(const float x) {
+        return x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x);
+    }
+
+    float smoothInterpolate(const float y0, const float y1, const float x) {
+        return y0 + smoothStep(x) * (y1 - y0);
+    }
+}
+
 
 }  // namespace minigame01

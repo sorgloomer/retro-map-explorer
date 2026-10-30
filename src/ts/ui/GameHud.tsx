@@ -3,6 +3,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { TOUCH, gameParamsJson, gameStick, gameTouch, saveGameParams, setDebugForces, setDebugSpheres, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
 import { useUi } from './store.ts';
+import {mapSum} from "../utils/math.ts";
 
 /** An on-screen button: held while a finger is on it (several can be held at once), or a single press when `tap` is set. */
 function TouchButton({ control, tap, class: cls, label, children }: { control: number; tap?: boolean; class?: string; label: string; children: ComponentChildren }) {
@@ -72,17 +73,33 @@ function Num({ v, digits = 1, unit = '' }: { v: number; digits?: number; unit?: 
 
 const WHEEL_NAMES = ['FL', 'FR', 'RL', 'RR'];
 
+const TORQUE_UNITS = {
+  small: {
+    label: <>Nm⋅10<sup>-3</sup></>,
+    divisor: 1e-3,
+  },
+  big: {
+    label: <>Nm⋅10<sup>3</sup></>,
+    divisor: 1e3,
+  },
+} as const;
+
+const TORQUE_UNIT_LABEL_BIG = <>Nm⋅10<sup>3</sup></>;
+
 /** Debug panel: the sideways force of each tyre against its limit. A full bar is the grip limit; red: the tyre slides. */
 function LateralForces() {
-  const wheels = useUi((s) => s.wheels);
+  const { wheels, torque, toy } = useUi((s) => s.gameDebug);
   const shown = useUi((s) => s.debugPanel);
   const forces = useUi((s) => s.debugForces);
-  const torque = useUi((s) => s.torque);
   // the forces are in kN, and in N for the toy car (the RC Bandit: its forces are a few newtons)
-  const div = torque.toy ? 1 : 1000, unit = torque.toy ? 'N' : 'kN', torqueDigits = torque.toy ? 2 : 1;
+  const forceUnitDiv = toy ? 1 : 1000;
+  const forceUnitLabel = toy ? 'N' : 'kN';
+  const { label: torqueUnitLabel, divisor: torqueUnitDiv } = toy ? TORQUE_UNITS.small : TORQUE_UNITS.big;
+  const torqueDigits = 1;
+  const spinDigits = toy ? 2 : 1;
   const spheres = useUi((s) => s.debugSpheres);
   const playing = useUi((s) => s.gameMode);
-  const total = wheels.reduce((sum, w) => sum + w.lat, 0);
+  const totalLatForce = mapSum(wheels, w => w.lat);
   // L shows and hides the panel (the game does not use that key)
   useEffect(() => {
     if (!playing) return;
@@ -113,10 +130,10 @@ function LateralForces() {
           <span class="gd-h gd-name" />
           <span class="gd-h gd-sub" title="T: the wheel is on the road">T = yes</span>
           <span class="gd-h gd-sub" title="green: sideways force, amber: force along the wheel; a full half bar is the grip limit">side / along</span>
-          <span class="gd-h gd-sub" title={'sideways force / its limit, in ' + unit + '; + is towards the right'}>{unit} / limit</span>
-          <span class="gd-h gd-sub" title={'force along the wheel / the friction limit, in ' + unit + '; + is forward'}>{unit} / limit</span>
+          <span class="gd-h gd-sub" title={'sideways force / its limit, in ' + forceUnitLabel + '; + is towards the right'}>{forceUnitLabel} / limit</span>
+          <span class="gd-h gd-sub" title={'force along the wheel / the friction limit, in ' + forceUnitLabel + '; + is forward'}>{forceUnitLabel} / limit</span>
           <span class="gd-h gd-sub" title="slip angle">deg</span>
-          <span class="gd-h gd-sub" title="suspension force, the load on the tyre">{unit}</span>
+          <span class="gd-h gd-sub" title="suspension force, the load on the tyre">{forceUnitLabel}</span>
           {wheels.map((w, i) => (
             <div class={'gd-row' + (w.slide ? ' slide' : '')}>
               <span class="gd-name">{WHEEL_NAMES[i]}</span>
@@ -129,29 +146,29 @@ function LateralForces() {
                   <i style={{ left: w.lon < 0 ? `${50 - Math.min(50, (-w.lon / (w.fric || 1)) * 50)}%` : '50%', width: `${Math.min(50, (Math.abs(w.lon) / (w.fric || 1)) * 50)}%` }} />
                 </span>
               </span>
-              <span class="gd-pair"><Num v={w.lat / div} /><i>/</i><Num v={w.limit / div} /></span>
-              <span class="gd-pair"><Num v={w.lon / div} /><i>/</i><Num v={w.fric / div} /></span>
+              <span class="gd-pair"><Num v={w.lat / forceUnitDiv} /><i>/</i><Num v={w.limit / forceUnitDiv} /></span>
+              <span class="gd-pair"><Num v={w.lon / forceUnitDiv} /><i>/</i><Num v={w.fric / forceUnitDiv} /></span>
               <span class="gd-pair"><Num v={w.slip * 57.3} digits={0} unit="°" /></span>
-              <span class="gd-pair gd-susp"><Num v={w.load / div} /></span>
+              <span class="gd-pair gd-susp"><Num v={w.load / forceUnitDiv} /></span>
             </div>
           ))}
         </div>
       )}
       {shown && (
         <div class="gd-sums gd-totals">
-          <span class="gd-h">totals {unit}</span><span class="gd-h">lateral</span><span class="gd-h">longitudinal</span><span class="gd-h">suspension</span>
+          <span class="gd-h">totals {forceUnitLabel}</span><span class="gd-h">lateral</span><span class="gd-h">longitudinal</span><span class="gd-h">suspension</span>
           <span class="gd-h" />
-          <span class="gd-pair"><Num v={total / div} /></span>
-          <span class="gd-pair"><Num v={wheels.reduce((sum, w) => sum + w.lon, 0) / div} /></span>
-          <span class="gd-pair gd-susp"><Num v={wheels.reduce((sum, w) => sum + w.load, 0) / div} /></span>
+          <span class="gd-pair"><Num v={totalLatForce / forceUnitDiv} /></span>
+          <span class="gd-pair"><Num v={ mapSum(wheels, w => w.lon) / forceUnitDiv} /></span>
+          <span class="gd-pair gd-susp"><Num v={ mapSum(wheels, w => w.load) / forceUnitDiv} /></span>
         </div>
       )}
       {shown && (
         <div class="gd-sums" title="Torque about the centre of mass around the car's right (pitch), up (yaw) and forward (roll) axes. Gravity, air drag, downforce and the afterburner push at the centre of mass itself and turn nothing.">
-          <span class="gd-h">hull torque {unit} m</span><span class="gd-h">pitch</span><span class="gd-h">yaw</span><span class="gd-h">roll</span>
-          <span class="gd-h">from wheels</span>{torque.wheels.map((x) => <span class="gd-pair"><Num v={x} digits={torqueDigits} /></span>)}
-          <span class="gd-h">from hull collisions</span>{torque.hull.map((x) => <span class="gd-pair"><Num v={x} digits={torqueDigits} /></span>)}
-          <span class="gd-h">spin rad/s</span>{torque.spin.map((x) => <span class="gd-pair"><Num v={x} digits={torqueDigits} /></span>)}
+          <span class="gd-h">hull torque [{torqueUnitLabel}]</span><span class="gd-h">pitch</span><span class="gd-h">yaw</span><span class="gd-h">roll</span>
+          <span class="gd-h">from wheels</span>{torque.wheels.map((x) => <Num v={x / torqueUnitDiv} digits={torqueDigits} />)}
+          <span class="gd-h">from hull</span>{torque.hull.map((x) => <Num v={x / torqueUnitDiv} digits={torqueDigits} />)}
+          <span class="gd-h">spin rad/s</span>{torque.spin.map((x) => <Num v={x} digits={spinDigits} />)}
         </div>
       )}
       {shown && (
@@ -162,7 +179,7 @@ function LateralForces() {
               Arrows from each tyre (suspension and tyre together) and from the centre of mass. A car's weight is 4 m long.
               <span class="gd-key" style={{ color: '#ffdc3c' }}>■ wheels</span> <span class="gd-key" style={{ color: '#4678ff' }}>■ gravity</span>{' '}
               <span class="gd-key" style={{ color: '#ff4646' }}>■ air drag</span> <span class="gd-key" style={{ color: '#3ce6e6' }}>■ downforce</span>{' '}
-              <span class="gd-key" style={{ color: '#ff961e' }}>■ afterburner</span> <span class="gd-key" style={{ color: '#bebebe' }}>■ hull contact</span>
+              <span class="gd-key" style={{ color: '#ff961e' }}>■ afterburner, side thrust</span> <span class="gd-key" style={{ color: '#bebebe' }}>■ hull contact</span>
             </Info>
           </label>
           <label class="gd-forces">
@@ -248,7 +265,7 @@ export function GameHud() {
       </div>
       <p class="gh-help">
         <kbd>W</kbd><kbd>S</kbd> gas / brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>R</kbd> upright ·
-        <kbd>C</kbd> camera · <kbd>1</kbd> afterburner · <kbd>2</kbd> kangaroo · <kbd>Esc</kbd> exit — or use a gamepad (RT / LT, left stick, A, Y, Back)
+        <kbd>C</kbd> camera · <kbd>1</kbd> afterburner · <kbd>2</kbd> kangaroo · <kbd>8</kbd> lift 1 m and roll 90° · <kbd>9</kbd> side thrust · <kbd>Esc</kbd> exit — or use a gamepad (RT / LT, left stick, A, Y, Back)
       </p>
     </div>
   );

@@ -15,6 +15,7 @@ struct VehicleInput {
     float steer = 0;      // -1 left .. 1 right
     float handbrake = 0;  // 0..1
     bool afterburner = false;  // thrust forward while true
+    bool sideThrust = false;   // thrust to the car's right while true (same force as the afterburner)
     bool jump = false;         // one upward impulse (kangaroo); the caller sets it for a single step per key press
 };
 
@@ -46,6 +47,8 @@ public:
     // Places the car upright with its wheels' lowest point at `groundY`, heading `yaw` (0 = +z), at rest.
     void reset(const Vec3f& groundPos, float yaw);
     void step(float dt, const VehicleInput& input, const CollisionWorld& world);
+    // Moves the car `metres` up and rolls it by 90 degrees about its own nose axis, around the centre of mass; speed and spin stay as they are.
+    void liftAndRoll(float metres);
 
     Vec3f right() const { return axes[0]; }
     Vec3f up() const { return axes[1]; }
@@ -61,7 +64,7 @@ public:
     Vec3f gravityForce() const { return gravityForce_; }
     Vec3f dragForce() const { return dragForce_; }
     Vec3f downforce() const { return downforce_; }
-    Vec3f thrustForce() const { return thrustForce_; }   // the afterburner
+    Vec3f thrustForce() const { return thrustForce_; }   // the afterburner and the side thrust
     // What the level pushed the chassis with through each hull sphere in the last frame (average force, N) and where: the point of
     // the sphere that touched
     Vec3f probeForce(int i) const { return i < (int)probeForce_.size() ? probeForce_[i] : Vec3f(); }

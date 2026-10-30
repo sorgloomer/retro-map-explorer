@@ -12,7 +12,6 @@ namespace minigame01 {
 #define MINIGAME_GLOBALS(X) \
     X(rollInertiaFactor) \
     X(probeRadius) \
-    X(gravity) \
     X(maxPhysicsStep) \
     X(vehicleMaxFrameSeconds) \
     X(bottomOutPushOut) \
@@ -29,9 +28,6 @@ namespace minigame01 {
     X(rollResist) \
     X(maxSpeed) \
     X(rollCentre) \
-    X(maxSteerAngle) \
-    X(steerFadeExponent) \
-    X(steerResponse) \
     X(minPedal) \
     X(reverseForceFraction) \
     X(reversePowerFraction) \
@@ -61,7 +57,6 @@ namespace minigame01 {
     X(finishBonusPerSecond) \
     X(maxFrameSeconds) \
     X(safeSpotSeconds) \
-    X(stuckSeconds) \
     X(worldFloorBelow) \
     X(cameraSpeedDistance) \
     X(cameraYawFollow) \
@@ -86,6 +81,7 @@ namespace minigame01 {
     X(centreOfMassZ) \
     X(engineForce) \
     X(enginePower) \
+    X(gravity) \
     X(grip) \
     X(drag) \
     X(afterburnerForce) \
@@ -102,9 +98,12 @@ namespace minigame01 {
     X(wheelRadius1) \
     X(wheelRadius2) \
     X(wheelRadius3) \
+    X(steerAngleMax) \
+    X(steerFadeExponent) \
+    X(steerResponse) \
     X(steerFadeSpeed) \
-    X(taperStartSpeed) \
-    X(taperLength) \
+    X(engineTaperStartSpeed) \
+    X(engineTaperLength) \
     X(slipFloorSpeed) \
     X(downforceRate) \
     X(downforceKnee) \
@@ -112,11 +111,8 @@ namespace minigame01 {
     X(sphereScale) \
     X(middleSphereScale) \
     X(rearSphereScale) \
-    X(powerMinSpeed) \
-    X(reversePowerMinSpeed) \
     X(driftMinSpeed) \
     X(hullMaxPushOut) \
-    X(stuckMaxSpeed) \
     X(pickupRadius) \
     X(pickupReachY) \
     X(forceArrowLength) \

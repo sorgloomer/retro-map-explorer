@@ -290,7 +290,7 @@ void MiniGame::placeCar(const Vec3f& groundPos, float yaw) {
     camYaw = yaw;
     safePos = groundPos;
     safeYaw = yaw;
-    safeTimer = stuckTimer = 0;
+    safeTimer = 0;
     updateCamera(0, true);
 }
 
@@ -471,6 +471,7 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     dt = std::min(dt, P.maxFrameSeconds);
     if (c.restart) { newRound(scene); syncMovers(scene); return; }
     if (c.reset) respawn(scene, Spawn::Here);
+    if (c.flip) vehicle.liftAndRoll(1.0f);
     if (c.toggleCamera) { camMode = 1 - camMode; orbitYaw = orbitPitch = 0; zoomScale = 1; }
 
     VehicleInput vi;
@@ -479,6 +480,7 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     vi.steer = c.steer;
     vi.handbrake = c.handbrake;
     vi.afterburner = c.afterburner;
+    vi.sideThrust = c.sideThrust;
     vi.jump = c.kangaroo;
     vehicle.step(dt, vi, world);
 
@@ -492,13 +494,8 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
             safeTimer = 0;
         }
     }
-    if (vehicle.upsideDown() && vehicle.speed() < C.stuckMaxSpeed) stuckTimer += dt;
-    else stuckTimer = 0;
     if (vehicle.position().y < worldFloor) {  // fell out of the world
         respawn(scene, Spawn::Safe);
-        setMessage(hud_, "Back on the road");
-    } else if (stuckTimer > P.stuckSeconds) {
-        respawn(scene, Spawn::Here);
         setMessage(hud_, "Back on the road");
     }
 

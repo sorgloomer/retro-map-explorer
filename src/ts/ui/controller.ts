@@ -102,8 +102,8 @@ function installApi(): RmeApi {
     configureCar(car, fileJson) {
       return configureCarSettings(car, fileJson);
     },
-    onGameDebug(wheelsJson, torqueJson) {
-      update({ wheels: JSON.parse(wheelsJson), torque: JSON.parse(torqueJson) });
+    onGameDebug(gameDebugJson) {
+      update({ gameDebug: JSON.parse(gameDebugJson) });
     },
     onGameHud(speedKmh, score, drift, timeLeft, collected, total, gameState, message, messageAge) {
       const t = Math.max(0, Math.ceil(timeLeft));
@@ -433,7 +433,7 @@ export async function startGame(mode: number): Promise<void> {
   busy(false);
   if (!ok) setStatus('Could not start the game: ' + call('rme_last_error', 'string', [], []), true);
 }
-const PARAMS_KEY = 'rme.params.v2';  // the edited minigame configuration (JSON text; v1 was the flat format of the first version)
+const PARAMS_KEY = 'rme.params.v6';  // the edited minigame configuration (JSON text; v1 was the flat format of the first version)
 
 // The car that was configured last (the engine asks for it when a game starts) with what its game files said: the engine's numbers
 // are computed again from that when the player changes the configuration.

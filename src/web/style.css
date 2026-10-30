@@ -251,6 +251,6 @@ body.playing #canvas { cursor: default; }
 .gd-n { display: inline-block; width: 5.2ch; text-align: right; font-variant-numeric: tabular-nums; }
 .gd-row.slide .gd-n { color: #ff8a8a; }
 .gd-pair.gd-susp .gd-n { color: #9ec5ff; }
-.gd-sums { display: grid; grid-template-columns: 78px repeat(3, 62px); column-gap: 10px; row-gap: 1px; margin-top: 3px; }
+.gd-sums { display: grid; grid-template-columns: 126px repeat(3, 62px); column-gap: 10px; row-gap: 1px; margin-top: 3px; justify-items: end }
 .gd-sums .gd-n { width: 6.2ch; }
 .gd-sums.gd-totals { grid-template-columns: 78px 66px 86px 66px; }

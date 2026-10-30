@@ -1,7 +1,8 @@
 // Driving controls for the minigame: keyboard and gamepad folded into one set of analog controls.
 //   keyboard: W / Up accelerate, S / Down brake and reverse, A D / Left Right steer, Space handbrake,
 //             R put the car back on its wheels, C camera, Enter new round, Esc exit,
-//             1 afterburner (while held), 2 kangaroo jump (each press)
+//             1 afterburner (while held), 2 kangaroo jump (each press),
+//             8 lift the car by 1 m and roll it by 90 degrees (each press), 9 side thrust to the right (while held)
 //   touch:    on-screen stick (steer, gas / brake) and buttons (handbrake, upright, camera) drawn by the page
 //   gamepad:  left stick / d-pad steer, RT accelerate, LT brake and reverse, A handbrake, Y reset car,
 //             X camera, Start new round, Back exit (standard mapping)
@@ -16,6 +17,8 @@ struct Controls {
     bool toggleCamera = false;  // edge
     bool afterburner = false;    // the afterburner key (1) is down
     bool kangaroo = false;       // edge: the kangaroo key (2) went down since the last update
+    bool flip = false;           // edge: the flip key (8) went down since the last update
+    bool sideThrust = false;     // the side thrust key (9) is down
 };
 
 class Input {
@@ -38,7 +41,7 @@ private:
     bool held[8] = {};  // forward, back, left, right, handbrake, ... (see input.cpp)
     float touchSteer = 0, touchThrottle = 0;  // on-screen stick
     bool touchHandbrake = false;
-    bool edgeReset = false, edgeRestart = false, edgeCamera = false, edgeKangaroo = false, exitFlag = false;
+    bool edgeReset = false, edgeRestart = false, edgeCamera = false, edgeKangaroo = false, edgeFlip = false, exitFlag = false;
     float kbSteer = 0, kbAccel = 0, kbBrake = 0;
     bool pad = false;
     bool prevButtons[16] = {};
