@@ -178,8 +178,8 @@ void MiniGame::start(Scene& scene, const Vec3f& sceneCenter, bool free) {
     for (const Marker& m : scene.markers)
         if (scene.cats[m.cat].id == "start") { p = m.pos * (1.0f / scale); yaw = m.yaw; break; }
     Vec3f g;
-    const float dropScale = carSettings().dropScale;  // the heights the ground is looked for from follow the size of the car
-    if (groundBelow(p + Vec3f(0, 3 * dropScale, 0), g) || groundBelow(p + Vec3f(0, 60 * dropScale, 0), g)) startPos = g;
+    const float cameraDropScale = carSettings().cameraDropScale;  // the heights the ground is looked for from follow the size of the car
+    if (groundBelow(p + Vec3f(0, 3 * cameraDropScale, 0), g) || groundBelow(p + Vec3f(0, 60 * cameraDropScale, 0), g)) startPos = g;
     else startPos = p;
     startYaw = yaw;
     running = true;
@@ -304,7 +304,7 @@ void MiniGame::respawn(Scene& scene, Spawn where) {
     float yaw = safeYaw;
     if (where == Spawn::Here) {  // upright on the ground below, heading as before
         Vec3f below;
-        if (groundBelow(vehicle.position() + Vec3f(0, 1.5f * carSettings().dropScale, 0), below) && vehicle.position().y > worldFloor) {
+        if (groundBelow(vehicle.position() + Vec3f(0, 1.5f * carSettings().cameraDropScale, 0), below) && vehicle.position().y > worldFloor) {
             g = below;
             yaw = std::atan2(vehicle.forward().x, vehicle.forward().z);
         }
@@ -488,7 +488,7 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     safeTimer += dt;
     if (safeTimer > P.safeSpotSeconds && vehicle.anyGrounded() && !vehicle.upsideDown()) {
         Vec3f g;
-        if (groundBelow(vehicle.position() + Vec3f(0, 1.0f * C.dropScale, 0), g)) {
+        if (groundBelow(vehicle.position() + Vec3f(0, 1.0f * C.cameraDropScale, 0), g)) {
             safePos = g;
             safeYaw = std::atan2(vehicle.forward().x, vehicle.forward().z);
             safeTimer = 0;

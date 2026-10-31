@@ -41,7 +41,6 @@ namespace minigame01 {
     X(driftSlipRange) \
     X(driftPointsFactor) \
     X(floorNormalY) \
-    X(wallBounce) \
     X(floorFriction) \
     X(wallFriction) \
     X(hullPushOut) \
@@ -108,15 +107,16 @@ namespace minigame01 {
     X(downforceRate) \
     X(downforceKnee) \
     X(downforceHeightCompensation) \
-    X(sphereScale) \
-    X(middleSphereScale) \
-    X(rearSphereScale) \
+    X(hullWallBounce) \
+    X(hullSphereScale) \
+    X(hullMiddleSphereScale) \
+    X(hullRearSphereScale) \
     X(driftMinSpeed) \
     X(hullMaxPushOut) \
     X(pickupRadius) \
     X(pickupReachY) \
     X(forceArrowLength) \
-    X(dropScale) \
+    X(cameraDropScale) \
     X(cameraDistance) \
     X(cameraHeight) \
     X(cameraFarDistance) \

@@ -80,8 +80,8 @@ void Vehicle::applyTuning() {
     probeRadii.clear();
     const Vec3f hullLo = hasHullBox ? hullBoxMin : bmin, hullHi = hasHullBox ? hullBoxMax : bmax;
     const float hullW = hullHi.x - hullLo.x, hullL = hullHi.z - hullLo.z;
-    const float baseR = std::min(P.probeRadius, std::min(hullW / 6.5f, hullL / 11.0f)) * C.sphereScale;
-    const float middleR = baseR * C.middleSphereScale, rearR = baseR * C.rearSphereScale;
+    const float baseR = std::min(P.probeRadius, std::min(hullW / 6.5f, hullL / 11.0f)) * C.hullSphereScale;
+    const float middleR = baseR * C.hullMiddleSphereScale, rearR = baseR * C.hullRearSphereScale;
     const bool rearAtLowZ = 0.5f * (wheelRest[2].z + wheelRest[3].z) < 0.5f * (wheelRest[0].z + wheelRest[1].z);  // the rear axle is behind
     for (int row = 0; row < 5; row++) {  // row 0 is the rear one
         const int iz = rearAtLowZ ? row : 4 - row;
@@ -415,7 +415,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             // normal impulse: the usual rigid body formula, with the car's mass and rotation taken into account
             const Vec3f normalRotationResponse = invInertia(cross(probeOffset, contactNormal));
             const float normalDenominator = 1.0f / mass + dot(contactNormal, cross(normalRotationResponse, probeOffset));
-            const float restitution = isFloor ? 0.0f : P.wallBounce;
+            const float restitution = isFloor ? 0.0f : C.hullWallBounce;
             const float normalImpulse = -(1.0f + restitution) * normalSpeed / normalDenominator;
             if (probeIndex < probeImpulse_.size()) probeImpulse_[probeIndex] += contactNormal * normalImpulse;
             torqueHull_ += cross(probeOffset, contactNormal * normalImpulse) * (1.0f / stepSeconds);

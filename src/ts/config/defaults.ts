@@ -20,7 +20,7 @@ export const GLOBAL_DEFAULTS: Record<string, number> = {
   tyreSlipKnee: 0.05,  // slip (fraction of the speed) at which the curve is at tyreSlipKneeValue of the peak grip
   tyreSlipKneeValue: 0.495,  // part of the peak grip given at the knee
   tyreSlipFull: 0.15,  // slip at which the tyre gives its full grip
-  suspensionRayLift: 0.4,  // m: the wheel rays start this far above the suspension's upper mount, so a curb or a slope that is higher than the mount is still found
+  suspensionRayLift: 0.3,  // wheel radii: the wheel rays start this far above the suspension's upper mount, so a curb or a slope that is higher than the mount is still found
   tyreStopFraction: 0.5,  // a tyre asks for at most this part of the force that would cancel its contact speed within one step (the other wheels push too: 1 would overshoot and shake the car)
   slideGrip: 0.85,  // part of the grip left while a tyre slides sideways
   brakeForce: 1,  // brake pedal fully down asks for this part of the friction limit
@@ -46,7 +46,6 @@ export const GLOBAL_DEFAULTS: Record<string, number> = {
   driftPointsFactor: 0.5,  // score per (drift measure * m/s * second)
   // --- hull contacts (the chassis against the level)
   floorNormalY: 0.7,  // a contact whose normal points up at least this much counts as floor, else as a wall
-  wallBounce: 0.25,  // restitution against walls (floors do not bounce)
   floorFriction: 0.9,  // sliding friction on a floor contact, as a multiple of the normal impulse
   wallFriction: 0.5,  // and on a wall contact
   hullPushOut: 0.7,  // how much of the penetration depth is corrected in one step...
@@ -106,6 +105,7 @@ export const CAR_DEFAULTS: Record<string, number> = {
   steerFadeExponent: 0.8,  // ...and this makes the drop steeper the faster the car goes
   steerFadeSpeed: 10,  // m/s: around this speed the available steering angle has dropped to half
   steerResponse: 20,  // 1/s: how quickly the wheels follow the steering input
+  hullWallBounce: 0.25,  // restitution of the hull against walls and ceilings (floors do not bounce)
   downforceHeightCompensation: 1,  // 1: the springs are free just that much longer under the downforce, so the ride height stays; 0: the car sinks
 };
 
@@ -126,6 +126,7 @@ export const CAR_BUILTIN: Record<CarId, Record<string, number | null>> = {
     damper: null,  // N s/m: the car's files, else 3300 (only when suspensionDampingRatio is 0)
     defaultMass: 1250,  // kg, when mass is not set and the car's files do not say
     downforceHeightCompensation: null,  // see carDefaults
+    hullWallBounce: null,
     downforceKnee: 40,  // m/s: below about this speed the downforce grows like the square of the speed, above it in proportion; smooth in between
     downforceRate: 90,  // N per m/s at high speed (the slope the downforce settles to): presses the car onto the road, along its down axis
     drag: 0.25,  // 0.5 * rho * Cd * A: air drag force is drag * speed^2, against the velocity
@@ -135,12 +136,12 @@ export const CAR_BUILTIN: Record<CarId, Record<string, number | null>> = {
     engineTaperStartSpeed: 55,  // m/s: from here the engine's push fades out...
     gravity: 9.81,  // m/s^2
     grip: 2.2,  // friction coefficient on the road: a tyre pushes with at most this times its load
+    hullMiddleSphereScale: 1,  // the three hull spheres in the middle of the centre column are this many times wider
+    hullRearSphereScale: 1,  // the three hull spheres at the rear are this many times wider (for a spoiler)
+    hullSphereScale: 1.6,  // the hull spheres are this many times the size that fits the car (their bottoms stay at the hull's bottom)
     kangarooSpeed: 8,  // m/s added upwards per jump (about 3 m high from rest)
     mass: null,  // kg: the car's files, else defaultMass
-    middleSphereScale: 1.3,  // the three hull spheres in the middle of the centre column are this many times wider
-    rearSphereScale: 1,  // the three hull spheres at the rear are this many times wider (for a spoiler)
     slipFloorSpeed: 3.5,  // m/s: the slip is measured against at least this speed, so it stays small near a standstill
-    sphereScale: 1.6,  // the hull spheres are this many times the size that fits the car (their bottoms stay at the hull's bottom)
     springFree: 0.27,  // spring length at which it pushes nothing
     springK: null,  // N/m: the car's files, else 30000
     steerAngleMax: null,
@@ -164,6 +165,7 @@ export const CAR_BUILTIN: Record<CarId, Record<string, number | null>> = {
     damper: 20,  // N s/m: used when suspensionDampingRatio is 0
     defaultMass: 2,
     downforceHeightCompensation: null,  // see carDefaults
+    hullWallBounce: null,
     downforceKnee: 10.0,  // m/s (50 km/h)
     downforceRate: 0.50,  // N per m/s: about one car weight at 50 km/h
     drag: 0.01,  // air drag force is this * speed^2 (0.5 * rho * Cd * A)
@@ -173,12 +175,12 @@ export const CAR_BUILTIN: Record<CarId, Record<string, number | null>> = {
     engineTaperStartSpeed: 8,
     gravity: 5,
     grip: 1.5,
+    hullMiddleSphereScale: 1,
+    hullRearSphereScale: 1,  // for the spoiler
+    hullSphereScale: 1.6,
     kangarooSpeed: 2.4,  // m/s added upwards per jump (about 30 cm high)
     mass: 2,  // kg
-    middleSphereScale: 1.3,
-    rearSphereScale: 1.7,  // for the spoiler
     slipFloorSpeed: 0.5,
-    sphereScale: 1.5,
     springFree: 0.047,  // m: free spring length (the weight of a wheel compresses it by about 1.5 cm)
     springK: 330,  // N/m
     steerAngleMax: null,

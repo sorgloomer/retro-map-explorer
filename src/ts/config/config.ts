@@ -255,8 +255,6 @@ export class ConfigManager {
       centreOfMass = [0, axleY - wheelR + need('centreOfMassHeight'), rearZ + need('centreOfMassFromRearAxle') * (frontZ - rearZ)];
     }
 
-    // the ray length of the suspension follows its travel, against the one of the Eagle's it was set for
-    const eagleTravel = this.cars.eagle.suspMax ?? CAR_BUILTIN.eagle.suspMax ?? 0.3;
     const suspMax = need('suspMax');
     const sz = sizeScale;
     const carScale = sz * need('cameraScale');
@@ -282,7 +280,7 @@ export class ConfigManager {
       suspRest: need('suspRest'),
       springFree: need('springFree'),
       bumpStopZone: need('bumpStopZone'),
-      rayLift: g.suspensionRayLift * (suspMax / Math.max(1e-3, eagleTravel)),
+      rayLift: g.suspensionRayLift * wheelR,  // (the setting is in wheel radii)
       wheelRadius0: radii[0], wheelRadius1: radii[1], wheelRadius2: radii[2], wheelRadius3: radii[3],
       steerAngleMax: need('steerAngleMax'),
       steerFadeExponent: need('steerFadeExponent'),
@@ -294,16 +292,17 @@ export class ConfigManager {
       downforceRate: need('downforceRate'),
       downforceKnee: need('downforceKnee'),
       downforceHeightCompensation: need('downforceHeightCompensation'),
-      sphereScale: need('sphereScale'),
-      middleSphereScale: need('middleSphereScale'),
-      rearSphereScale: need('rearSphereScale'),
+      hullWallBounce: need('hullWallBounce'),
+      hullSphereScale: need('hullSphereScale'),
+      hullMiddleSphereScale: need('hullMiddleSphereScale'),
+      hullRearSphereScale: need('hullRearSphereScale'),
       // the speeds and lengths that are set for a car of 4.3 m follow the size of the car
       driftMinSpeed: g.driftMinSpeed * sz,
       hullMaxPushOut: g.hullMaxPushOut * sz,
       pickupRadius: g.pickupRadius * sz,
       pickupReachY: g.pickupReachY * sz,
       forceArrowLength: g.forceArrowLength * sz,
-      dropScale: Math.max(sz, 0.25),  // the heights the ground is looked for from
+      cameraDropScale: Math.max(sz, 0.25),  // the heights the ground is looked for from
       cameraDistance: g.cameraDistance * carScale,
       cameraHeight: g.cameraHeight * carScale,
       cameraFarDistance: g.cameraFarDistance * carScale,
