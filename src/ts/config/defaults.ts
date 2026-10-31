@@ -120,6 +120,8 @@ export const CAR_DEFAULTS: Record<string, CarValue> = {
   suspensionSpringKFromFileEnabled: 1,  // 1: the spring constant is the one of the car's game files (when it has one) times suspensionSpringKFromFileRatio; 0: suspensionSpringK
   suspensionSpringKFromFileRatio: 1,  // the file's spring constant is multiplied by this
   hullWallBounce: 0.25,  // restitution of the hull against walls and ceilings (floors do not bounce)
+  steerAngleCentrifugalLimitFactor: 1,  // multiplies the sideways force the tyres can hold before slipping, which limits the steering angle at speed (0: no turning at speed)
+  steerAngleCentrifugalKneeFactor: 0.02,  // how softly the steering angle at speed bends into its limit: the width of the knee as a fraction of steerAngleMax (0: a sharp corner)
   steerAngleMax: 0.45,  // radians of front wheel turn at a standstill (full lock)
   steerFadeSpeed: 10,  // m/s: around this speed the available steering angle has dropped to half
   steerResponse: 20,  // 1/s: how quickly the wheels follow the steering input
@@ -161,6 +163,8 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     kangarooSpeed: 8,  // m/s added upwards per jump (about 3 m high from rest)
     mass: null,  // kg: the car's files, else defaultMass
     slipFloorSpeed: 3.5,  // m/s: the slip is measured against at least this speed, so it stays small near a standstill
+    steerAngleCentrifugalKneeFactor: null,
+    steerAngleCentrifugalLimitFactor: null,
     steerAngleMax: null,
     steerFadeSpeed: 30,  // m/s: around this speed the available steering angle has dropped to half
     steerResponse: null,
@@ -203,6 +207,8 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     kangarooSpeed: 2.4,  // m/s added upwards per jump (about 30 cm high)
     mass: 2,  // kg
     slipFloorSpeed: 0.5,
+    steerAngleCentrifugalKneeFactor: null,
+    steerAngleCentrifugalLimitFactor: null,
     steerAngleMax: null,
     steerFadeSpeed: 6,
     steerResponse: null,

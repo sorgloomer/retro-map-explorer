@@ -1,7 +1,8 @@
 // Picking: view rays through screen pixels and ray casts against the level geometry.
 #pragma once
 #include "camera.h"
-#include "../math/vec.h"
+#include "math/vec.h"
+#include "math/veci.h"
 #include "scene.h"
 
 constexpr float kFovY = 1.05f;  // vertical field of view of the main camera (radians)

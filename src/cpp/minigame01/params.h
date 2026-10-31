@@ -96,6 +96,8 @@ namespace minigame01 {
     X(wheelRadius1) \
     X(wheelRadius2) \
     X(wheelRadius3) \
+    X(steerAngleCentrifugalKneeFactor) \
+    X(steerAngleCentrifugalLimitFactor) \
     X(steerAngleMax) \
     X(steerResponse) \
     X(steerFadeSpeed) \

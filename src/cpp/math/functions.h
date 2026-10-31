@@ -17,3 +17,11 @@ inline float mix(const float y0, const float y1, const float x) {
     return y0 * (1.0f - x) + y1  * x;
 }
 
+inline float smoothmin(const float x0, const float x1, const float kneewidth) {
+    const float d = x1 - x0;
+    return 0.5f * (x0 + x1 - std::sqrt(kneewidth * kneewidth + d * d));
+}
+
+inline float smoothlimit(const float x, const float xmax, const float kneefraction) {
+    return smoothmin(x, xmax, xmax * kneefraction);
+}

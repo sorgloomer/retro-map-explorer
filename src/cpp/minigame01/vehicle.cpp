@@ -159,9 +159,12 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     const float forwardSpeed = dot(vel, forwardAxis);    // m/s along the nose: negative when rolling backwards
 
     // --- steering: full lock at a standstill, a fraction of it at speed; the wheels turn towards that angle smoothly
-    const float steerFadeSpeedFraction = std::abs(speed) / C.steerFadeSpeed;  // (never 0: 1 / 0 is infinite, and 0 * infinity is NaN, which would stay in steerAngle)
-    const float steerAngleMaxAtSpeed = C.steerAngleMax * mix(1.0f, 1.0f / (1.0f + steerFadeSpeedFraction), smoothstep(steerFadeSpeedFraction));  // radians
-    const float targetSteerAngle = clamp(in.steer, -1.0f, 1.0f) * steerAngleMaxAtSpeed;
+    const float gripAccelerationLimitForSteering = C.steerAngleCentrifugalLimitFactor * grip_ * gravity();  // m/s^2: the most the tyres can turn the car sideways (friction coefficient * g, whatever the mass)
+    const float vehicleAxesDistance = std::abs(0.5f * (wheelRest[0].z + wheelRest[1].z) - 0.5f * (wheelRest[2].z + wheelRest[3].z));  // m: the wheelbase, front axle to rear axle
+    const float minTurnRadiusAtCurrentSpeed = speed * speed / gripAccelerationLimitForSteering;
+    const float steerAngleFromMinTurnRadius = std::atan2(vehicleAxesDistance, minTurnRadiusAtCurrentSpeed);
+    const float steerAngleMaxAtCurrentSpeed = smoothlimit(steerAngleFromMinTurnRadius, C.steerAngleMax, C.steerAngleCentrifugalKneeFactor);
+    const float targetSteerAngle = clamp(in.steer, -1.0f, 1.0f) * steerAngleMaxAtCurrentSpeed;
     steerAngle += (targetSteerAngle - steerAngle) * std::min(1.0f, stepSeconds * C.steerResponse);
 
     // --- engine and brake intent
@@ -328,10 +331,13 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             if (isRearWheel) longitudinalForce += driveForce * 0.5f;
             // gripMode: 0 physical (the wheel's own suspension force), 1 constant (the same share for every wheel on the ground), 2 weighted
             // (the whole weight of the car shared by the wheels on the ground in proportion to their suspension forces)
+            const float wheelLoadStatic = staticWheelLoad;
+            const float wheelLoadDynamic = suspensionForce;
+            const float wheelLoadWeighted = suspensionForceSum < 1e-3f ? staticWheelLoad : staticWheelLoad * kWheelCount * suspensionForce / suspensionForceSum;
             float frictionLoad;
-            if (C.gripMode > 1.5f) frictionLoad = suspensionForceSum > 1e-3f ? mass * gravity() * suspensionForce / suspensionForceSum : staticWheelLoad;
-            else if (C.gripMode > 0.5f) frictionLoad = staticWheelLoad;
-            else frictionLoad = staticWheelLoad + (suspensionForce - staticWheelLoad) * P.tyreLoadSensitivity;
+            if (C.gripMode > 1.5f) frictionLoad = wheelLoadWeighted;
+            else if (C.gripMode > 0.5f) frictionLoad = wheelLoadStatic;
+            else frictionLoad = mix(wheelLoadStatic, wheelLoadDynamic, P.tyreLoadSensitivity);
             const float frictionLimit = grip_ * (1.0f + (roadFriction - 1.0f) * P.surfaceFrictionEffect) * frictionLoad;  // N: the most the tyre can push with, in any direction
             float brakingForce = brakeInput * P.brakeForce * frictionLimit;
             const bool handbrakeActsHere = isRearWheel || C.handbrakeAllWheels > 0.5f;

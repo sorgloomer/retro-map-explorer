@@ -223,6 +223,8 @@ export class ConfigManager {
       bumpStopZone: need('bumpStopZone'),
       rayLift: g.suspensionRayLift * wheelR,  // (the setting is in wheel radii)
       wheelRadius0: radii[0], wheelRadius1: radii[1], wheelRadius2: radii[2], wheelRadius3: radii[3],
+      steerAngleCentrifugalKneeFactor: need('steerAngleCentrifugalKneeFactor'),
+      steerAngleCentrifugalLimitFactor: need('steerAngleCentrifugalLimitFactor'),
       steerAngleMax: need('steerAngleMax'),
       steerResponse: need('steerResponse'),
       steerFadeSpeed: need('steerFadeSpeed'),
