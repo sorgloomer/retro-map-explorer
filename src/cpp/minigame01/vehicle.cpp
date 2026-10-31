@@ -277,7 +277,11 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
                                     damping * (-dot(mountVelocity, upAxis));
             suspensionForce = std::max(0.0f, suspensionForce);
             wheel.load = suspensionForce;  // N: how hard the tyre is pressed on the road, which is what limits its grip
-            const Vec3f suspensionForceVector = upAxis * suspensionForce;
+            // The road pushes the tyre perpendicular to its surface, at the contact point (not along the suspension: a pitched car on a
+            // flat road would then be pushed forward by the horizontal part of the suspension force). The spring, the damper and the
+            // bottom-out above still work along the car's up axis, the direction the suspension moves in.
+            const Vec3f roadNormal = dot(groundNormal, upAxis) >= 0 ? groundNormal : groundNormal * -1.0f;  // towards the car
+            const Vec3f suspensionForceVector = roadNormal * suspensionForce;
             totalForce += suspensionForceVector;
             totalTorque += cross(contactOffset, suspensionForceVector);
 
@@ -437,7 +441,10 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
                 torqueHull_ += cross(probeOffset, tangentDirection * -frictionImpulse) * (1.0f / stepSeconds);
             }
         }
-        pos += contactNormal * std::min(penetrationDepth * P.hullPushOut, C.hullMaxPushOut);  // out of the surface
+        // out of the surface, but not all the way: the sphere keeps overlapping it by a hair, so the contact is found again next step
+        constexpr float kKeptOverlap = 2e-3f;  // of the sphere's radius
+        const float pushDepth = std::max(0.0f, penetrationDepth - kKeptOverlap * sphereRadius);
+        pos += contactNormal * std::min(pushDepth * P.hullPushOut, C.hullMaxPushOut);
     }
 
 }

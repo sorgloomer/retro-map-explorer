@@ -207,14 +207,14 @@ struct CameraGestures : GestureTarget {
     void beginPan() override { if (!app.gameMode) ::beginPan(); }
     void panTo(Vec2i at) override {  // one finger
         if (app.gameMode) {
-            app.mg.orbitCamera(-(float)(at.x - gameDragLast.x) * 0.006f, (float)(at.y - gameDragLast.y) * 0.004f);
+            app.mg.orbitCamera((float)(at.x - gameDragLast.x) * 0.006f, (float)(at.y - gameDragLast.y) * 0.004f);
             gameDragLast = at;
         } else {
             ::panTo(at);
         }
     }
     void rotateView(Vec2f angles) override {
-        if (app.gameMode) app.mg.orbitCamera(-angles.x * 1.6f, angles.y * 1.2f);  // a drag to the right looks from the right
+        if (app.gameMode) app.mg.orbitCamera(angles.x * 1.6f, angles.y * 1.2f);  // a drag to the right looks from the left (the world follows the mouse)
         else ::rotateView(angles.x, angles.y);
     }
     void orbitReposition() override { if (!app.gameMode) ::orbitReposition(); }

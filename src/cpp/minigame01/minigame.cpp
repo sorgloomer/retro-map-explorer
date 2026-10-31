@@ -374,14 +374,16 @@ void MiniGame::updateCamera(float dt, bool snap) {
     Vec3f desired = pos + Vec3f(0, height, 0) - Vec3f(std::sin(viewYaw), 0, std::cos(viewYaw)) * dist;
     if (snap) camPos = desired;
     else camPos += (desired - camPos) * std::min(1.0f, dt * P.cameraPositionFollow);
-    // keep the camera out of walls: pull it in along the line to the car
-    Vec3f toCam = camPos - lookAt;
+    // keep the camera out of walls: pull it in along the line to the car. The line starts at the car itself: the point the camera looks at
+    // is ahead of the car and can lie inside the surface the car climbs, which would pull the camera in on the car.
+    const Vec3f rayStart = pos;
+    Vec3f toCam = camPos - rayStart;
     float len = length(toCam);
     if (len > C.cameraWallCheckLength) {
         Vec3f dir = toCam * (1.0f / len);
         float t;
         Vec3f n;
-        if (world.raycast(lookAt, dir, len + C.cameraWallMargin, true, t, n)) camPos = lookAt + dir * std::max(C.cameraMinDistance, t - C.cameraWallMargin);
+        if (world.raycast(rayStart, dir, len + C.cameraWallMargin, true, t, n)) camPos = rayStart + dir * std::max(C.cameraMinDistance, t - C.cameraWallMargin);
     }
     Vec3f look = lookAt - camPos;
     cam.pos = camPos * scale;
