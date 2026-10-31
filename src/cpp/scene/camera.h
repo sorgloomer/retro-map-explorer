@@ -1,7 +1,7 @@
 // The free camera: position plus yaw / pitch (radians). Yaw 0 looks along +Z, positive pitch looks up.
 #pragma once
 #include <cmath>
-#include "../math/vmath.h"
+#include "../math/transform.h"
 
 struct Camera {
     Vec3f pos;

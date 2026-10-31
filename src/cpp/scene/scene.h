@@ -7,8 +7,8 @@
 #include <unordered_map>
 #include <vector>
 #include "../loader/image.h"
-#include "../math/vmath.h"
-#include "../math/vec2.h"
+#include "../math/transform.h"
+#include "../math/vec.h"
 #include "math/color.h"
 
 struct SceneVertex {
@@ -165,7 +165,7 @@ struct Mover {
     bool lit = false;          // shaded with the scene's Lighting
     bool alwaysOnTop = false;  // drawn last without a depth test: visible through everything (debug markers)
     bool hidden = false;       // not drawn (collected pickups, the parked car)
-    Mat4 model = Mat4::identity();
+    Mat4f model = Mat4f::identity();
 
     void finish() {
         cum.assign(path.size(), 0.0f);

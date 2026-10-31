@@ -85,12 +85,11 @@ namespace minigame01 {
     X(drag) \
     X(afterburnerForce) \
     X(kangarooSpeed) \
-    X(springK) \
-    X(damper) \
-    X(suspMin) \
-    X(suspMax) \
-    X(suspRest) \
-    X(springFree) \
+    X(suspensionSpringK) \
+    X(suspensionDamperCoefficient) \
+    X(suspensionLengthMax) \
+    X(suspensionLengthAtRest) \
+    X(suspensionLengthInLoadedModel) \
     X(bumpStopZone) \
     X(rayLift) \
     X(wheelRadius0) \
@@ -98,7 +97,6 @@ namespace minigame01 {
     X(wheelRadius2) \
     X(wheelRadius3) \
     X(steerAngleMax) \
-    X(steerFadeExponent) \
     X(steerResponse) \
     X(steerFadeSpeed) \
     X(engineTaperStartSpeed) \
@@ -108,6 +106,8 @@ namespace minigame01 {
     X(downforceKnee) \
     X(downforceHeightCompensation) \
     X(hullWallBounce) \
+    X(handbrakeAllWheels) \
+    X(gripMode) \
     X(hullSphereScale) \
     X(hullMiddleSphereScale) \
     X(hullRearSphereScale) \

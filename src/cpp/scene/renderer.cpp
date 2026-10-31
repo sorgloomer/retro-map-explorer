@@ -610,7 +610,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             if (a.texture >= 0 && a.texture < (int)texFrame.size() && !a.frames.empty() && a.fps > 0)
                 texFrame[a.texture] = a.frames[(size_t)std::floor(vp.time * a.fps) % a.frames.size()];
         // model matrices of the moving objects at the current time
-        std::vector<Mat4> models(scene->movers.size(), Mat4::identity());
+        std::vector<Mat4f> models(scene->movers.size(), Mat4f::identity());
         std::vector<char> shown(scene->movers.size(), 0);
         for (size_t i = 0; i < scene->movers.size(); i++) {
             const Mover& m = scene->movers[i];
@@ -626,7 +626,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 Vec3f upv = std::fabs(z.y) > 0.999f ? Vec3f(0, 0, 1) : Vec3f(0, 1, 0);
                 Vec3f r = normalize(cross(upv, z));
                 Vec3f u = cross(z, r);
-                Mat4& M = models[i];
+                Mat4f& M = models[i];
                 M.m[0] = r.x * sc; M.m[1] = r.y * sc; M.m[2] = r.z * sc;
                 M.m[4] = u.x * sc; M.m[5] = u.y * sc; M.m[6] = u.z * sc;
                 M.m[8] = z.x * sc; M.m[9] = z.y * sc; M.m[10] = z.z * sc;
@@ -640,7 +640,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 float tt = total > 0 ? std::fmod(vp.time, total) : 0;
                 if (tt < 0) tt += total;
                 Vec3f off;
-                Mat4 R = Mat4::identity();
+                Mat4f R = Mat4f::identity();
                 float start = 0;
                 for (const AnimKey& k : m.keys) {
                     float f = k.dur > 0 ? std::min(1.0f, std::max(0.0f, (tt - start) / k.dur)) : 1.0f;
@@ -648,11 +648,11 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                     if (k.rotDeg != 0) {
                         float a = k.rotDeg * f * 0.0174532925f, cs = std::cos(a), sn = std::sin(a), t = 1 - cs;
                         Vec3f ax = normalize(k.axis);
-                        Mat4 Q = Mat4::identity();
+                        Mat4f Q = Mat4f::identity();
                         Q.m[0] = cs + ax.x * ax.x * t;      Q.m[4] = ax.x * ax.y * t - ax.z * sn; Q.m[8] = ax.x * ax.z * t + ax.y * sn;
                         Q.m[1] = ax.y * ax.x * t + ax.z * sn; Q.m[5] = cs + ax.y * ax.y * t;      Q.m[9] = ax.y * ax.z * t - ax.x * sn;
                         Q.m[2] = ax.z * ax.x * t - ax.y * sn; Q.m[6] = ax.z * ax.y * t + ax.x * sn; Q.m[10] = cs + ax.z * ax.z * t;
-                        R = Mat4::mul(Q, R);
+                        R = Mat4f::mul(Q, R);
                     }
                     start += k.dur;
                 }
@@ -666,7 +666,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             }
             if (m.fixed) {  // powerup icon: spin on the spot
                 float a = vp.time * 1.4f + m.phase;
-                Mat4& M = models[i];
+                Mat4f& M = models[i];
                 // exact in-game scale up close; far away it grows so that it keeps a minimum size on screen
                 float sc = iconScale(m.path[0], vp, opt);  // grows from the icon's bottom, which stays where it is
                 M.m[0] = std::cos(a) * sc; M.m[2] = -std::sin(a) * sc;
@@ -686,7 +686,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             Vec3f up = std::fabs(f.y) > 0.99f ? Vec3f(0, 0, 1) : Vec3f(0, 1, 0);
             Vec3f z = normalize(cross(f, up));
             Vec3f u = cross(z, f);
-            Mat4& M = models[i];
+            Mat4f& M = models[i];
             M.m[0] = f.x; M.m[1] = f.y; M.m[2] = f.z;
             M.m[4] = u.x; M.m[5] = u.y; M.m[6] = u.z;
             M.m[8] = z.x; M.m[9] = z.y; M.m[10] = z.z;
@@ -743,7 +743,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             }
         }
 
-        auto drawSet = [&](const std::vector<GpuBatch>& set, int pass, const Mat4& model, bool lit = false) {
+        auto drawSet = [&](const std::vector<GpuBatch>& set, int pass, const Mat4f& model, bool lit = false) {
             const WorldLocs& L = lit ? litLocs : worldLocs;
             if (lit) {
                 glUseProgram(progLit);
@@ -778,7 +778,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             if (lit) glUseProgram(progWorld);
         };
         auto drawWire = [&]() {
-            glUniformMatrix4fv(locModel, 1, GL_FALSE, Mat4::identity().m);
+            glUniformMatrix4fv(locModel, 1, GL_FALSE, Mat4f::identity().m);
             glUniform1f(locWire, 1.f);
             for (GpuBatch& b : batches) {
                 if (!b.lineIbo && b.src) {
@@ -845,7 +845,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 }
             setExposure(opt.exposure);  // the movers below change it: reset for the level in every pass
             if (opt.wireframe) { if (pass == 0) drawWire(); }
-            else drawSet(batches, pass, Mat4::identity());
+            else drawSet(batches, pass, Mat4f::identity());
             if (pass == 0 && opt.xrayEnabled() && opt.powerupMeshes) drawPowerupGhosts();
             for (size_t i = 0; i < scene->movers.size(); i++) {
                 if (!shown[i] || scene->movers[i].alwaysOnTop) continue;  // those are drawn last, below
@@ -876,7 +876,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
     if (opt.showCollision && !collisionGpu.empty()) {
         glUseProgram(progWorld);
         glUniformMatrix4fv(glGetUniformLocation(progWorld, "uVP"), 1, GL_FALSE, vp.viewProj.m);
-        glUniformMatrix4fv(glGetUniformLocation(progWorld, "uModel"), 1, GL_FALSE, Mat4::identity().m);
+        glUniformMatrix4fv(glGetUniformLocation(progWorld, "uModel"), 1, GL_FALSE, Mat4f::identity().m);
         glUniform1f(glGetUniformLocation(progWorld, "uTextured"), 0.f);
         glUniform1f(glGetUniformLocation(progWorld, "uCutout"), 0.f);
         glUniform1f(glGetUniformLocation(progWorld, "uBlendAdd"), 0.f);

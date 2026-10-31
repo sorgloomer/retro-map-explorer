@@ -80,7 +80,7 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
     std::vector<int> texOf(hie.textures.size(), -2);
     std::vector<SceneVertex> vs;
     std::vector<uint32_t> flipped;
-    auto emitMesh = [&](const CMesh& m, const Mat4& mat, int texNode, int matNode, BatchSet& dst) {
+    auto emitMesh = [&](const CMesh& m, const Mat4f& mat, int texNode, int matNode, BatchSet& dst) {
         int tex = -1;
         if (texNode >= 0 && texNode < (int)hie.textures.size()) {
             if (texOf[texNode] == -2) texOf[texNode] = textureFor(hie.textures[texNode], pk);
@@ -135,15 +135,15 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
         return -1;
     };
 
-    std::function<void(int, const Mat4&, int, int, BatchSet&, int)> walkNodes = [&](int first, const Mat4& m0, int tex0, int mat0, BatchSet& dst, int depth) {
+    std::function<void(int, const Mat4f&, int, int, BatchSet&, int)> walkNodes = [&](int first, const Mat4f& m0, int tex0, int mat0, BatchSet& dst, int depth) {
         if (depth > 40) return;
         for (int n = first; n >= 0 && n < (int)hie.nodes.size(); n = hie.nodes[n].sibling) {
             const Hie::Node& nd = hie.nodes[n];
             const std::string& nm = names[n];
             if (contains(nm, "_lod23") || contains(nm, "_lod33") || contains(nm, "master_wheel") || contains(nm, "piviots")) continue;
-            Mat4 m = m0;
+            Mat4f m = m0;
             int tex = tex0, mat = mat0;
-            if (nd.type == 1 && nd.index >= 0 && nd.index < (int)hie.mats.size()) m = Mat4::mul(m0, hie.mats[nd.index].m);
+            if (nd.type == 1 && nd.index >= 0 && nd.index < (int)hie.mats.size()) m = Mat4f::mul(m0, hie.mats[nd.index].m);
             else if (nd.type == 2) tex = nd.index;
             else if (nd.type == 5) mat = nd.index;
             else if (nd.type == 3 && nd.index >= 0 && nd.index < (int)meshes.size()) emitMesh(meshes[nd.index], m0, tex0, mat0, dst);
@@ -157,16 +157,16 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
         int slot = wheelSlot(names[n]);
         const Hie::Node& nd = hie.nodes[n];
         if (slot < 0 || nd.type != 1 || nd.index < 0 || nd.index >= (int)hie.mats.size()) continue;
-        const Mat4& wm = hie.mats[nd.index].m;
+        const Mat4f& wm = hie.mats[nd.index].m;
         out.wheelPos[slot] = Vec3f(-wm.m[12], wm.m[13], wm.m[14]);
         haveWheel[slot] = true;
         int axle = slot < 2 ? 0 : 2;  // the left wheel's mesh serves both wheels of an axle
-        if (nd.child >= 0 && out.wheel[axle].batches.empty()) walkNodes(nd.child, Mat4::identity(), -1, -1, out.wheel[axle], 0);
+        if (nd.child >= 0 && out.wheel[axle].batches.empty()) walkNodes(nd.child, Mat4f::identity(), -1, -1, out.wheel[axle], 0);
     }
     if (!(haveWheel[0] && haveWheel[1] && haveWheel[2] && haveWheel[3])) return false;
 
     // the chassis: skip the wheel roots (handled above)
-    std::function<void(int, const Mat4&, int, int, int)> body = [&](int first, const Mat4& m0, int tex0, int mat0, int depth) {
+    std::function<void(int, const Mat4f&, int, int, int)> body = [&](int first, const Mat4f& m0, int tex0, int mat0, int depth) {
         if (depth > 40) return;
         for (int n = first; n >= 0 && n < (int)hie.nodes.size(); n = hie.nodes[n].sibling) {
             const Hie::Node& nd = hie.nodes[n];
@@ -174,16 +174,16 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
             if (wheelSlot(nm) >= 0 || contains(nm, "_lod23") || contains(nm, "_lod33") || contains(nm, "master_wheel") || contains(nm, "piviots") ||
                 contains(nm, "_wheel_"))
                 continue;
-            Mat4 m = m0;
+            Mat4f m = m0;
             int tex = tex0, mat = mat0;
-            if (nd.type == 1 && nd.index >= 0 && nd.index < (int)hie.mats.size()) m = Mat4::mul(m0, hie.mats[nd.index].m);
+            if (nd.type == 1 && nd.index >= 0 && nd.index < (int)hie.mats.size()) m = Mat4f::mul(m0, hie.mats[nd.index].m);
             else if (nd.type == 2) tex = nd.index;
             else if (nd.type == 5) mat = nd.index;
             else if (nd.type == 3 && nd.index >= 0 && nd.index < (int)meshes.size()) emitMesh(meshes[nd.index], m0, tex0, mat0, out.body);
             if (nd.child >= 0) body(nd.child, m, tex, mat, depth + 1);
         }
     };
-    body(0, Mat4::identity(), -1, -1, 0);
+    body(0, Mat4f::identity(), -1, -1, 0);
     if (out.body.batches.empty()) return false;
 
     auto bounds = [](const BatchSet& s, Vec3f& lo, Vec3f& hi) {
@@ -247,7 +247,7 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
             }
         }
         // the car has one spring and one damper setting in the physics: the mean of its wheels'
-        if (springCount > 0) out.fileSpringK = springSum / (float)springCount;
+        if (springCount > 0) out.filesuspensionSpringK = springSum / (float)springCount;
         if (damperCount > 0) out.fileDamper = damperSum / (float)damperCount;
     }
     out.name = "Eagle";

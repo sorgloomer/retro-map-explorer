@@ -19,7 +19,7 @@ struct CarModel {
     float wheelRadius = 0.34f;      // one radius for all wheels, when nothing better is known
     float meshWheelRadii[4] = {0, 0, 0, 0};  // measured from each wheel's mesh (0: not measured)
     float fileWheelRadii[4] = {0, 0, 0, 0};  // from the car's own files (0: the files do not say)
-    float fileSpringK = 0;          // suspension spring stiffness in N/m from the car's own files (0: not said)
+    float filesuspensionSpringK = 0;          // suspension spring stiffness in N/m from the car's own files (0: not said)
     float fileDamper = 0;           // suspension damping in N s/m from the car's own files (0: not said)
     float wheelWidth = 0.25f;
     Vec3f boundsMin, boundsMax;  // of the chassis

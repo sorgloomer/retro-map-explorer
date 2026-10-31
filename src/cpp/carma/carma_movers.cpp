@@ -142,7 +142,7 @@ void CarmaGame::loadAnimProps(const std::string& fname, Scene& out, int cat, int
         m.cat = cat;
         m.name = hieName;
         m.path = {Vec3f()};
-        const Mat4& R = lastRootMat;
+        const Mat4f& R = lastRootMat;
         m.pivot = fixX(Vec3f(R.m[12], R.m[13], R.m[14]));
         for (int k = 0; k < nkeys; k++) {
             const float* v = &nums[k * 8];

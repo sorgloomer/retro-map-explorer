@@ -35,7 +35,7 @@ struct Cats {
 struct Placed { int id; int cat; Vec3f pos; };
 
 struct State {
-    Mat4 m = Mat4::identity();
+    Mat4f m = Mat4f::identity();
     int tex = -1;
     int attr = -1;
     int mat = -1;
@@ -77,7 +77,7 @@ public:
     BatchSet* coronaDst = nullptr;  // when set, meshes under a "corona" matrix go here, centred on that matrix (billboard halos)
     Vec3f coronaCenter;
     bool coronaFound = false;
-    Mat4 lastRootMat = Mat4::identity();  // first matrix of the hierarchy emitted last
+    Mat4f lastRootMat = Mat4f::identity();  // first matrix of the hierarchy emitted last
     BatchSet* dst = nullptr;  // when set, emitHie writes into this (local space) instead of the level
     std::string trackDir, baseDir;
     std::vector<std::unique_ptr<Pak>> paks;     // everything opened so far (stable pointers)
@@ -120,7 +120,7 @@ public:
             switch (n.type) {
                 case 1:
                     if (n.index >= 0 && n.index < (int)h.mats.size()) {
-                        cur.m = Mat4::mul(it.st.m, h.mats[n.index].m);
+                        cur.m = Mat4f::mul(it.st.m, h.mats[n.index].m);
                         cur.attr = n.index;
                     }
                     break;

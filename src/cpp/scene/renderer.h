@@ -3,7 +3,7 @@
 #include <vector>
 #include "scene.h"
 #include "../math/color.h"
-#include "../math/vmath.h"
+#include "../math/transform.h"
 
 struct RenderOptions {
     float exposure = 1.35f;
@@ -24,7 +24,7 @@ struct RenderOptions {
 };
 
 struct ViewParams {
-    Mat4 view, proj, viewProj;
+    Mat4f view, proj, viewProj;
     Vec3f eye;
     int width = 1, height = 1;
     float fovY = 1.0f;

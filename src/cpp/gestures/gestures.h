@@ -3,7 +3,8 @@
 #pragma once
 #include <emscripten/html5.h>
 #include <vector>
-#include "math/vec2.h"
+#include "math/vec.h"
+#include "math/veci.h"
 
 // What the gestures steer. Positions are CSS pixels on the canvas.
 class GestureTarget {

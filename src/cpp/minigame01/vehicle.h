@@ -6,6 +6,7 @@
 #include "minigame01/car_model.h"
 #include "minigame01/collision_world.h"
 #include "minigame01/params.h"
+#include "./quaternion.h"
 
 namespace minigame01 {
 
@@ -19,12 +20,9 @@ struct VehicleInput {
     bool jump = false;         // one upward impulse (kangaroo); the caller sets it for a single step per key press
 };
 
-struct Quat {
-    float w = 1, x = 0, y = 0, z = 0;
-};
-
 class Vehicle {
 public:
+    static constexpr int kWheelCount = 4;
     struct Wheel {
         Vec3f centre;        // car space, including the suspension travel
         float spin = 0;     // radians
@@ -44,6 +42,7 @@ public:
     void init(const CarModel& model);
     // Recomputes mass, centre of mass, inertia and hull probes after the tunable parameters changed (the car stays where it is).
     void applyTuning();
+    float bumpStiffnessAt(float suspensionLength) const;  // 1 above the bump stop zone, up to bumpStopStiffness at the stop
     // Places the car upright with its wheels' lowest point at `groundY`, heading `yaw` (0 = +z), at rest.
     void reset(const Vec3f& groundPos, float yaw);
     void step(float dt, const VehicleInput& input, const CollisionWorld& world);
@@ -87,13 +86,14 @@ public:
     // a car follow it.
     float sizeScale() const { return sizeScale_; }
     float forwardSpeed() const { return dot(vel, axes[2]); }
-    Mat4 modelMatrix() const;               // car space -> world
+    Mat4f modelMatrix() const;               // car space -> world
     const Wheel& wheel(int i) const { return wheels[i]; }
     bool anyGrounded() const { return groundedCount > 0; }
     float drift() const { return drift_; }  // 0..1: how sideways the car is sliding (only above a minimum speed)
     float impact() const { return impact_; }  // strongest hull hit of the last step (m/s), for effects / scoring
     bool upsideDown() const { return axes[1].y < -0.3f; }
     float halfHeight() const { return (bmax.y - bmin.y) * 0.5f; }
+    float boundingRadius() const { return 0.5f * length(bmax - bmin); }  // of the sphere around the car (half the diagonal of its bounds)
 
 private:
     void updateAxes();
@@ -111,7 +111,7 @@ private:
     float sizeScale_ = 1;
     // the values in use: the small cars (the radio controlled ones) have parameters of their own, the others share the common ones
     float gravity_ = 9.81f, engineForce_ = 40000, enginePower_ = 420000, grip_ = 1.1f, dragCoefficient_ = 0.25f, afterburnerForce_ = 36000, kangarooSpeed_ = 8;
-    float suspMax_ = 0.3f, suspMin_ = 0, suspRest_ = 0.15f, springFree_ = 0.33f, bumpZone_ = 0.03f;  // the suspension in use (small cars: more travel)
+    float suspensionLengthMax_ = 0.3f, suspensionLengthAtRest_ = 0.15f, suspensionLengthInLoadedModel_ = 0.15f, suspensionSpringNaturalLength_ = 0.33f, bumpZone_ = 0.03f;  // the suspension in use (small cars: more travel)
     float springStiffness = 30000, damping = 3300;  // the ones in use (N/m, N s/m)
     Vec3f centreOfMass;                    // centre of mass in car space
     bool hasHullBox = false;      // the chassis hull box of the car's files
@@ -128,7 +128,7 @@ private:
     Vec3f pos, vel, angVel;
     Quat q;
     Vec3f axes[3];                // right, up, forward in world space
-    Wheel wheels[4];
+    Wheel wheels[kWheelCount];
     float steerAngle = 0;
     int groundedCount = 0;
     float drift_ = 0, impact_ = 0;

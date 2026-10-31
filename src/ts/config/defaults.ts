@@ -13,7 +13,6 @@ export const GLOBAL_DEFAULTS: Record<string, number> = {
   bottomOutPushOut: 0.5,  // a wheel past the end of its travel: this part of the overlap is undone each step, without any speed (no bounce)
   bumpStopStiffness: 2,  // ...by this factor
   // --- suspension, tyres, engine and air
-  suspensionDampingRatio: 0.85,  // damper as a part of the critical damping of the spring (1 = no overshoot at all); 0: use the raw damper of the car (damper, or the car's file)
   tyreLoadSensitivity: 1,  // 0: friction scales with the static weight of a quarter of the car (the original game); 1: with the wheel's current load, so the weight distribution decides what each tyre can hold
   surfaceFrictionEffect: 1,  // how much the surface's WHEEL_FRICTION (grass 0.8, slippery rock 0, road 1) counts: 0 none, 1 as the game does
   tyreSlipCurve: 1,  // 1: sideways force follows the original game's slip curve; 0: the older stiffness model
@@ -100,33 +99,50 @@ export type CarId = (typeof CAR_IDS)[number];
  * Values that every car starts from, unless the car sets its own: a car value that is missing or null is taken from here, so these
  * can be changed for all cars at once ("carDefaults" in the JSON).
  */
-export const CAR_DEFAULTS: Record<string, number> = {
+/** How the grip of a tyre is limited by the load on it (see gripMode); the engine gets the position of the word. */
+export type GripMode = 'physical' | 'constant' | 'weighted';
+export const GRIP_MODES: readonly GripMode[] = ['physical', 'constant', 'weighted'];
+
+/** A value of a car as it is written in the JSON text: a number, one of the words of the settings that have words, or null (not set). */
+export type CarValue = number | string | null;
+
+/** The settings of a car that are words, and the words they can be. */
+export const CAR_WORDS: Record<string, readonly string[]> = {
+  gripMode: GRIP_MODES,
+};
+
+export const CAR_DEFAULTS: Record<string, CarValue> = {
+  downforceHeightCompensation: 1,  // 1: the springs are free just that much longer under the downforce, so the ride height stays; 0: the car sinks
+  gripMode: 'physical',  // 'physical': a tyre grips with the force its suspension carries; 'constant': with the car's weight shared equally by the wheels on the ground; 'weighted': with the whole weight of the car shared between the wheels by their suspension forces
+  handbrakeAllWheels: 1,  // 1: the handbrake brakes (and loosens the grip of) all four wheels; 0: only the rear ones
+  suspensionDamperRatioToCritical: 0.85,  // damper as a part of the critical damping of the spring (1 = no overshoot at all); 0: use suspensionDamperCoefficient
+  suspensionSpringK: 30000,  // N/m: used when the spring constant is not taken from the car's files
+  suspensionSpringKFromFileEnabled: 1,  // 1: the spring constant is the one of the car's game files (when it has one) times suspensionSpringKFromFileRatio; 0: suspensionSpringK
+  suspensionSpringKFromFileRatio: 1,  // the file's spring constant is multiplied by this
+  hullWallBounce: 0.25,  // restitution of the hull against walls and ceilings (floors do not bounce)
   steerAngleMax: 0.45,  // radians of front wheel turn at a standstill (full lock)
-  steerFadeExponent: 0.8,  // ...and this makes the drop steeper the faster the car goes
   steerFadeSpeed: 10,  // m/s: around this speed the available steering angle has dropped to half
   steerResponse: 20,  // 1/s: how quickly the wheels follow the steering input
-  hullWallBounce: 0.25,  // restitution of the hull against walls and ceilings (floors do not bounce)
-  downforceHeightCompensation: 1,  // 1: the springs are free just that much longer under the downforce, so the ride height stays; 0: the car sinks
 };
 
 /**
  * What each car's own values start as ("cars" in the JSON). Every car has the same keys. null: not set here: the value of
- * "carDefaults" when the key is there, else the value from the car's files when they have one (mass, spring, damper).
+ * "carDefaults" when the key is there, else the value from the car's files when they have one (mass, spring, damper coefficient).
  */
-export const CAR_BUILTIN: Record<CarId, Record<string, number | null>> = {
+export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
   eagle: {
     afterburnerForce: 36000,  // N: about three times the car's weight, in the direction the car faces
-    bumpStopZone: 0.03,  // within this distance above suspMin the spring turns stiffer
+    bumpStopZone: 0.03,  // within this distance of the bump stop (length 0) the spring turns stiffer
     cameraScale: 1,  // the chase camera's distance and height are multiplied by this (on top of the size of the car)
-    centreOfMassFromFile: 1,  // 1: use the centre of mass of the car's files when it has one; 0: the two numbers centreOfMassHeight, centreOfMassFromRearAxle
-    centreOfMassFromRearAxle: 0.36,  // between the axles when not taken from the files: 0 = on the rear axle, 1 = on the front axle
-    centreOfMassHeight: 0.4,  // m above the road, when not taken from the car's files
-    centreOfMassLowering: 0,  // m: the centre of mass of the car's files is moved down by this much (0 = where the file says)
-    centreOfMassLoweringFraction: 0.4,  // the centre of mass is lowered by this part of the height of the car's hull
-    damper: null,  // N s/m: the car's files, else 3300 (only when suspensionDampingRatio is 0)
+    centreOfMassFromFileEnabled: 0,  // 1: use the centre of mass of the car's files when it has one; 0: the two numbers centreOfMassHeight, centreOfMassFromRearAxle
+    centreOfMassFromFileLoweringAbsolute: 0,  // m: the centre of mass of the car's files is moved down by this much (0 = where the file says)
+    centreOfMassFromFileLoweringFraction: 0.3,  // the centre of mass is lowered by this part of the height of the car's hull
+    centreOfMassFromRearAxle: 0.65,  // between the axles when not taken from the files: 0 = on the rear axle, 1 = on the front axle
+    centreOfMassHeight: 0.375,  // m above the road, when not taken from the car's files
+    suspensionDamperCoefficient: null,  // N s/m: the car's files, else 3300 (only when suspensionDamperRatioToCritical is 0)
+    suspensionDamperRatioToCritical: null,
     defaultMass: 1250,  // kg, when mass is not set and the car's files do not say
     downforceHeightCompensation: null,  // see carDefaults
-    hullWallBounce: null,
     downforceKnee: 40,  // m/s: below about this speed the downforce grows like the square of the speed, above it in proportion; smooth in between
     downforceRate: 90,  // N per m/s at high speed (the slope the downforce settles to): presses the car onto the road, along its down axis
     drag: 0.25,  // 0.5 * rho * Cd * A: air drag force is drag * speed^2, against the velocity
@@ -136,36 +152,39 @@ export const CAR_BUILTIN: Record<CarId, Record<string, number | null>> = {
     engineTaperStartSpeed: 55,  // m/s: from here the engine's push fades out...
     gravity: 9.81,  // m/s^2
     grip: 2.2,  // friction coefficient on the road: a tyre pushes with at most this times its load
+    gripMode: "constant",
+    handbrakeAllWheels: null,
     hullMiddleSphereScale: 1,  // the three hull spheres in the middle of the centre column are this many times wider
     hullRearSphereScale: 1,  // the three hull spheres at the rear are this many times wider (for a spoiler)
     hullSphereScale: 1.6,  // the hull spheres are this many times the size that fits the car (their bottoms stay at the hull's bottom)
+    hullWallBounce: null,
     kangarooSpeed: 8,  // m/s added upwards per jump (about 3 m high from rest)
     mass: null,  // kg: the car's files, else defaultMass
     slipFloorSpeed: 3.5,  // m/s: the slip is measured against at least this speed, so it stays small near a standstill
-    springFree: 0.27,  // spring length at which it pushes nothing
-    springK: null,  // N/m: the car's files, else 30000
     steerAngleMax: null,
-    steerFadeExponent: null,
-    steerFadeSpeed: 10,  // m/s: around this speed the available steering angle has dropped to half
+    steerFadeSpeed: 30,  // m/s: around this speed the available steering angle has dropped to half
     steerResponse: null,
-    suspMax: 0.3,  // m: fully extended (the wheel hangs in the air)
-    suspMin: 0,  // m: fully compressed (the bump stop)
-    suspRest: 0.15,  // wheel centre below the upper mount at rest
+    suspensionLengthMax: 0.4,  // m: fully extended (the wheel hangs in the air)
+    suspensionLengthAtRest: 0.2,  // m: the spring length the car stands on at rest (its weight compresses the spring to this)
+    suspensionLengthInLoadedModel: 0.35,  // m: the spring length the wheel positions of the car's model files correspond to (equal to suspensionLengthAtRest: the wheels are where the model has them at rest)
+    suspensionSpringK: null,  // N/m: null: the one of carDefaults
+    suspensionSpringKFromFileEnabled: null,
+    suspensionSpringKFromFileRatio: null,
     wheelRadiusFromFile: 1,  // 1: the wheel radii of the car's files (front and rear differ); 0: measured from the wheel meshes
   },
   rcBandit: {
     afterburnerForce: 20,  // N: about three times its weight
     bumpStopZone: 0.005,
     cameraScale: 2.0,  // the toy car is watched from farther away, relative to its size
-    centreOfMassFromFile: 0,
+    centreOfMassFromFileEnabled: 0,
+    centreOfMassFromFileLoweringAbsolute: 0,
+    centreOfMassFromFileLoweringFraction: 0,
     centreOfMassFromRearAxle: 0.36,
     centreOfMassHeight: 0.03,  // m above the road
-    centreOfMassLowering: 0,
-    centreOfMassLoweringFraction: 0,
-    damper: 20,  // N s/m: used when suspensionDampingRatio is 0
     defaultMass: 2,
+    suspensionDamperCoefficient: 20,  // N s/m: used when suspensionDamperRatioToCritical is 0
+    suspensionDamperRatioToCritical: null,
     downforceHeightCompensation: null,  // see carDefaults
-    hullWallBounce: null,
     downforceKnee: 10.0,  // m/s (50 km/h)
     downforceRate: 0.50,  // N per m/s: about one car weight at 50 km/h
     drag: 0.01,  // air drag force is this * speed^2 (0.5 * rho * Cd * A)
@@ -175,21 +194,24 @@ export const CAR_BUILTIN: Record<CarId, Record<string, number | null>> = {
     engineTaperStartSpeed: 8,
     gravity: 5,
     grip: 1.5,
+    gripMode: null,
+    handbrakeAllWheels: null,
     hullMiddleSphereScale: 1,
     hullRearSphereScale: 1,  // for the spoiler
     hullSphereScale: 1.6,
+    hullWallBounce: null,
     kangarooSpeed: 2.4,  // m/s added upwards per jump (about 30 cm high)
     mass: 2,  // kg
     slipFloorSpeed: 0.5,
-    springFree: 0.047,  // m: free spring length (the weight of a wheel compresses it by about 1.5 cm)
-    springK: 330,  // N/m
     steerAngleMax: null,
-    steerFadeExponent: null,
     steerFadeSpeed: 6,
     steerResponse: null,
-    suspMax: 0.05,  // m: the travel
-    suspMin: 0,
-    suspRest: 0.03,
+    suspensionLengthMax: 0.05,  // m: the travel
+    suspensionLengthAtRest: 0.03,
+    suspensionLengthInLoadedModel: 0.03,
+    suspensionSpringK: 330,  // N/m (the Re-Volt files have none)
+    suspensionSpringKFromFileEnabled: null,
+    suspensionSpringKFromFileRatio: null,
     wheelRadiusFromFile: 1,
   },
 };

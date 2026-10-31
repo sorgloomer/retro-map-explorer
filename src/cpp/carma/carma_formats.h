@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include "math/vmath.h"
+#include "math/transform.h"
 
 namespace carma {
 
@@ -13,7 +13,7 @@ inline Vec3f fixX(Vec3f v) { if (kMirrorX) v.x = -v.x; return v; }
 inline float fixA(float a) { return kMirrorX ? -a : a; }  // heading angle (sin a, cos a) of a mirrored direction
 
 struct Hie {
-    struct Mat { Mat4 m; std::string name; };
+    struct Mat { Mat4f m; std::string name; };
     struct Node { int type, index, child, sibling; };
     std::vector<std::string> textures, meshNames, lineNames, collNames;
     std::vector<int> matFlags;  // flags of the "materials" section; bit 8 = additive (glowing) surfaces

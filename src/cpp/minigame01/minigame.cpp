@@ -374,9 +374,10 @@ void MiniGame::updateCamera(float dt, bool snap) {
     Vec3f desired = pos + Vec3f(0, height, 0) - Vec3f(std::sin(viewYaw), 0, std::cos(viewYaw)) * dist;
     if (snap) camPos = desired;
     else camPos += (desired - camPos) * std::min(1.0f, dt * P.cameraPositionFollow);
-    // keep the camera out of walls: pull it in along the line to the car. The line starts at the car itself: the point the camera looks at
-    // is ahead of the car and can lie inside the surface the car climbs, which would pull the camera in on the car.
-    const Vec3f rayStart = pos;
+    // keep the camera out of walls: pull it in along the line to the car. The line starts above the car, one radius of its bounding sphere over
+    // the centre of mass: not at the point the camera looks at (ahead of the car, it can lie inside the surface the car climbs, which
+    // pulls the camera in on the car), and not so low that the line meets the road behind the car.
+    const Vec3f rayStart = pos + Vec3f(0, vehicle.boundingRadius(), 0);
     Vec3f toCam = camPos - rayStart;
     float len = length(toCam);
     if (len > C.cameraWallCheckLength) {
@@ -392,9 +393,9 @@ void MiniGame::updateCamera(float dt, bool snap) {
 }
 
 void MiniGame::syncMovers(Scene& scene) {
-    Mat4 M = vehicle.modelMatrix();
+    Mat4f M = vehicle.modelMatrix();
     // the car is in metres, the level in its own units: scale the matrices (axes and translation) up
-    auto toLevel = [&](Mat4 m) {
+    auto toLevel = [&](Mat4f m) {
         for (int i : {0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14}) m.m[i] *= scale;
         return m;
     };
@@ -407,13 +408,13 @@ void MiniGame::syncMovers(Scene& scene) {
         float cp = std::cos(spin), sp = std::sin(spin);
         Vec3f ex(cs, 0, -sn), ez0(sn, 0, cs), ey(0, 1, 0);
         Vec3f eY = ey * cp + ez0 * sp, eZ = ez0 * cp - ey * sp;
-        Mat4 L = Mat4::identity();
+        Mat4f L = Mat4f::identity();
         L.m[0] = ex.x; L.m[1] = ex.y; L.m[2] = ex.z;
         L.m[4] = eY.x; L.m[5] = eY.y; L.m[6] = eY.z;
         L.m[8] = eZ.x; L.m[9] = eZ.y; L.m[10] = eZ.z;
         L.m[12] = w.centre.x; L.m[13] = w.centre.y; L.m[14] = w.centre.z;
         Mover& m = scene.movers[carMover[1 + i]];
-        m.model = toLevel(Mat4::mul(M, L));
+        m.model = toLevel(Mat4f::mul(M, L));
         m.hidden = false;
     }
     // the hull's collision spheres: at their centres in the car, red when they touched the level during the last frame
@@ -423,11 +424,11 @@ void MiniGame::syncMovers(Scene& scene) {
         if (m.hidden) continue;
         const float r = vehicle.probeRadius((int)i);
         const Vec3f c = vehicle.probeCentre((int)i);
-        Mat4 S = Mat4::identity();
+        Mat4f S = Mat4f::identity();
         S.m[0] = r; S.m[5] = r; S.m[10] = r;
         S.m[12] = c.x; S.m[13] = c.y; S.m[14] = c.z;
         m.geom = sphereGeoms[vehicle.probeTouched((int)i) ? 1 : 0];
-        m.model = toLevel(Mat4::mul(M, S));
+        m.model = toLevel(Mat4f::mul(M, S));
     }
     // the force arrows: from the contact point along the force, one car weight per tuning length (params), thin
     const CarSettings& C = carSettings();
@@ -457,7 +458,7 @@ void MiniGame::syncMovers(Scene& scene) {
         const Vec3f side = normalize(cross(helper, dir)), up = cross(dir, side);
         const float arrowLength = magnitude / (vehicle.weight()) * C.forceArrowLength;
         const float thickness = std::max(0.1f * arrowLength, 0.04f * vehicle.sizeScale());
-        Mat4 A = Mat4::identity();
+        Mat4f A = Mat4f::identity();
         A.m[0] = side.x * thickness; A.m[1] = side.y * thickness; A.m[2] = side.z * thickness;
         A.m[4] = up.x * thickness;   A.m[5] = up.y * thickness;   A.m[6] = up.z * thickness;
         A.m[8] = dir.x * arrowLength; A.m[9] = dir.y * arrowLength; A.m[10] = dir.z * arrowLength;

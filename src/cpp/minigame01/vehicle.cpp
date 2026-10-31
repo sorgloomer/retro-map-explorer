@@ -1,34 +1,10 @@
 #include "minigame01/vehicle.h"
+#include "math/functions.h"
 #include <algorithm>
 #include <cmath>
 
 namespace minigame01 {
 
-namespace {
-
-Vec3f quatRotate(const Quat& q, const Vec3f& v) {
-    Vec3f u(q.x, q.y, q.z);
-    Vec3f t = cross(u, v) * 2.0f;
-    return v + t * q.w + cross(u, t);
-}
-
-Quat quatMul(const Quat& a, const Quat& b) {
-    return {a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z, a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
-            a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x, a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w};
-}
-
-Quat quatNormalize(Quat q) {
-    float l = std::sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
-    if (l < 1e-9f) return {};
-    return {q.w / l, q.x / l, q.y / l, q.z / l};
-}
-
-float clampf(float v, float lo, float hi) { return std::max(lo, std::min(hi, v)); }
-
-float smoothStep(float x);
-float smoothInterpolate(float y0, float y1, float x);
-
-}  // namespace
 void Vehicle::init(const CarModel& m) {
     for (int i = 0; i < 4; i++) wheelRest[i] = m.wheelPos[i];
     bmin = m.boundsMin;
@@ -39,6 +15,12 @@ void Vehicle::init(const CarModel& m) {
     centreOfMass = Vec3f();  // nothing is placed yet: applyTuning has no position to keep (the settings are in effect before the car is set up)
     applyTuning();
     reset(Vec3f(), 0);
+}
+
+// How much stiffer than its normal spring the suspension is at this length: the bump stop stiffens smoothly over its zone (1 above it).
+float Vehicle::bumpStiffnessAt(float suspensionLength) const {
+    const float depth = clamp((bumpZone_ - suspensionLength) / std::max(1e-4f, bumpZone_), 0.0f, 1.0f);  // 0: above the zone, 1: at the stop
+    return 1.0f + (tuning().bumpStopStiffness - 1.0f) * depth * depth;
 }
 
 // Takes the values of the car from the settings (computed by the configuration manager, see params.h) and works out the inertia and
@@ -57,13 +39,15 @@ void Vehicle::applyTuning() {
     afterburnerForce_ = C.afterburnerForce;
     kangarooSpeed_ = C.kangarooSpeed;
     mass = C.mass;
-    suspMax_ = C.suspMax;
-    suspMin_ = C.suspMin;
-    suspRest_ = C.suspRest;
+    suspensionLengthMax_ = C.suspensionLengthMax;
+    suspensionLengthAtRest_ = C.suspensionLengthAtRest;
+    suspensionLengthInLoadedModel_ = C.suspensionLengthInLoadedModel;
     bumpZone_ = C.bumpStopZone;
-    springFree_ = C.springFree;
-    springStiffness = C.springK;
-    damping = C.damper;
+    springStiffness = C.suspensionSpringK;
+    damping = C.suspensionDamperCoefficient;
+    // The length of the spring in isolation: the one at which the car's weight, shared by the wheels, compresses it to the rest length of
+    // the suspension (so the car stands at its rest pose, whatever its mass, gravity and spring).
+    suspensionSpringNaturalLength_ = suspensionLengthAtRest_ + mass * gravity_ / (kWheelCount * std::max(1.0f, springStiffness) * bumpStiffnessAt(suspensionLengthAtRest_));
     wheelRadii[0] = C.wheelRadius0;
     wheelRadii[1] = C.wheelRadius1;
     wheelRadii[2] = C.wheelRadius2;
@@ -103,7 +87,7 @@ void Vehicle::reset(const Vec3f& groundPos, float yaw) {
     float axleY = 0.25f * (wheelRest[0].y + wheelRest[1].y + wheelRest[2].y + wheelRest[3].y);
     // car origin height so that the wheels touch the road with the suspension at its rest length
     Vec3f origin = groundPos + Vec3f(0, wheelR - axleY + 0.02f * sizeScale_, 0);
-    q = quatNormalize({std::cos(yaw * 0.5f), 0, std::sin(yaw * 0.5f), 0});
+    q = normalize({std::cos(yaw * 0.5f), 0, std::sin(yaw * 0.5f), 0});
     updateAxes();
     // pos is the centre of mass; the car origin is pos - R * centreOfMass
     pos = origin + axes[0] * centreOfMass.x + axes[1] * centreOfMass.y + axes[2] * centreOfMass.z;
@@ -119,19 +103,19 @@ void Vehicle::reset(const Vec3f& groundPos, float yaw) {
 
 void Vehicle::liftAndRoll(float metres) {
     constexpr float kHalfAngleSin = 0.70710678f, kHalfAngleCos = 0.70710678f;  // half of 90 degrees
-    q = quatNormalize(quatMul(q, Quat{kHalfAngleCos, 0, 0, kHalfAngleSin}));  // turn about the car's own forward (z) axis
+    q = normalize(q * Quat{kHalfAngleCos, 0, 0, kHalfAngleSin});  // turn about the car's own forward (z) axis
     pos.y += metres;
     updateAxes();
 }
 
 void Vehicle::updateAxes() {
-    axes[0] = quatRotate(q, Vec3f(1, 0, 0));
-    axes[1] = quatRotate(q, Vec3f(0, 1, 0));
-    axes[2] = quatRotate(q, Vec3f(0, 0, 1));
+    axes[0] = rotate(q, Vec3f(1, 0, 0));
+    axes[1] = rotate(q, Vec3f(0, 1, 0));
+    axes[2] = rotate(q, Vec3f(0, 0, 1));
 }
 
-Mat4 Vehicle::modelMatrix() const {
-    Mat4 m = Mat4::identity();
+Mat4f Vehicle::modelMatrix() const {
+    Mat4f m = Mat4f::identity();
     Vec3f origin = pos - (axes[0] * centreOfMass.x + axes[1] * centreOfMass.y + axes[2] * centreOfMass.z);
     m.m[0] = axes[0].x; m.m[1] = axes[0].y; m.m[2] = axes[0].z;
     m.m[4] = axes[1].x; m.m[5] = axes[1].y; m.m[6] = axes[1].z;
@@ -176,8 +160,8 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
 
     // --- steering: full lock at a standstill, a fraction of it at speed; the wheels turn towards that angle smoothly
     const float steerFadeSpeedFraction = std::abs(speed) / C.steerFadeSpeed;  // (never 0: 1 / 0 is infinite, and 0 * infinity is NaN, which would stay in steerAngle)
-    const float steerAngleMaxAtSpeed = C.steerAngleMax * smoothInterpolate(1, 1.0f / (1.0f + steerFadeSpeedFraction), steerFadeSpeedFraction);  // radians
-    const float targetSteerAngle = clampf(in.steer, -1.0f, 1.0f) * steerAngleMaxAtSpeed;
+    const float steerAngleMaxAtSpeed = C.steerAngleMax * mix(1.0f, 1.0f / (1.0f + steerFadeSpeedFraction), smoothstep(steerFadeSpeedFraction));  // radians
+    const float targetSteerAngle = clamp(in.steer, -1.0f, 1.0f) * steerAngleMaxAtSpeed;
     steerAngle += (targetSteerAngle - steerAngle) * std::min(1.0f, stepSeconds * C.steerResponse);
 
     // --- engine and brake intent
@@ -219,72 +203,104 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     // --- the wheels
     groundedCount = 0;
     float largestSlipAngle = 0;  // radians, over the wheels on the ground: how sideways the car slides (see the drift measure below)
+    // Three passes over the wheels: 1. where the road is under each wheel, and the bottom-out stops (they change the speed and position of
+    // the car, so they come before any force is worked out); 2. the suspension forces, from the speeds that left; 3. the tyres, which
+    // need all the suspension forces (the "weighted" grip shares the weight of the car by them).
+    struct WheelContact {
+        bool grounded = false;
+        float suspensionLength = 0;   // from the mount to the wheel centre; the maximum when nothing is under the wheel
+        float roadFriction = 1.0f;    // the surface's tyre friction multiplier (Attribute files: grass 0.8, road 1.0, ...)
+        Vec3f groundNormal;           // unit normal of the road where the ray hit
+        Vec3f contactPoint;           // world position where the tyre touches the road
+        float suspensionForce = 0;    // N
+    } contact[4];
+    const float staticWheelLoad = mass * gravity() / kWheelCount;  // N: the car's weight shared by the wheels
+    // The upper end of a suspension in the world, from the car's position now.
+    auto suspensionMountOf = [&](int i) {
+        const Vec3f wheelOffsetFromCentreOfMass = wheelRest[i] - centreOfMass;  // in car space
+        return pos + rightAxis * wheelOffsetFromCentreOfMass.x + upAxis * (wheelOffsetFromCentreOfMass.y + suspensionLengthInLoadedModel_) +
+               forwardAxis * wheelOffsetFromCentreOfMass.z;
+    };
+
+    // --- pass 1: the road under the wheels, and the bottom-out
     for (int i = 0; i < 4; i++) {
         Wheel& wheel = wheels[i];
-        const bool isFrontWheel = i < 2, isRearWheel = !isFrontWheel;  // wheels 0, 1 are the front ones, 2, 3 the rear (drive) ones
+        WheelContact& c = contact[i];
+        c.suspensionLength = suspensionLengthMax_;
+        wheel.grounded = false;
+        wheel.load = 0;
         // The suspension is a ray from its upper mount straight down (along the car's down axis): where it hits the road,
         // and how much of the suspension is left, tells how far the spring is compressed.
-        const Vec3f wheelOffsetFromCentreOfMass = wheelRest[i] - centreOfMass;  // in car space
-        const Vec3f suspensionMount = pos + rightAxis * wheelOffsetFromCentreOfMass.x +
-                                      upAxis * (wheelOffsetFromCentreOfMass.y + suspRest_) +
-                                      forwardAxis * wheelOffsetFromCentreOfMass.z;  // world position of the upper end of the suspension
+        const Vec3f suspensionMount = suspensionMountOf(i);
         // The ray starts a bit above the mount (more for the cars with more travel): a road surface that is higher than the mount
         // (a curb, a wall the car drives against) is then still found from above, instead of the ray starting inside it or below it.
         const float rayLift = C.rayLift;
         const Vec3f rayOrigin = suspensionMount + upAxis * rayLift;
-        const float suspensionRayLength = suspMax_ + wheelRadii[i] + rayLift;  // fully extended suspension plus the wheel's radius
-        float roadFriction = 1.0f;  // the surface's tyre friction multiplier (Attribute files: grass 0.8, road 1.0, ...)
+        const float suspensionRayLength = suspensionLengthMax_ + wheelRadii[i] + rayLift;  // fully extended suspension plus the wheel's radius
         float rayHitDistance;     // from the mount to the road
-        Vec3f groundNormal;       // unit normal of the road where the ray hit
-        wheel.grounded = false;
-        wheel.load = 0;
-        float suspensionLength = suspMax_;  // from the mount to the wheel centre; the maximum when nothing is under the wheel
-        if (world.raycast(rayOrigin, upAxis * -1.0f, suspensionRayLength, false, rayHitDistance, groundNormal, &roadFriction)) {
-            rayHitDistance -= rayLift;  // measured from the mount
-            suspensionLength = std::max(suspMin_, rayHitDistance - wheelRadii[i]);
-            if (suspensionLength < suspMax_) wheel.grounded = true;
-        }
-        if (wheel.grounded) {
-            groundedCount++;
-            const Vec3f contactPoint = suspensionMount - upAxis * rayHitDistance;
-            const Vec3f contactOffset = contactPoint - pos;  // from the centre of mass to where the tyre touches the road
-            // Bottoming out: the wheel is past the end of the suspension's travel. That end is a solid stop, not a spring: the part of the
-            // speed that still presses the tyre into the road is taken away at once (an inelastic collision, nothing comes back), and
-            // the car is lifted out of the overlap without any speed, so it does not bounce.
-            const float bottomedBy = wheelRadii[i] + suspMin_ - rayHitDistance;  // m past the stop, > 0 when bottomed out
-            if (bottomedBy > 0) {
-                const Vec3f pressLever = contactOffset;  // where the road holds the tyre, from the centre of mass
-                const float pressSpeed = dot(vel + cross(angVel, pressLever), upAxis);  // < 0: moving down into the road
-                if (pressSpeed < 0) {
-                    const Vec3f turning = cross(pressLever, upAxis);
-                    const float stopImpulse = -pressSpeed / (1.0f / mass + dot(turning, invInertia(turning)));
-                    vel += upAxis * (stopImpulse / mass);
-                    angVel += invInertia(cross(pressLever, upAxis * stopImpulse));
-                    impact_ = std::max(impact_, -pressSpeed);
-                }
-                pos += upAxis * (bottomedBy * P.bottomOutPushOut);
+        if (!world.raycast(rayOrigin, upAxis * -1.0f, suspensionRayLength, false, rayHitDistance, c.groundNormal, &c.roadFriction)) continue;
+        rayHitDistance -= rayLift;  // measured from the mount
+        c.suspensionLength = std::max(0.0f, rayHitDistance - wheelRadii[i]);
+        if (c.suspensionLength >= suspensionLengthMax_) continue;
+        wheel.grounded = c.grounded = true;
+        groundedCount++;
+        c.contactPoint = suspensionMount - upAxis * rayHitDistance;
+        // Bottoming out: the wheel is past the end of the suspension's travel. That end is a solid stop, not a spring: the part of the
+        // speed that still presses the tyre into the road is taken away at once (an inelastic collision, nothing comes back), and
+        // the car is lifted out of the overlap without any speed, so it does not bounce.
+        const float bottomedBy = wheelRadii[i] - rayHitDistance;  // m past the stop, > 0 when bottomed out
+        if (bottomedBy > 0) {
+            const Vec3f pressLever = c.contactPoint - pos;  // where the road holds the tyre, from the centre of mass
+            const float pressSpeed = dot(vel + cross(angVel, pressLever), upAxis);  // < 0: moving down into the road
+            if (pressSpeed < 0) {
+                const Vec3f turning = cross(pressLever, upAxis);
+                const float stopImpulse = -pressSpeed / (1.0f / mass + dot(turning, invInertia(turning)));
+                vel += upAxis * (stopImpulse / mass);
+                angVel += invInertia(cross(pressLever, upAxis * stopImpulse));
+                impact_ = std::max(impact_, -pressSpeed);
             }
-            const Vec3f mountVelocity = vel + cross(angVel, suspensionMount - pos);  // speed of the suspension's upper end
+            pos += upAxis * (bottomedBy * P.bottomOutPushOut);
+        }
+    }
 
-            // spring + damper (stiffer at the bump stop); a suspension cannot pull the car down, so never negative
-            // The spring is free a little longer when the downforce presses on it, so the ride height stays (a fraction of the compression
-            // the downforce would make in a quarter of the car's spring); the bump stop stiffens smoothly over its zone.
-            const float springFreeNow = springFree_ + C.downforceHeightCompensation * downforceMagnitude * 0.25f / std::max(1.0f, springStiffness);
-            const float springCompression = springFreeNow - suspensionLength;
-            const float bumpDepth = clampf((suspMin_ + bumpZone_ - suspensionLength) / std::max(1e-4f, bumpZone_), 0.0f, 1.0f);  // 0: above the zone, 1: at the stop
-            const float bumpStiffness = 1.0f + (P.bumpStopStiffness - 1.0f) * bumpDepth * bumpDepth;
-            float suspensionForce = springStiffness * springCompression * bumpStiffness +
-                                    damping * (-dot(mountVelocity, upAxis));
-            suspensionForce = std::max(0.0f, suspensionForce);
-            wheel.load = suspensionForce;  // N: how hard the tyre is pressed on the road, which is what limits its grip
-            // The road pushes the tyre perpendicular to its surface, at the contact point (not along the suspension: a pitched car on a
-            // flat road would then be pushed forward by the horizontal part of the suspension force). The spring, the damper and the
-            // bottom-out above still work along the car's up axis, the direction the suspension moves in.
-            const Vec3f roadNormal = dot(groundNormal, upAxis) >= 0 ? groundNormal : groundNormal * -1.0f;  // towards the car
-            const Vec3f suspensionForceVector = roadNormal * suspensionForce;
-            totalForce += suspensionForceVector;
-            totalTorque += cross(contactOffset, suspensionForceVector);
+    // --- pass 2: the suspension forces
+    float suspensionForceSum = 0;  // N, over the wheels on the ground
+    for (int i = 0; i < 4; i++) {
+        if (!contact[i].grounded) continue;
+        WheelContact& c = contact[i];
+        const Vec3f suspensionMount = suspensionMountOf(i);
+        const Vec3f contactOffset = c.contactPoint - pos;  // from the centre of mass to where the tyre touches the road
+        const Vec3f mountVelocity = vel + cross(angVel, suspensionMount - pos);  // speed of the suspension's upper end
+        // spring + damper (stiffer at the bump stop); a suspension cannot pull the car down, so never negative
+        // The spring is free a little longer when the downforce presses on it, so the ride height stays (a fraction of the compression
+        // the downforce would make in a quarter of the car's spring); the bump stop stiffens smoothly over its zone.
+        const float suspensionSpringNaturalLengthNow = suspensionSpringNaturalLength_ + C.downforceHeightCompensation * downforceMagnitude / (kWheelCount * std::max(1.0f, springStiffness));
+        const float springCompression = suspensionSpringNaturalLengthNow - c.suspensionLength;
+        const float bumpStiffness = bumpStiffnessAt(c.suspensionLength);
+        c.suspensionForce = std::max(0.0f, springStiffness * springCompression * bumpStiffness +
+                                           damping * (-dot(mountVelocity, upAxis)));
+        wheels[i].load = c.suspensionForce;  // N: how hard the tyre is pressed on the road
+        suspensionForceSum += c.suspensionForce;
+        // The road pushes the tyre perpendicular to its surface, at the contact point (not along the suspension: a pitched car on a
+        // flat road would then be pushed forward by the horizontal part of the suspension force). The spring, the damper and the
+        // bottom-out above still work along the car's up axis, the direction the suspension moves in.
+        const Vec3f roadNormal = dot(c.groundNormal, upAxis) >= 0 ? c.groundNormal : c.groundNormal * -1.0f;  // towards the car
+        const Vec3f suspensionForceVector = roadNormal * c.suspensionForce;
+        totalForce += suspensionForceVector;
+        totalTorque += cross(contactOffset, suspensionForceVector);
+        wheels[i].force = suspensionForceVector;
+    }
 
+    // --- pass 3: the tyres
+    for (int i = 0; i < 4; i++) {
+        Wheel& wheel = wheels[i];
+        const WheelContact& c = contact[i];
+        const bool isFrontWheel = i < 2, isRearWheel = !isFrontWheel;  // wheels 0, 1 are the front ones, 2, 3 the rear (drive) ones
+        if (c.grounded) {
+            const Vec3f contactOffset = c.contactPoint - pos;  // from the centre of mass to where the tyre touches the road
+            const float suspensionForce = c.suspensionForce;
+            const float roadFriction = c.roadFriction;
+            const Vec3f groundNormal = c.groundNormal;
             // The wheel's own axes on the road: where it rolls (the front wheels are turned by the steering, then the
             // direction is projected onto the road) and the direction across that.
             const float wheelSteerAngle = isFrontWheel ? steerAngle : 0.0f;
@@ -310,13 +326,16 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             // Force along the rolling direction: engine on the rear wheels (half each), brakes, rolling resistance.
             float longitudinalForce = 0;
             if (isRearWheel) longitudinalForce += driveForce * 0.5f;
-            // The original game takes the friction from the static weight of a quarter of the car, not from the wheel's current
-            // load, so load transfer does not change the grip (no feedback that lifts the nose or tips the car over).
-            const float staticWheelLoad = mass * gravity() * 0.25f;
-            const float frictionLoad = staticWheelLoad + (suspensionForce - staticWheelLoad) * P.tyreLoadSensitivity;
+            // gripMode: 0 physical (the wheel's own suspension force), 1 constant (the same share for every wheel on the ground), 2 weighted
+            // (the whole weight of the car shared by the wheels on the ground in proportion to their suspension forces)
+            float frictionLoad;
+            if (C.gripMode > 1.5f) frictionLoad = suspensionForceSum > 1e-3f ? mass * gravity() * suspensionForce / suspensionForceSum : staticWheelLoad;
+            else if (C.gripMode > 0.5f) frictionLoad = staticWheelLoad;
+            else frictionLoad = staticWheelLoad + (suspensionForce - staticWheelLoad) * P.tyreLoadSensitivity;
             const float frictionLimit = grip_ * (1.0f + (roadFriction - 1.0f) * P.surfaceFrictionEffect) * frictionLoad;  // N: the most the tyre can push with, in any direction
             float brakingForce = brakeInput * P.brakeForce * frictionLimit;
-            if (isRearWheel) brakingForce = std::max(brakingForce, handbrakeInput * P.handbrakeBrake * frictionLimit);
+            const bool handbrakeActsHere = isRearWheel || C.handbrakeAllWheels > 0.5f;
+            if (handbrakeActsHere) brakingForce = std::max(brakingForce, handbrakeInput * P.handbrakeBrake * frictionLimit);
             const float rollingDirection = longitudinalSpeed > 0 ? 1.0f : -1.0f;  // brakes and resistance act against the motion
             const float maxBrakingForce = std::fabs(longitudinalSpeed) * forwardStopMass / stepSeconds;  // never brake past a standstill
             longitudinalForce -= rollingDirection * std::min(brakingForce, maxBrakingForce) * std::min(1.0f, std::fabs(longitudinalSpeed) * 2.0f);
@@ -325,7 +344,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
 
             // Force across the wheel: the force that would stop the sideways slide within one step, limited by the grip
             // (the rear wheels lose grip with the handbrake); a tyre over the limit slides and keeps only part of it.
-            const float handbrakeGripFactor = (isRearWheel && handbrakeInput > 0.05f) ? 1.0f - P.handbrakeGripLoss * handbrakeInput : 1.0f;
+            const float handbrakeGripFactor = (handbrakeActsHere && handbrakeInput > 0.05f) ? 1.0f - P.handbrakeGripLoss * handbrakeInput : 1.0f;
             const float lateralFrictionLimit = frictionLimit * handbrakeGripFactor;
             float lateralForce = -lateralSpeed * sidewaysStopMass / stepSeconds * P.lateralStiffness;
             bool isSliding = std::fabs(lateralForce) > lateralFrictionLimit;
@@ -345,12 +364,12 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             }
             // the friction circle: what the sideways force uses of the grip is not left for pushing along the wheel
             const float longitudinalFrictionLimit = std::sqrt(std::max(0.0f, frictionLimit * frictionLimit - lateralForce * lateralForce));
-            longitudinalForce = clampf(longitudinalForce, -longitudinalFrictionLimit, longitudinalFrictionLimit);
+            longitudinalForce = clamp(longitudinalForce, -longitudinalFrictionLimit, longitudinalFrictionLimit);
 
             const Vec3f tyreForce = wheelForwardOnRoad * longitudinalForce + wheelSidewaysOnRoad * lateralForce;
             totalForce += tyreForce;
-            wheel.contactPoint = contactPoint;
-            wheel.force = suspensionForceVector + tyreForce;
+            wheel.contactPoint = c.contactPoint;
+            wheel.force += tyreForce;  // (the suspension force was put there in pass 2)
             const Vec3f tyreForceOffset = tyreLever;  // acts a little above the road: less body roll
             totalTorque += cross(tyreForceOffset, tyreForce);
 
@@ -372,11 +391,11 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             wheel.sliding = false;
             if (isFrontWheel) wheel.steer = steerAngle;
         }
-        wheel.centre = wheelRest[i] + Vec3f(0, suspRest_ - suspensionLength, 0);  // for drawing: lower when the suspension is extended
+        wheel.centre = wheelRest[i] + Vec3f(0, suspensionLengthInLoadedModel_ - c.suspensionLength, 0);  // for drawing: lower when the suspension is extended
     }
     torqueWheels_ = totalTorque;  // (only the wheels' forces carry a torque so far)
     // drift: 0 up to a slip angle that is just cornering, then rising to 1; never while slow
-    drift_ = speed > C.driftMinSpeed ? clampf((largestSlipAngle - P.driftSlipDeadZone) / P.driftSlipRange, 0.0f, 1.0f) : 0.0f;
+    drift_ = speed > C.driftMinSpeed ? clamp((largestSlipAngle - P.driftSlipDeadZone) / P.driftSlipRange, 0.0f, 1.0f) : 0.0f;
 
     // damping of the spin: the car tumbles almost freely in the air
     if (groundedCount == 0) {
@@ -392,9 +411,8 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     if (speedAfterStep > P.maxSpeed) vel = vel * (P.maxSpeed / speedAfterStep);
     pos += vel * stepSeconds;
     // the orientation turns with the spin: dq/dt = 0.5 * (0, angVel) * q
-    const Quat orientationRate = quatMul({0, angVel.x, angVel.y, angVel.z}, q);
-    q = quatNormalize({q.w + 0.5f * stepSeconds * orientationRate.w, q.x + 0.5f * stepSeconds * orientationRate.x,
-                       q.y + 0.5f * stepSeconds * orientationRate.y, q.z + 0.5f * stepSeconds * orientationRate.z});
+    const Quat orientationRate = Quat{0, angVel.x, angVel.y, angVel.z} * q;
+    q = normalize(q + orientationRate * (0.5f * stepSeconds));
     updateAxes();
 
     // --- hull against the level: walls, ceilings, the road when the chassis bottoms out. Each probe sphere that overlaps
@@ -447,17 +465,6 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         pos += contactNormal * std::min(pushDepth * P.hullPushOut, C.hullMaxPushOut);
     }
 
-}
-
-
-namespace {
-    float smoothStep(const float x) {
-        return x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x);
-    }
-
-    float smoothInterpolate(const float y0, const float y1, const float x) {
-        return y0 + smoothStep(x) * (y1 - y0);
-    }
 }
 
 

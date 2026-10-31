@@ -13,6 +13,8 @@
 #include "gestures/gestures.h"
 #include "minigame01/minigame.h"
 #include "gestures/pan.h"
+#include "math/vec.h"
+#include "math/veci.h"
 #include "scene/raycast.h"
 #include "scene/renderer.h"
 #include "scene/subdivide.h"
@@ -407,12 +409,12 @@ void frame() {
     vp.showPivot = gestures.dragging() && (app.camMode == 1 || gestures.touchMode());
     vp.pivot = app.pivot;
     vp.eye = app.cam.pos;
-    vp.view = Mat4::lookAt(app.cam.pos, app.cam.forward(), Vec3f(0, 1, 0));
+    vp.view = Mat4f(Transform3f::lookAt(app.cam.pos, app.cam.forward(), Vec3f(0, 1, 0)));
     // the chase camera sits close to the car: a much nearer clipping plane than the viewer's
     float zNear = app.gameMode ? 0.4f * app.mg.unitsPerMetre() * app.mg.sizeScale() : nearPlane(app.sceneRadius);
     float zFar = app.gameMode ? std::min(app.farDist, 12000.0f * app.mg.unitsPerMetre()) : app.farDist;
-    vp.proj = Mat4::perspective(vp.fovY, (float)w / (float)h, zNear, zFar);
-    vp.viewProj = Mat4::mul(vp.proj, vp.view);
+    vp.proj = Mat4f::perspective(vp.fovY, (float)w / (float)h, zNear, zFar);
+    vp.viewProj = Mat4f::mul(vp.proj, vp.view);
     if (app.gameMode) app.hover = -1;
     else updateHover(vp);
     if (app.opt.showCollision && app.scene && app.scene->collisionLoader) {  // first time the collision overlay is drawn
@@ -556,7 +558,7 @@ bool configureCar(int car, const minigame01::CarModel& model) {
     auto vec = [&](const Vec3f& v) { return "[" + num(v.x) + "," + num(v.y) + "," + num(v.z) + "]"; };
     auto four = [&](const float* v) { return "[" + num(v[0]) + "," + num(v[1]) + "," + num(v[2]) + "," + num(v[3]) + "]"; };
     file += "{\"toy\":" + std::string(model.isToy ? "1" : "0");
-    file += ",\"mass\":" + num(model.mass) + ",\"springK\":" + num(model.fileSpringK) + ",\"damper\":" + num(model.fileDamper);
+    file += ",\"mass\":" + num(model.mass) + ",\"suspensionSpringK\":" + num(model.filesuspensionSpringK) + ",\"damper\":" + num(model.fileDamper);
     file += ",\"wheelRadiusFile\":" + four(model.fileWheelRadii) + ",\"wheelRadiusMesh\":" + four(model.meshWheelRadii);
     file += ",\"wheelRadiusFallback\":" + num(model.wheelRadius);
     file += ",\"hasCentreOfMass\":" + std::string(model.hasCentreOfMass ? "1" : "0") + ",\"centreOfMass\":" + vec(model.centreOfMassOffset);
