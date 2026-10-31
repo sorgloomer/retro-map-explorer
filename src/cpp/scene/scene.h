@@ -65,6 +65,7 @@ struct Marker {
     Vec3f pos;
     float yaw = 0;  // radians, direction in the XZ plane (0 = +Z)
     std::string label;
+    int swatch = -1;  // 0xRRGGBB: a colour swatch shown with the label (lights), -1 none
 };
 
 struct Line {
@@ -250,9 +251,9 @@ struct Scene : BatchSet {
         cats.push_back(c);
         return (int)cats.size() - 1;
     }
-    void addMarker(int cat, const Vec3f& p, float yaw, const std::string& label) {
+    void addMarker(int cat, const Vec3f& p, float yaw, const std::string& label, int swatch = -1) {
         Marker m;
-        m.cat = cat; m.pos = p; m.yaw = yaw; m.label = label;
+        m.cat = cat; m.pos = p; m.yaw = yaw; m.label = label; m.swatch = swatch;
         markers.push_back(std::move(m));
         cats[cat].count++;
     }

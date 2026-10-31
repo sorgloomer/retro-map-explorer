@@ -127,8 +127,8 @@ function installApi(): RmeApi {
       update({ hud });
     },
     onFatal(msg) { setStatus(msg, true); },
-    onHover(text, cat, x, y) {
-      update({ tip: text ? { text, cat: cat || '', x, y } : null });
+    onHover(text, cat, x, y, swatch) {
+      update({ tip: text ? { text, cat: cat || '', x, y, swatch: swatch >= 0 ? '#' + swatch.toString(16).padStart(6, '0') : null } : null });
     },
   });
   return RME;

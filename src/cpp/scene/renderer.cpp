@@ -62,22 +62,28 @@ uniform float uTextured, uCutout, uExposure, uFade, uBlendAdd;
 uniform vec3 uCam;
 uniform vec3 uAmbient, uSunDir, uSunColor;      // uSunDir: unit vector towards the sun
 uniform int uNumLights;
-uniform vec4 uLightPos[MAX_LIGHTS];             // xyz, outer radius
-uniform vec4 uLightCol[MAX_LIGHTS];             // rgb, inner radius
+uniform vec3 uLightPos[MAX_LIGHTS];
+uniform vec3 uLightCol[MAX_LIGHTS];
+uniform vec2 uLightRad[MAX_LIGHTS];             // inner radius (full intensity up to it), outer radius (zero from it)
 out vec4 o;
+
+
+float lightcurve(float cos_theta) {
+  return smoothstep(-0.5, 0.5, cos_theta);
+}
+
 void main(){
   vec4 t = uTextured > 0.5 ? texture(uTex, vUV) : vec4(0.8,0.8,0.8,1.0);
   if (uCutout > 0.5 && t.a < 0.02) discard;
-  // the face looks at the viewer: windows and thin parts are lit from the side that is seen
   vec3 n = length(vN) > 1e-6 ? normalize(vN) : vec3(0.0, 1.0, 0.0);
-  if (dot(n, uCam - vWorld) < 0.0) n = -n;
-  vec3 light = uAmbient + uSunColor * max(dot(n, uSunDir), 0.0);
+  // if (dot(n, uCam - vWorld) < 0.0) n = -n; // normal flipping does not work entirely with interpolated normals
+  vec3 light = uAmbient + uSunColor * lightcurve(dot(n, uSunDir));
   for (int i = 0; i < MAX_LIGHTS; i++) {
     if (i >= uNumLights) break;
-    vec3 L = uLightPos[i].xyz - vWorld;
+    vec3 L = uLightPos[i] - vWorld;
     float d = length(L);
-    float fall = 1.0 - smoothstep(uLightCol[i].w, uLightPos[i].w, d);
-    light += uLightCol[i].rgb * fall * max(dot(n, L / max(d, 1e-4)), 0.0);
+    float fall = smoothstep(uLightRad[i].y, uLightRad[i].x, d);
+    light += uLightCol[i] * fall * lightcurve(dot(n, L) / max(d, 1e-4));
   }
   if (uBlendAdd > 0.5) {  // glowing parts (lamps) are not shaded
     o = vec4(t.rgb * vCol.rgb * (uExposure * vCol.a * t.a * uFade), 1.0);
@@ -689,6 +695,8 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         }
 
         // Lighting of the lit meshes (the car): the sun and ambient light, and the point lights that reach it, nearest first.
+        lightsInRange_ = 0;
+        lightColours_.clear();
         {
             const Mover* car = nullptr;
             Vec3f carPos;
@@ -700,18 +708,25 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 }
             if (car) {
                 const Lighting& li = scene->lighting;
-                std::vector<std::pair<float, int>> near;  // (distance beyond the light's reach, index): negative = in reach
+                std::vector<std::pair<float, int>> near;
                 for (size_t k = 0; k < li.lights.size(); k++) {
-                    float s = length(li.lights[k].pos - carPos) - li.lights[k].outer;
-                    if (s < 0) near.push_back({s, (int)k});
+                    float s = length(li.lights[k].pos - carPos) - li.lights[k].outer; // (distance beyond the light's reach, index): negative = in reach
+                    if (s < 0) near.emplace_back(s, (int)k);
                 }
-                const int n = (int)std::min<size_t>(near.size(), 8);
-                std::partial_sort(near.begin(), near.begin() + n, near.end());
-                float pos[8 * 4] = {}, col[8 * 4] = {};
+                lightsInRange_ = (int)near.size();
+                const int n = (int)std::min<size_t>(near.size(), kMaxLights);
+                std::sort(near.begin(), near.end());
+                for (const auto& entry : near) {
+                    const Vec3f& c = li.lights[entry.second].color;
+                    auto byte = [](float v) { return (unsigned)(std::max(0.0f, std::min(1.0f, v)) * 255.0f + 0.5f); };
+                    lightColours_.push_back(byte(c.x) << 16 | byte(c.y) << 8 | byte(c.z));
+                }
+                float pos[kMaxLights * 3] = {}, col[kMaxLights * 3] = {}, rad[kMaxLights * 2] = {};
                 for (int k = 0; k < n; k++) {
                     const PointLight& pl = li.lights[near[k].second];
-                    pos[k * 4] = pl.pos.x; pos[k * 4 + 1] = pl.pos.y; pos[k * 4 + 2] = pl.pos.z; pos[k * 4 + 3] = pl.outer;
-                    col[k * 4] = pl.color.x; col[k * 4 + 1] = pl.color.y; col[k * 4 + 2] = pl.color.z; col[k * 4 + 3] = pl.inner;
+                    pos[k * 3] = pl.pos.x; pos[k * 3 + 1] = pl.pos.y; pos[k * 3 + 2] = pl.pos.z;
+                    col[k * 3] = pl.color.x; col[k * 3 + 1] = pl.color.y; col[k * 3 + 2] = pl.color.z;
+                    rad[k * 2] = pl.inner; rad[k * 2 + 1] = pl.outer;
                 }
                 glUseProgram(progLit);
                 glUniformMatrix4fv(glGetUniformLocation(progLit, "uVP"), 1, GL_FALSE, vp.viewProj.m);
@@ -721,8 +736,9 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 glUniform3f(glGetUniformLocation(progLit, "uSunDir"), li.sunDir.x, li.sunDir.y, li.sunDir.z);
                 glUniform3f(glGetUniformLocation(progLit, "uSunColor"), li.sunColor.x, li.sunColor.y, li.sunColor.z);
                 glUniform1i(glGetUniformLocation(progLit, "uNumLights"), n);
-                glUniform4fv(glGetUniformLocation(progLit, "uLightPos"), 8, pos);
-                glUniform4fv(glGetUniformLocation(progLit, "uLightCol"), 8, col);
+                glUniform3fv(glGetUniformLocation(progLit, "uLightPos"), kMaxLights, pos);
+                glUniform3fv(glGetUniformLocation(progLit, "uLightCol"), kMaxLights, col);
+                glUniform2fv(glGetUniformLocation(progLit, "uLightRad"), kMaxLights, rad);
                 glUseProgram(progWorld);
             }
         }

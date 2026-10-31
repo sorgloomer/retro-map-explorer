@@ -84,5 +84,5 @@ export interface RmeApi {
   configureCar(car: number, fileJson: string): string;
   onGameHud(speedKmh: number, score: number, drift: number, timeLeft: number, collected: number, total: number, state: number, message: string, messageAge: number): void;
   onFatal(message: string): void;
-  onHover(text: string | null, category: string | null, x: number, y: number): void;
+  onHover(text: string | null, category: string | null, x: number, y: number, swatch: number): void;  // swatch: 0xRRGGBB, or -1 for none
 }

@@ -40,8 +40,15 @@ public:
     void uploadCollision();  // after Scene::ensureCollision filled the overlay
     void render(const ViewParams& vp, const RenderOptions& opt, int highlightMarker);
     int contextLost() const { return lost; }
+    // The point lights that lit the car in the last frame: how many reached it (some may not be used) and how many the shader takes.
+    static constexpr int kMaxLights = 8;
+    int lightsInRange() const { return lightsInRange_; }
+    // Their colours as 0xRRGGBB, nearest first (the shader uses the first kMaxLights).
+    const std::vector<unsigned>& lightColours() const { return lightColours_; }
 
 private:
+    int lightsInRange_ = 0;
+    std::vector<unsigned> lightColours_;
     struct GpuBatch {
         unsigned vao = 0, vbo = 0, ibo = 0;
         unsigned nbo = 0;  // vertex normals (attribute 3), only for lit sets

@@ -245,10 +245,10 @@ struct CameraGestures : GestureTarget {
 } cameraGestures;
 GestureHandler gestures(cameraGestures);
 
-void notifyHover(const char* text, const char* cat, Vec2i at) {
+void notifyHover(const char* text, const char* cat, Vec2i at, int swatch = -1) {
     EM_ASM({
-        if (window.RME && window.RME.onHover) window.RME.onHover($0 ? UTF8ToString($0) : null, $1 ? UTF8ToString($1) : null, $2, $3);
-    }, text, cat, at.x, at.y);
+        if (window.RME && window.RME.onHover) window.RME.onHover($0 ? UTF8ToString($0) : null, $1 ? UTF8ToString($1) : null, $2, $3, $4);
+    }, text, cat, at.x, at.y, swatch);
 }
 
 void updateHover(const ViewParams& vp) {
@@ -288,7 +288,7 @@ void updateHover(const ViewParams& vp) {
     if (best != app.hoverShown) {
         app.hoverShown = best;
         if (best < 0) notifyHover(nullptr, nullptr, {});
-        else notifyHover(s->markers[best].label.c_str(), s->cats[s->markers[best].cat].name.c_str(), gestures.pointer() - Vec2i(0, gestures.touchMode() ? 70 : 0));
+        else notifyHover(s->markers[best].label.c_str(), s->cats[s->markers[best].cat].name.c_str(), gestures.pointer() - Vec2i(0, gestures.touchMode() ? 70 : 0), s->markers[best].swatch);
     }
 }
 
@@ -329,7 +329,7 @@ void pushGameHud() {
         if (window.RME && window.RME.onGameHud) window.RME.onGameHud($0, $1, $2, $3, $4, $5, $6, UTF8ToString($7), $8);
     }, (double)h.speedKmh, h.score, h.driftScore, (double)h.timeLeft, h.collected, h.total, h.state, h.message, (double)h.messageAge);
     // the tyres' sideways forces, for the debug panel: [{lat, limit, lon, fric, slide, g, slip, load}] for FL, FR, RL, RR
-    char json[1024];
+    char json[2048];
     int len = 0;
     len += snprintf(json + len, sizeof json - len, R"({"toy":%d,"wheels":[)", v.isToy() ? 1 : 0);
     for (int i = 0; i < 4; i++) {
@@ -346,8 +346,11 @@ void pushGameHud() {
     const Vec3f tw = v.inCarAxes(v.torqueFromWheels()), th = v.inCarAxes(v.torqueFromHull()), sp = v.inCarAxes(v.spin());
     len += snprintf(
         json + len, sizeof json - len,
-        R"(],"torque":{"wheels":[%f,%f,%f],"hull":[%f,%f,%f],"spin":[%f,%f,%f]}})",
-        tw.x, tw.y, tw.z, th.x, th.y, th.z, sp.x, sp.y, sp.z);
+        R"(],"torque":{"wheels":[%f,%f,%f],"hull":[%f,%f,%f],"spin":[%f,%f,%f]},"lights":{"inRange":%d,"max":%d,"colours":[)",
+        tw.x, tw.y, tw.z, th.x, th.y, th.z, sp.x, sp.y, sp.z, app.renderer.lightsInRange(), Renderer::kMaxLights);
+    const std::vector<unsigned>& lightColours = app.renderer.lightColours();
+    for (size_t i = 0; i < lightColours.size() && i < 24; i++) len += snprintf(json + len, sizeof json - len, "%s\"#%06x\"", i ? "," : "", lightColours[i]);
+    len += snprintf(json + len, sizeof json - len, "]}}");
     EM_ASM({ if (window.RME && window.RME.onGameDebug) window.RME.onGameDebug(UTF8ToString($0)); }, json);
 }
 

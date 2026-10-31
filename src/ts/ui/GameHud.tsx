@@ -88,7 +88,7 @@ const TORQUE_UNIT_LABEL_BIG = <>Nm⋅10<sup>3</sup></>;
 
 /** Debug panel: the sideways force of each tyre against its limit. A full bar is the grip limit; red: the tyre slides. */
 function LateralForces() {
-  const { wheels, torque, toy } = useUi((s) => s.gameDebug);
+  const { wheels, torque, toy, lights } = useUi((s) => s.gameDebug);
   const shown = useUi((s) => s.debugPanel);
   const forces = useUi((s) => s.debugForces);
   // the forces are in kN, and in N for the toy car (the RC Bandit: its forces are a few newtons)
@@ -169,6 +169,12 @@ function LateralForces() {
           <span class="gd-h">from wheels</span>{torque.wheels.map((x) => <Num v={x / torqueUnitDiv} digits={torqueDigits} />)}
           <span class="gd-h">from hull</span>{torque.hull.map((x) => <Num v={x / torqueUnitDiv} digits={torqueDigits} />)}
           <span class="gd-h">spin rad/s</span>{torque.spin.map((x) => <Num v={x} digits={spinDigits} />)}
+        </div>
+      )}
+      {shown && (
+        <div class="gd-lights" title="Point lights of the level that reach the car, against the most the shader uses (the nearest ones win)">
+          Point lights: {lights.inRange}/{lights.max}
+          {lights.colours.map((c, i) => <i class={'gd-light' + (i < lights.max ? '' : ' unused')} style={{ background: c }} title={c} />)}
         </div>
       )}
       {shown && (

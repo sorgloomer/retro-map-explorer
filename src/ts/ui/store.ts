@@ -71,13 +71,14 @@ export interface UiState {
     torque: { wheels: number[]; hull: number[]; spin: number[]; toy: number };  // about the centre of mass: kN m (N m * 10^-3 for the toy car, toy = 1) (pitch, yaw, roll) by source, and rad/s
     wheels: { lat: number; limit: number; lon: number; fric: number; slide: number; g: number; slip: number; load: number }[];  // front left, front right, rear left, rear right
     toy: number;
+    lights: { inRange: number; max: number; colours: string[] };  // the point lights that reach the car, and how many the shader can use
   };
   car: number;           // the car to drive: 0 = the Carmageddon Eagle, 1 = the Re-Volt RC Bandit (a rookie RC car)
   debugSpheres: boolean;  // the hull's collision spheres are drawn in the game
   debugForces: boolean;  // the wheel force arrows are drawn in the game
   debugPanel: boolean;   // the lateral force panel of the game is shown (not just its title)
   paramsOpen: boolean;   // the minigame parameter editor is open
-  tip: { text: string; cat: string; x: number; y: number } | null;
+  tip: { text: string; cat: string; x: number; y: number; swatch: string | null } | null;  // swatch: a CSS colour shown next to the text
 }
 
 export const state: UiState = {
@@ -107,11 +108,12 @@ export const state: UiState = {
     torque: { wheels: [0, 0, 0], hull: [0, 0, 0], spin: [0, 0, 0], toy: 0 },
     wheels: [],
     toy: 0,
+    lights: { inRange: 0, max: 0, colours: [] },
   },
   car: store.get('rme.car.v1') === '1' ? 1 : 0,
   debugSpheres: store.get('rme.debugSpheres.v1') === '1',
   debugForces: store.get('rme.debugForces.v1') === '1',
-  debugPanel: store.get('rme.debugPanel.v1') !== '0',
+  debugPanel: store.get('rme.debugPanel.v1') === '1',
   paramsOpen: false,
   tip: null,
 };

@@ -403,7 +403,7 @@ void CarmaGame::addLightMarkers(const KeyFile& kf, Scene& out) {
             out.lighting.lights.push_back(pl);
             char hex[16];
             snprintf(hex, sizeof hex, "#%06x", c & 0xffffff);
-            out.addMarker(cLight, pl.pos, 0, std::string("Light ") + hex + " (radius " + std::to_string((int)r0) + "-" + std::to_string((int)r1) + ")");
+            out.addMarker(cLight, pl.pos, 0, std::string("Light ") + hex + " (radius " + std::to_string((int)r0) + "-" + std::to_string((int)r1) + ")", (int)(c & 0xffffff));
         }
     }
 }

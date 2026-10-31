@@ -68,6 +68,7 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; margin-right: 3px;
 
 #tip { position: fixed; z-index: 5; pointer-events: none; padding: 5px 8px; border-radius: 6px; background: rgba(8, 10, 14, .92);
   border: 1px solid var(--border); font-size: 12px; max-width: 320px; }
+#tip .tip-swatch { display: inline-block; width: 11px; height: 11px; margin-left: 6px; vertical-align: -1px; border: 1px solid rgba(255, 255, 255, .6); }
 #tip small { display: block; color: var(--muted); }
 
 .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column;
@@ -232,6 +233,9 @@ body.playing #canvas { cursor: default; }
 .gd-forces { pointer-events: auto; display: flex; align-items: center; gap: 6px; cursor: pointer; margin: 2px 0 4px; }
 .gd-forces input { margin: 0; }
 .gd-ground { min-width: 8px; text-align: center; color: #8fd68f; }
+.gd-lights { margin-top: 3px; }
+.gd-light { display: inline-block; width: 10px; height: 10px; margin-left: 4px; vertical-align: -1px; border: 1px solid rgba(255, 255, 255, .5); cursor: help; }
+.gd-light.unused { opacity: .4; }
 .gd-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
 .gd-checks .gd-forces { margin: 0; }
 .gd-info { position: relative; pointer-events: auto; cursor: help; color: #9ec5ff; outline: none; }

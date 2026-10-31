@@ -14,6 +14,7 @@ export function Tooltip() {
   return (
     <div id="tip" ref={box} hidden={!tip}>
       {tip?.text}
+      {tip?.swatch && <i class="tip-swatch" style={{ background: tip.swatch }} />}
       {tip && <small>{tip.cat}</small>}
     </div>
   );
