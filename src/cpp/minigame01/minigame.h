@@ -99,7 +99,7 @@ private:
     Camera cam;
     float camYaw = 0;
     float orbitYaw = 0, orbitPitch = 0, zoomScale = 1;  // set by the gestures; the camera key (C) puts them back
-    Vec3f camPos;
+    Vec3f camPos, camVel;  // the camera's own position and velocity (m, m/s): a spring-damper that follows the wanted position
     int camMode = 0;
     float driftAccum = 0;
 };

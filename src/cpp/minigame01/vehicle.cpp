@@ -159,11 +159,18 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     const float forwardSpeed = dot(vel, forwardAxis);    // m/s along the nose: negative when rolling backwards
 
     // --- steering: full lock at a standstill, a fraction of it at speed; the wheels turn towards that angle smoothly
-    const float gripAccelerationLimitForSteering = C.steerAngleCentrifugalLimitFactor * grip_ * gravity();  // m/s^2: the most the tyres can turn the car sideways (friction coefficient * g, whatever the mass)
+    const float gripAccelerationLimitForSteering = grip_ * gravity();  // m/s^2: the most the tyres can turn the car sideways (friction coefficient * g, whatever the mass)
     const float vehicleAxesDistance = std::abs(0.5f * (wheelRest[0].z + wheelRest[1].z) - 0.5f * (wheelRest[2].z + wheelRest[3].z));  // m: the wheelbase, front axle to rear axle
     const float minTurnRadiusAtCurrentSpeed = speed * speed / gripAccelerationLimitForSteering;
     const float steerAngleFromMinTurnRadius = std::atan2(vehicleAxesDistance, minTurnRadiusAtCurrentSpeed);
-    const float steerAngleMaxAtCurrentSpeed = smoothlimit(steerAngleFromMinTurnRadius, C.steerAngleMax, C.steerAngleCentrifugalKneeFactor);
+    // That angle is the one at which the wheels roll along the circle with no slip at all, but a tyre only pushes with a slip angle: the
+    // front wheels point further into the turn by the slip at which the slip curve reaches its plateau (the slip is tan of the angle).
+    const float steerAnglePlateauSlip = P.tyreSlipCurve > 0.5f ? std::atan(P.tyreSlipFull) : 0.0f;
+    const float steerAngleMaxAtCurrentSpeed = smoothlimit(
+        (steerAngleFromMinTurnRadius + steerAnglePlateauSlip) * C.steerAngleCentrifugalLimitFactor,
+        C.steerAngleMax,
+        C.steerAngleCentrifugalKneeFactor
+    );
     const float targetSteerAngle = clamp(in.steer, -1.0f, 1.0f) * steerAngleMaxAtCurrentSpeed;
     steerAngle += (targetSteerAngle - steerAngle) * std::min(1.0f, stepSeconds * C.steerResponse);
 
@@ -225,6 +232,17 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
                forwardAxis * wheelOffsetFromCentreOfMass.z;
     };
 
+    // How fast the length of a suspension changes (m/s, positive: it extends): the rate at which the distance the ray travels to the road
+    // changes, as its mount moves, the ray turns with the car and the road lies where it lies. It is not the speed of the mount along the
+    // car's up axis: a pitched car that drives along a flat road moves along that axis too (speed * sin(pitch)) with the suspension
+    // not moving at all, and the damper would push the car down when it goes forwards and lift it when it goes backwards.
+    auto suspensionExtensionRate = [&](int i, const WheelContact& c, float rayDistance) {
+        const Vec3f mountVelocity = vel + cross(angVel, suspensionMountOf(i) - pos);
+        const Vec3f roadNormal = dot(c.groundNormal, upAxis) >= 0 ? c.groundNormal : c.groundNormal * -1.0f;  // towards the car
+        const float alignment = std::max(0.2f, dot(roadNormal, upAxis));  // (a ray almost along the road: not divided by about zero)
+        return (dot(roadNormal, mountVelocity) + rayDistance * dot(roadNormal, cross(angVel, upAxis * -1.0f))) / alignment;
+    };
+
     // --- pass 1: the road under the wheels, and the bottom-out
     for (int i = 0; i < 4; i++) {
         Wheel& wheel = wheels[i];
@@ -254,7 +272,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         const float bottomedBy = wheelRadii[i] - rayHitDistance;  // m past the stop, > 0 when bottomed out
         if (bottomedBy > 0) {
             const Vec3f pressLever = c.contactPoint - pos;  // where the road holds the tyre, from the centre of mass
-            const float pressSpeed = dot(vel + cross(angVel, pressLever), upAxis);  // < 0: moving down into the road
+            const float pressSpeed = suspensionExtensionRate(i, c, rayHitDistance);  // < 0: the suspension is shortening: moving into the road
             if (pressSpeed < 0) {
                 const Vec3f turning = cross(pressLever, upAxis);
                 const float stopImpulse = -pressSpeed / (1.0f / mass + dot(turning, invInertia(turning)));
@@ -271,9 +289,8 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     for (int i = 0; i < 4; i++) {
         if (!contact[i].grounded) continue;
         WheelContact& c = contact[i];
-        const Vec3f suspensionMount = suspensionMountOf(i);
         const Vec3f contactOffset = c.contactPoint - pos;  // from the centre of mass to where the tyre touches the road
-        const Vec3f mountVelocity = vel + cross(angVel, suspensionMount - pos);  // speed of the suspension's upper end
+        const float extensionRate = suspensionExtensionRate(i, c, c.suspensionLength + wheelRadii[i]);  // m/s, positive: the suspension extends
         // spring + damper (stiffer at the bump stop); a suspension cannot pull the car down, so never negative
         // The spring is free a little longer when the downforce presses on it, so the ride height stays (a fraction of the compression
         // the downforce would make in a quarter of the car's spring); the bump stop stiffens smoothly over its zone.
@@ -281,7 +298,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         const float springCompression = suspensionSpringNaturalLengthNow - c.suspensionLength;
         const float bumpStiffness = bumpStiffnessAt(c.suspensionLength);
         c.suspensionForce = std::max(0.0f, springStiffness * springCompression * bumpStiffness +
-                                           damping * (-dot(mountVelocity, upAxis)));
+                                           damping * -extensionRate);
         wheels[i].load = c.suspensionForce;  // N: how hard the tyre is pressed on the road
         suspensionForceSum += c.suspensionForce;
         // The road pushes the tyre perpendicular to its surface, at the contact point (not along the suspension: a pitched car on a
@@ -337,7 +354,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             float frictionLoad;
             if (C.gripMode > 1.5f) frictionLoad = wheelLoadWeighted;
             else if (C.gripMode > 0.5f) frictionLoad = wheelLoadStatic;
-            else frictionLoad = mix(wheelLoadStatic, wheelLoadDynamic, P.tyreLoadSensitivity);
+            else frictionLoad = mix(wheelLoadStatic, wheelLoadDynamic, C.tyreLoadSensitivity);
             const float frictionLimit = grip_ * (1.0f + (roadFriction - 1.0f) * P.surfaceFrictionEffect) * frictionLoad;  // N: the most the tyre can push with, in any direction
             float brakingForce = brakeInput * P.brakeForce * frictionLimit;
             const bool handbrakeActsHere = isRearWheel || C.handbrakeAllWheels > 0.5f;

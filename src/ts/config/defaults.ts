@@ -13,7 +13,6 @@ export const GLOBAL_DEFAULTS: Record<string, number> = {
   bottomOutPushOut: 0.5,  // a wheel past the end of its travel: this part of the overlap is undone each step, without any speed (no bounce)
   bumpStopStiffness: 2,  // ...by this factor
   // --- suspension, tyres, engine and air
-  tyreLoadSensitivity: 1,  // 0: friction scales with the static weight of a quarter of the car (the original game); 1: with the wheel's current load, so the weight distribution decides what each tyre can hold
   surfaceFrictionEffect: 1,  // how much the surface's WHEEL_FRICTION (grass 0.8, slippery rock 0, road 1) counts: 0 none, 1 as the game does
   tyreSlipCurve: 1,  // 1: sideways force follows the original game's slip curve; 0: the older stiffness model
   tyreSlipKnee: 0.05,  // slip (fraction of the speed) at which the curve is at tyreSlipKneeValue of the peak grip
@@ -74,7 +73,8 @@ export const GLOBAL_DEFAULTS: Record<string, number> = {
   cameraSpeedDistance: 0.035,  // m of extra distance per m/s of speed...
   cameraSpeedCap: 40,  // ...up to this speed
   cameraYawFollow: 3.2,  // 1/s: how quickly the camera turns behind the car
-  cameraPositionFollow: 7,  // 1/s: how quickly it follows the wanted position
+  cameraPositionFollow: 3,  // 1/s: how quickly it follows the wanted position (the natural frequency of the camera's spring)
+  cameraPositionDampingRatio: 1,  // damping of that spring: 1 settles fastest without swinging past; below 1 the camera overshoots a little (more inertia)
   cameraLookAhead: 2.2,  // m ahead of the car that it looks at
   cameraLookHeight: 0.9,  // m above the car that it looks at
   cameraSlideMinSpeed: 5,  // m/s: faster than this, the camera looks where the car goes when it slides...
@@ -120,11 +120,11 @@ export const CAR_DEFAULTS: Record<string, CarValue> = {
   suspensionSpringKFromFileEnabled: 1,  // 1: the spring constant is the one of the car's game files (when it has one) times suspensionSpringKFromFileRatio; 0: suspensionSpringK
   suspensionSpringKFromFileRatio: 1,  // the file's spring constant is multiplied by this
   hullWallBounce: 0.25,  // restitution of the hull against walls and ceilings (floors do not bounce)
-  steerAngleCentrifugalLimitFactor: 1,  // multiplies the sideways force the tyres can hold before slipping, which limits the steering angle at speed (0: no turning at speed)
-  steerAngleCentrifugalKneeFactor: 0.02,  // how softly the steering angle at speed bends into its limit: the width of the knee as a fraction of steerAngleMax (0: a sharp corner)
+  steerAngleCentrifugalKneeFactor: 0.3,  // how softly the steering angle at speed bends into its limit: the width of the knee as a fraction of steerAngleMax (0: a sharp corner)
+  steerAngleCentrifugalLimitFactor: 0.7,  // multiplies the sideways force the tyres can hold before slipping, which limits the steering angle at speed (0: no turning at speed)
   steerAngleMax: 0.45,  // radians of front wheel turn at a standstill (full lock)
-  steerFadeSpeed: 10,  // m/s: around this speed the available steering angle has dropped to half
   steerResponse: 20,  // 1/s: how quickly the wheels follow the steering input
+  tyreLoadSensitivity: 1,  // 0: friction scales with the static weight of a quarter of the car (the original game); 1: with the wheel's current load, so the weight distribution decides what each tyre can hold
 };
 
 /**
@@ -155,7 +155,7 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     gravity: 9.81,  // m/s^2
     grip: 2.2,  // friction coefficient on the road: a tyre pushes with at most this times its load
     gripMode: "constant",
-    handbrakeAllWheels: null,
+    handbrakeAllWheels: 0,
     hullMiddleSphereScale: 1,  // the three hull spheres in the middle of the centre column are this many times wider
     hullRearSphereScale: 1,  // the three hull spheres at the rear are this many times wider (for a spoiler)
     hullSphereScale: 1.6,  // the hull spheres are this many times the size that fits the car (their bottoms stay at the hull's bottom)
@@ -166,7 +166,6 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     steerAngleCentrifugalKneeFactor: null,
     steerAngleCentrifugalLimitFactor: null,
     steerAngleMax: null,
-    steerFadeSpeed: 30,  // m/s: around this speed the available steering angle has dropped to half
     steerResponse: null,
     suspensionLengthMax: 0.4,  // m: fully extended (the wheel hangs in the air)
     suspensionLengthAtRest: 0.2,  // m: the spring length the car stands on at rest (its weight compresses the spring to this)
@@ -174,6 +173,7 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     suspensionSpringK: null,  // N/m: null: the one of carDefaults
     suspensionSpringKFromFileEnabled: null,
     suspensionSpringKFromFileRatio: null,
+    tyreLoadSensitivity: null,
     wheelRadiusFromFile: 1,  // 1: the wheel radii of the car's files (front and rear differ); 0: measured from the wheel meshes
   },
   rcBandit: {
@@ -198,7 +198,7 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     engineTaperStartSpeed: 8,
     gravity: 5,
     grip: 1.5,
-    gripMode: null,
+    gripMode: "physical",
     handbrakeAllWheels: null,
     hullMiddleSphereScale: 1,
     hullRearSphereScale: 1,  // for the spoiler
@@ -208,9 +208,8 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     mass: 2,  // kg
     slipFloorSpeed: 0.5,
     steerAngleCentrifugalKneeFactor: null,
-    steerAngleCentrifugalLimitFactor: null,
+    steerAngleCentrifugalLimitFactor: 0.5,
     steerAngleMax: null,
-    steerFadeSpeed: 6,
     steerResponse: null,
     suspensionLengthMax: 0.05,  // m: the travel
     suspensionLengthAtRest: 0.03,
@@ -218,6 +217,7 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     suspensionSpringK: 330,  // N/m (the Re-Volt files have none)
     suspensionSpringKFromFileEnabled: null,
     suspensionSpringKFromFileRatio: null,
+    tyreLoadSensitivity: 0.9,
     wheelRadiusFromFile: 1,
   },
 };

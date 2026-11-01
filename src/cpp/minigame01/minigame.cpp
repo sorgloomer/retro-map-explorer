@@ -372,8 +372,24 @@ void MiniGame::updateCamera(float dt, bool snap) {
     height = radius * std::sin(elevation);
     const float viewYaw = camYaw + orbitYaw;
     Vec3f desired = pos + Vec3f(0, height, 0) - Vec3f(std::sin(viewYaw), 0, std::cos(viewYaw)) * dist;
-    if (snap) camPos = desired;
-    else camPos += (desired - camPos) * std::min(1.0f, dt * P.cameraPositionFollow);
+    // The camera is a mass on a spring and a damper that pull it to the wanted position, and the spring moves with the car: it is
+    // measured against the car's own velocity. So the camera has inertia (it swings in the turns, it trails behind when the car
+    // accelerates), but when the car moves in a straight line at a steady speed it rests exactly at the wanted position, whatever
+    // the speed (a plain smoothing would trail by speed / follow rate: 10 m at 70 m/s, and the camera could not get to the front).
+    if (snap) {
+        camPos = desired;
+        camVel = vel;
+    } else {
+        const float omega = P.cameraPositionFollow, zeta = P.cameraPositionDampingRatio;
+        const int steps = std::max(1, (int)std::ceil(dt * omega * 3.0f));  // (small steps: the integration stays stable at any frame time)
+        const float h = dt / (float)steps;
+        Vec3f target = desired - vel * dt;  // the wanted position moves on with the car during the frame: it starts where it was
+        for (int i = 0; i < steps; i++) {
+            target += vel * h;
+            camVel += ((target - camPos) * (omega * omega) - (camVel - vel) * (2.0f * zeta * omega)) * h;  // (damped against the car's velocity)
+            camPos += camVel * h;
+        }
+    }
     // keep the camera out of walls: pull it in along the line to the car. The line starts above the car, one radius of its bounding sphere over
     // the centre of mass: not at the point the camera looks at (ahead of the car, it can lie inside the surface the car climbs, which
     // pulls the camera in on the car), and not so low that the line meets the road behind the car.

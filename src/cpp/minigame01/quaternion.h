@@ -25,18 +25,18 @@ struct Quat {
     Quat operator*(const float scale) const {
         return {
             .w = w * scale,
-            .x = w * scale,
-            .y = w * scale,
-            .z = w * scale,
+            .x = x * scale,
+            .y = y * scale,
+            .z = z * scale,
         };
     }
 
     Quat operator/(const float scale) const {
         return {
             .w = w / scale,
-            .x = w / scale,
-            .y = w / scale,
-            .z = w / scale,
+            .x = x / scale,
+            .y = y / scale,
+            .z = z / scale,
         };
     }
 

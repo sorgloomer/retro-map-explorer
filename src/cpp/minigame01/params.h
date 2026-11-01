@@ -16,7 +16,6 @@ namespace minigame01 {
     X(vehicleMaxFrameSeconds) \
     X(bottomOutPushOut) \
     X(bumpStopStiffness) \
-    X(tyreLoadSensitivity) \
     X(surfaceFrictionEffect) \
     X(tyreSlipCurve) \
     X(tyreSlipKnee) \
@@ -60,6 +59,7 @@ namespace minigame01 {
     X(cameraSpeedDistance) \
     X(cameraYawFollow) \
     X(cameraPositionFollow) \
+    X(cameraPositionDampingRatio) \
     X(cameraSlideBlend) \
     X(keySteerRise) \
     X(keySteerReturn) \
@@ -100,7 +100,7 @@ namespace minigame01 {
     X(steerAngleCentrifugalLimitFactor) \
     X(steerAngleMax) \
     X(steerResponse) \
-    X(steerFadeSpeed) \
+    X(tyreLoadSensitivity) \
     X(engineTaperStartSpeed) \
     X(engineTaperLength) \
     X(slipFloorSpeed) \

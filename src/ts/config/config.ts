@@ -227,7 +227,7 @@ export class ConfigManager {
       steerAngleCentrifugalLimitFactor: need('steerAngleCentrifugalLimitFactor'),
       steerAngleMax: need('steerAngleMax'),
       steerResponse: need('steerResponse'),
-      steerFadeSpeed: need('steerFadeSpeed'),
+      tyreLoadSensitivity: need('tyreLoadSensitivity'),
       engineTaperStartSpeed: need('engineTaperStartSpeed'),
       engineTaperLength: need('engineTaperLength'),
       slipFloorSpeed: need('slipFloorSpeed'),

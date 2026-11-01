@@ -454,6 +454,11 @@ EM_BOOL onContextMenu(int, const EmscriptenMouseEvent*, void*) { return EM_TRUE;
 void initGames() {
     app.games.emplace_back(makeRevolt());
     app.games.emplace_back(makeCarma());
+    app.games.emplace_back(makeTestTrack([] {  // (last: the real games come first in the selector)
+        for (auto& g : app.games)
+            if (g->canDrive()) return true;
+        return false;
+    }));
 }
 
 }  // namespace

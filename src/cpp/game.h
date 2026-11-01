@@ -1,5 +1,6 @@
 // A "game" knows how to find its levels in the virtual file system and turn one into a Scene.
 #pragma once
+#include <functional>
 #include <string>
 #include <vector>
 #include "scene/scene.h"
@@ -30,3 +31,5 @@ struct Game {
 
 Game* makeRevolt();
 Game* makeCarma();
+// A flat level made by the program, for testing the driving; listed when `carAvailable` says another game has a car.
+Game* makeTestTrack(std::function<bool()> carAvailable);
