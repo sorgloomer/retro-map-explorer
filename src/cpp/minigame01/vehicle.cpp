@@ -56,7 +56,7 @@ void Vehicle::applyTuning() {
     centreOfMass = Vec3f(C.centreOfMassX, C.centreOfMassY, C.centreOfMassZ);
     const float w = bmax.x - bmin.x, h = bmax.y - bmin.y, l = bmax.z - bmin.z;
     inertia = Vec3f(mass / 12.0f * (h * h + l * l), mass / 12.0f * (w * w + l * l), mass / 12.0f * (w * w + h * h) * P.rollInertiaFactor);
-    probeR = P.probeRadius;
+    probeR = C.hullProbeRadius;
     // Hull probes: one layer of a grid of 3 x 5 spheres (across, along), the bottom of every sphere at the bottom of the chassis hull
     // (the hull of the car's files, else the body mesh; the wheels are not part of it). The three in the middle of the centre column
     // are larger, and the three at the rear can be (the spoiler of a car sticks out there).
@@ -64,7 +64,7 @@ void Vehicle::applyTuning() {
     probeRadii.clear();
     const Vec3f hullLo = hasHullBox ? hullBoxMin : bmin, hullHi = hasHullBox ? hullBoxMax : bmax;
     const float hullW = hullHi.x - hullLo.x, hullL = hullHi.z - hullLo.z;
-    const float baseR = std::min(P.probeRadius, std::min(hullW / 6.5f, hullL / 11.0f)) * C.hullSphereScale;
+    const float baseR = std::min(C.hullProbeRadius, std::min(hullW / 6.5f, hullL / 11.0f)) * C.hullSphereScale;
     const float middleR = baseR * C.hullMiddleSphereScale, rearR = baseR * C.hullRearSphereScale;
     const bool rearAtLowZ = 0.5f * (wheelRest[2].z + wheelRest[3].z) < 0.5f * (wheelRest[0].z + wheelRest[1].z);  // the rear axle is behind
     for (int row = 0; row < 5; row++) {  // row 0 is the rear one
@@ -179,7 +179,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     float driveForce = 0;                  // N the engine pushes the car with, summed over the driven wheels (negative: reverse)
     float brakeInput = in.brake;           // 0..1
     const float handbrakeInput = in.handbrake;  // 0..1
-    if (in.accel > P.minPedal) {
+    if (in.accel > P.controlMinPedal) {
         // the engine's push is limited by its force at low speed and by its power (force * speed) at high speed
         const float maxDriveForce = std::min(engineForce_, enginePower_ / std::max(std::fabs(forwardSpeed), kMinPowerSpeed));
         driveForce = in.accel * maxDriveForce;
@@ -187,9 +187,9 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             brakeInput = std::max(brakeInput, in.accel);
             driveForce = 0;
         }
-    } else if (in.brake > P.minPedal && forwardSpeed < 1.0f) {  // the brake pedal doubles as reverse once the car has (almost) stopped
-        driveForce = -in.brake * std::min(engineForce_ * P.reverseForceFraction,
-                                          enginePower_ * P.reversePowerFraction / std::max(std::fabs(forwardSpeed), kMinPowerSpeed));
+    } else if (in.brake > P.controlMinPedal && forwardSpeed < 1.0f) {  // the brake pedal doubles as reverse once the car has (almost) stopped
+        driveForce = -in.brake * std::min(engineForce_ * C.reverseForceFraction,
+                                          enginePower_ * C.reversePowerFraction / std::max(std::fabs(forwardSpeed), kMinPowerSpeed));
         brakeInput = 0;
     }
     // the engine's push fades out over a speed range, so it has a soft top speed of its own (the afterburner is not affected)
@@ -224,7 +224,6 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         Vec3f contactPoint;           // world position where the tyre touches the road
         float suspensionForce = 0;    // N
     } contact[4];
-    const float staticWheelLoad = mass * gravity() / kWheelCount;  // N: the car's weight shared by the wheels
     // The upper end of a suspension in the world, from the car's position now.
     auto suspensionMountOf = [&](int i) {
         const Vec3f wheelOffsetFromCentreOfMass = wheelRest[i] - centreOfMass;  // in car space
@@ -348,26 +347,32 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             if (isRearWheel) longitudinalForce += driveForce * 0.5f;
             // gripMode: 0 physical (the wheel's own suspension force), 1 constant (the same share for every wheel on the ground), 2 weighted
             // (the whole weight of the car shared by the wheels on the ground in proportion to their suspension forces)
-            const float wheelLoadStatic = staticWheelLoad;
-            const float wheelLoadDynamic = suspensionForce;
-            const float wheelLoadWeighted = suspensionForceSum < 1e-3f ? staticWheelLoad : staticWheelLoad * kWheelCount * suspensionForce / suspensionForceSum;
-            float frictionLoad;
-            if (C.gripMode > 1.5f) frictionLoad = wheelLoadWeighted;
-            else if (C.gripMode > 0.5f) frictionLoad = wheelLoadStatic;
-            else frictionLoad = mix(wheelLoadStatic, wheelLoadDynamic, C.tyreLoadSensitivity);
-            const float frictionLimit = grip_ * (1.0f + (roadFriction - 1.0f) * P.surfaceFrictionEffect) * frictionLoad;  // N: the most the tyre can push with, in any direction
+            const float tyreLoadStatic = mass * gravity() / kWheelCount;  // N: the car's weight shared by the wheels
+            const float tyreLoadDynamic = suspensionForce;
+            const float tyreLoadDynamicAverage = suspensionForceSum / kWheelCount;
+            const float tyreLoadDistributionSensitivity = C.tyreLoadDistributionSensitivity;
+            const float tyreLoadScalingSensitivity = C.tyreLoadScalingSensitivity;
+            const float tyreLoadDynamicScaledToTotalStatic = tyreLoadStatic * (tyreLoadDynamicAverage < 1e-4 ? 1 : tyreLoadDynamic / tyreLoadDynamicAverage);
+
+            const float frictionLoad = mix(
+                mix(tyreLoadStatic, tyreLoadDynamicScaledToTotalStatic, tyreLoadDistributionSensitivity),
+                mix(tyreLoadDynamicAverage, tyreLoadDynamic, tyreLoadDistributionSensitivity),
+                tyreLoadScalingSensitivity
+            );
+
+            const float frictionLimit = grip_ * (1.0f + (roadFriction - 1.0f) * C.tyreSurfaceFrictionEffectFactor) * frictionLoad;  // N: the most the tyre can push with, in any direction
             float brakingForce = brakeInput * P.brakeForce * frictionLimit;
             const bool handbrakeActsHere = isRearWheel || C.handbrakeAllWheels > 0.5f;
-            if (handbrakeActsHere) brakingForce = std::max(brakingForce, handbrakeInput * P.handbrakeBrake * frictionLimit);
+            if (handbrakeActsHere) brakingForce = std::max(brakingForce, handbrakeInput * C.handbrakeBrake * frictionLimit);
             const float rollingDirection = longitudinalSpeed > 0 ? 1.0f : -1.0f;  // brakes and resistance act against the motion
             const float maxBrakingForce = std::fabs(longitudinalSpeed) * forwardStopMass / stepSeconds;  // never brake past a standstill
             longitudinalForce -= rollingDirection * std::min(brakingForce, maxBrakingForce) * std::min(1.0f, std::fabs(longitudinalSpeed) * 2.0f);
             const float rollingResistanceForce = std::min(P.rollResist * suspensionForce, std::fabs(longitudinalSpeed) * forwardStopMass / stepSeconds);
-            longitudinalForce -= rollingDirection * rollingResistanceForce * (std::fabs(driveForce) > 1.0f ? P.rollResistWhileDriving : 1.0f);
+            longitudinalForce -= rollingDirection * rollingResistanceForce;
 
             // Force across the wheel: the force that would stop the sideways slide within one step, limited by the grip
             // (the rear wheels lose grip with the handbrake); a tyre over the limit slides and keeps only part of it.
-            const float handbrakeGripFactor = (handbrakeActsHere && handbrakeInput > 0.05f) ? 1.0f - P.handbrakeGripLoss * handbrakeInput : 1.0f;
+            const float handbrakeGripFactor = (handbrakeActsHere && handbrakeInput > 0.05f) ? 1.0f - C.handbrakeGripLoss * handbrakeInput : 1.0f;
             const float lateralFrictionLimit = frictionLimit * handbrakeGripFactor;
             float lateralForce = -lateralSpeed * sidewaysStopMass / stepSeconds * P.lateralStiffness;
             bool isSliding = std::fabs(lateralForce) > lateralFrictionLimit;
@@ -418,7 +423,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     }
     torqueWheels_ = totalTorque;  // (only the wheels' forces carry a torque so far)
     // drift: 0 up to a slip angle that is just cornering, then rising to 1; never while slow
-    drift_ = speed > C.driftMinSpeed ? clamp((largestSlipAngle - P.driftSlipDeadZone) / P.driftSlipRange, 0.0f, 1.0f) : 0.0f;
+    drift_ = speed > C.driftMinSpeed ? clamp((largestSlipAngle - C.driftSlipDeadZone) / C.driftSlipRange, 0.0f, 1.0f) : 0.0f;
 
     // damping of the spin: the car tumbles almost freely in the air
     if (groundedCount == 0) {

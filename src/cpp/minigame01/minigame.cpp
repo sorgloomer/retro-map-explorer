@@ -530,7 +530,7 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
 
     // drift points: sliding sideways at speed
     if (vehicle.anyGrounded() && (hud_.state == 0 || hud_.state == 3)) {
-        driftAccum += vehicle.drift() * vehicle.speed() * dt * P.driftPointsFactor;
+        driftAccum += vehicle.drift() * vehicle.speed() * dt * C.driftPointsFactor;
         int whole = (int)driftAccum;
         if (whole > 0) { driftAccum -= (float)whole; hud_.driftScore += whole; hud_.score += whole; }
     }

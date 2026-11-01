@@ -11,12 +11,10 @@ namespace minigame01 {
 // Values that are the same for every car.
 #define MINIGAME_GLOBALS(X) \
     X(rollInertiaFactor) \
-    X(probeRadius) \
     X(maxPhysicsStep) \
     X(vehicleMaxFrameSeconds) \
     X(bottomOutPushOut) \
     X(bumpStopStiffness) \
-    X(surfaceFrictionEffect) \
     X(tyreSlipCurve) \
     X(tyreSlipKnee) \
     X(tyreSlipKneeValue) \
@@ -27,18 +25,10 @@ namespace minigame01 {
     X(rollResist) \
     X(maxSpeed) \
     X(rollCentre) \
-    X(minPedal) \
-    X(reverseForceFraction) \
-    X(reversePowerFraction) \
-    X(handbrakeBrake) \
-    X(handbrakeGripLoss) \
-    X(rollResistWhileDriving) \
+    X(controlMinPedal) \
     X(lateralStiffness) \
     X(airAngularDamping) \
     X(groundAngularDamping) \
-    X(driftSlipDeadZone) \
-    X(driftSlipRange) \
-    X(driftPointsFactor) \
     X(floorNormalY) \
     X(floorFriction) \
     X(wallFriction) \
@@ -100,7 +90,17 @@ namespace minigame01 {
     X(steerAngleCentrifugalLimitFactor) \
     X(steerAngleMax) \
     X(steerResponse) \
-    X(tyreLoadSensitivity) \
+    X(tyreLoadDistributionSensitivity) \
+    X(tyreLoadScalingSensitivity) \
+    X(hullProbeRadius) \
+    X(tyreSurfaceFrictionEffectFactor) \
+    X(reverseForceFraction) \
+    X(reversePowerFraction) \
+    X(handbrakeBrake) \
+    X(handbrakeGripLoss) \
+    X(driftSlipDeadZone) \
+    X(driftSlipRange) \
+    X(driftPointsFactor) \
     X(engineTaperStartSpeed) \
     X(engineTaperLength) \
     X(slipFloorSpeed) \

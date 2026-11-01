@@ -4,7 +4,7 @@
 //   - the physics engine (C++) gets its numbers from here, computed for the car that is about to be driven: `resolveCar` takes what
 //     the car's game files say (mass, spring, wheel radii, centre of mass, ...), applies the configuration to it and returns the
 //     single object of final values. Where a file value can be overridden, the decision is made here and only here.
-import { CAR_BUILTIN, CAR_DEFAULTS, CAR_IDS, CAR_WORDS, GLOBAL_DEFAULTS, GRIP_MODES } from './defaults.ts';
+import { CAR_BUILTIN, CAR_DEFAULTS, CAR_IDS, GLOBAL_DEFAULTS, GRIP_MODES } from './defaults.ts';
 import type { CarId, CarValue, GripMode } from './defaults.ts';
 import {sum} from "../utils/math.ts";
 
@@ -39,7 +39,7 @@ export interface EngineSettings {
 // What goes to the engine as it is, and what is only an input of the car's computation (the numbers of the cars that are set for a
 // car of 4.3 m and made to fit the size of the car that is driven, ...).
 const COMPUTED_FROM_GLOBALS = new Set([
-  'suspensionRayLift', 'driftMinSpeed', 'hullMaxPushOut',
+  'suspensionRayLift', 'hullMaxPushOut',
   'pickupRadius', 'pickupReachY', 'cameraDistance', 'cameraHeight', 'cameraFarDistance', 'cameraFarHeight', 'cameraLookAhead', 'cameraLookHeight',
   'cameraWallMargin', 'cameraSlideMinSpeed', 'cameraSpeedCap', 'forceArrowLength',
 ]);
@@ -123,14 +123,9 @@ export class ConfigManager {
     if (!isObject(node)) throw new ConfigError(`${where} must be an object`);
     for (const [name, value] of Object.entries(node)) {
       if (!(name in target)) throw new ConfigError(`unknown parameter "${name}" of ${where}`);
-      const words = CAR_WORDS[name];
       const orNull = allowNull ? ' or null' : '';
       if (value === null) {
-        if (!allowNull) throw new ConfigError(`"${name}" of ${where} must be ${words ? 'a word' : 'a number'}`);
-      } else if (words) {
-        if (typeof value !== 'string' || !words.includes(value)) {
-          throw new ConfigError(`"${name}" of ${where} must be one of ${words.map((w) => `"${w}"`).join(', ')}${orNull}`);
-        }
+        if (!allowNull) throw new ConfigError(`"${name}" of ${where} must be a number`);
       } else if (typeof value !== 'number') {
         throw new ConfigError(`"${name}" of ${where} must be a number${orNull}`);
       }
@@ -168,7 +163,7 @@ export class ConfigManager {
     const sizeScale = toy ? Math.max(0.02, (file.boundsMax[2] - file.boundsMin[2]) / CAR_LENGTH_REFERENCE) : 1;
 
     // mass, spring and damper: set, else the car's files, else the fallback
-    const mass = value('mass') ?? (file.mass > 0 ? file.mass : need('defaultMass'));
+    const mass = value('mass') ?? (file.mass > 0 ? file.mass : need('massDefault'));
     // the spring constant: the car's files (times the ratio) when enabled and they say, else the configured one
     const suspensionSpringK = need('suspensionSpringKFromFileEnabled') > 0.5 && file.suspensionSpringK > 0
       ? file.suspensionSpringK * need('suspensionSpringKFromFileRatio')
@@ -227,7 +222,18 @@ export class ConfigManager {
       steerAngleCentrifugalLimitFactor: need('steerAngleCentrifugalLimitFactor'),
       steerAngleMax: need('steerAngleMax'),
       steerResponse: need('steerResponse'),
-      tyreLoadSensitivity: need('tyreLoadSensitivity'),
+      tyreLoadDistributionSensitivity: need('tyreLoadDistributionSensitivity'),
+      tyreLoadScalingSensitivity: need('tyreLoadScalingSensitivity'),
+      hullProbeRadius: need('hullProbeRadius'),
+      reverseForceFraction: need('reverseForceFraction'),
+      reversePowerFraction: need('reversePowerFraction'),
+      handbrakeBrake: need('handbrakeBrake'),
+      handbrakeGripLoss: need('handbrakeGripLoss'),
+      tyreSurfaceFrictionEffectFactor: need('tyreSurfaceFrictionEffectFactor'),
+      driftSlipDeadZone: need('driftSlipDeadZone'),
+      driftSlipRange: need('driftSlipRange'),
+      driftPointsFactor: need('driftPointsFactor'),
+      driftMinSpeed: need('driftMinSpeed') * sz,  // (set for a car of 4.3 m: it follows the size of the car)
       engineTaperStartSpeed: need('engineTaperStartSpeed'),
       engineTaperLength: need('engineTaperLength'),
       slipFloorSpeed: need('slipFloorSpeed'),
@@ -241,7 +247,6 @@ export class ConfigManager {
       hullMiddleSphereScale: need('hullMiddleSphereScale'),
       hullRearSphereScale: need('hullRearSphereScale'),
       // the speeds and lengths that are set for a car of 4.3 m follow the size of the car
-      driftMinSpeed: g.driftMinSpeed * sz,
       hullMaxPushOut: g.hullMaxPushOut * sz,
       pickupRadius: g.pickupRadius * sz,
       pickupReachY: g.pickupReachY * sz,
