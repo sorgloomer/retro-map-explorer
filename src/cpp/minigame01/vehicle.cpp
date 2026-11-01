@@ -345,8 +345,8 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             // Force along the rolling direction: engine on the rear wheels (half each), brakes, rolling resistance.
             float longitudinalForce = 0;
             if (isRearWheel) longitudinalForce += driveForce * 0.5f;
-            // gripMode: 0 physical (the wheel's own suspension force), 1 constant (the same share for every wheel on the ground), 2 weighted
-            // (the whole weight of the car shared by the wheels on the ground in proportion to their suspension forces)
+            // The load a tyre grips with: between the weight of the car shared equally and what the suspensions carry (the distribution),
+            // and between the car's static weight and the real total of the suspension forces (the scaling).
             const float tyreLoadStatic = mass * gravity() / kWheelCount;  // N: the car's weight shared by the wheels
             const float tyreLoadDynamic = suspensionForce;
             const float tyreLoadDynamicAverage = suspensionForceSum / kWheelCount;

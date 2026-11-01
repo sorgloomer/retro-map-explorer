@@ -4,9 +4,25 @@
 //   - the physics engine (C++) gets its numbers from here, computed for the car that is about to be driven: `resolveCar` takes what
 //     the car's game files say (mass, spring, wheel radii, centre of mass, ...), applies the configuration to it and returns the
 //     single object of final values. Where a file value can be overridden, the decision is made here and only here.
-import { CAR_BUILTIN, CAR_DEFAULTS, CAR_IDS, GLOBAL_DEFAULTS, GRIP_MODES } from './defaults.ts';
-import type { CarId, CarValue, GripMode } from './defaults.ts';
+import {
+  CAR_DEFAULTS_PER_CAR,
+  CAR_DEFAULTS,
+  GLOBAL_DEFAULTS,
+} from './defaults.ts';
 import {sum} from "../utils/math.ts";
+import {prettyJson} from "./configjson.ts";
+import {
+  type CarId,
+  CAR_IDS,
+  type ConfigPartCarType,
+  type ConfigPartial,
+  ConfigSchema,
+  isCarParameterName, ConfigPartCarSchema, type ConfigType, type ConfigGlobalType, ConfigGlobalSchema
+} from "./config.schema.ts";
+import {getOwn, isPlainObject, isSubscriptable} from "../utils/objects.ts";
+import * as z from "zod/mini";
+import {isNullish} from "../utils/nullish.ts";
+import type {EngineSettings} from "./config.cpp.ts";
 
 export type { CarId };
 export { CAR_IDS };
@@ -30,106 +46,55 @@ export interface GameFileCar {
   wheelPos: number[][];              // per wheel: the rest position of its centre
 }
 
-/** The numbers the engine gets: `globals` are the same for every car, `car` is computed for the car about to be driven. */
-export interface EngineSettings {
-  globals: Record<string, number>;
-  car: Record<string, number>;
-}
-
-// What goes to the engine as it is, and what is only an input of the car's computation (the numbers of the cars that are set for a
-// car of 4.3 m and made to fit the size of the car that is driven, ...).
-const COMPUTED_FROM_GLOBALS = new Set([
-  'suspensionRayLift', 'hullMaxPushOut',
-  'pickupRadius', 'pickupReachY', 'cameraDistance', 'cameraHeight', 'cameraFarDistance', 'cameraFarHeight', 'cameraLookAhead', 'cameraLookHeight',
-  'cameraWallMargin', 'cameraSlideMinSpeed', 'cameraSpeedCap', 'forceArrowLength',
-]);
-
-const FALLBACK_DAMPER = 3300;     // N s/m
 const CAR_LENGTH_REFERENCE = 4.3;  // m: the car the lengths and speeds of the configuration are set for
 
-class ConfigError extends Error {}
+export class ConfigError extends Error {}
 
-/** Alphabetical, ignoring the case. */
-const before = (a: string, b: string): number => {
-  const x = a.toLowerCase(), y = b.toLowerCase();
-  return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0;
-};
+/** Later arguments are stronger in precedence */
+export const mergeShallowConfigObjects = (...args: (Record<string, unknown> | null | undefined)[]): Record<string, unknown> => {
+  const result: Record<string, unknown> = {};
+  for (const arg of args) {
+    if (isSubscriptable(arg)) {
+      for (const key of Object.keys(arg)) {
+        const value = arg[key];
+        if (value !== null && value !== undefined) {
+          result[key] = value;
+        }
+      }
+    }
+  }
+  return result;
+}
 
-/** The same object with its keys in alphabetical order (the order JSON.stringify writes them in). */
-const sortedKeys = <T>(values: Record<string, T>): Record<string, T> =>
-  Object.fromEntries(Object.keys(values).sort(before).map((key) => [key, values[key]]));
-
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const getDefaultConfig = (): ConfigType => ({
+  ...GLOBAL_DEFAULTS,
+  carDefaults: CAR_DEFAULTS,
+  cars: CAR_DEFAULTS_PER_CAR,
+});
 
 export class ConfigManager {
   // What is configured now. A value that the text leaves out has its default.
-  private globals: Record<string, number> = { ...GLOBAL_DEFAULTS };
-  private carDefaults: Record<string, CarValue> = { ...CAR_DEFAULTS };
-  private cars: Record<CarId, Record<string, CarValue>> = { eagle: { ...CAR_BUILTIN.eagle }, rcBandit: { ...CAR_BUILTIN.rcBandit } };
+  private configObject: ConfigType = getDefaultConfig();
 
   /** The configuration as JSON text; the defaults when `defaults` is set. Every object is sorted alphabetically. */
-  text(defaults = false): string {
-    const cars = defaults ? CAR_BUILTIN : this.cars;
-    const root = {
-      ...(defaults ? GLOBAL_DEFAULTS : this.globals),
-      carDefaults: sortedKeys(defaults ? CAR_DEFAULTS : this.carDefaults),
-      cars: sortedKeys(Object.fromEntries(CAR_IDS.map((id) => [id, sortedKeys(cars[id])]))),
-    };
-    return JSON.stringify(sortedKeys(root), null, 2) + '\n';
+  getText(defaults = false): string {
+    const root = defaults
+      ? { ...GLOBAL_DEFAULTS, carDefaults: { ...CAR_DEFAULTS }, cars: CAR_DEFAULTS_PER_CAR }
+      : this.configObject;
+    return prettyJson(root);
   }
 
   /** Replaces the configuration with the one in the text (what it leaves out gets its default). '' when it was applied, else the reason. */
-  apply(text: string): string {
-    let root: unknown;
+  applyText(text: string): void {
     try {
-      root = JSON.parse(text);
-    } catch (e) {
-      return e instanceof Error ? e.message : String(e);
-    }
-    try {
-      if (!isObject(root)) throw new ConfigError('expected an object');
-      const globals = { ...GLOBAL_DEFAULTS };
-      const carDefaults: Record<string, CarValue> = { ...CAR_DEFAULTS };
-      const cars: Record<CarId, Record<string, CarValue>> = { eagle: { ...CAR_BUILTIN.eagle }, rcBandit: { ...CAR_BUILTIN.rcBandit } };
-      for (const [name, value] of Object.entries(root)) {
-        if (name === 'carDefaults') {
-          this.fill(carDefaults, value, 'carDefaults', false);
-        } else if (name === 'cars') {
-          if (!isObject(value)) throw new ConfigError('"cars" must be an object');
-          for (const [id, carValue] of Object.entries(value)) {
-            if (!(CAR_IDS as readonly string[]).includes(id)) throw new ConfigError(`unknown car "${id}"`);
-            this.fill(cars[id as CarId], carValue, `the car "${id}"`, true);
-          }
-        } else if (name in GLOBAL_DEFAULTS) {
-          if (typeof value !== 'number') throw new ConfigError(`"${name}" must be a number`);
-          globals[name] = value;
-        } else {
-          throw new ConfigError(`unknown parameter "${name}"`);
-        }
+      const unvalidated = JSON.parse(text);
+      const root = z.parse(ConfigSchema, unvalidated);
+      for (const carId of CAR_IDS) {
+        z.parse(ConfigPartCarSchema, mergeShallowConfigObjects(root.carDefaults, root.cars?.[carId]));
       }
-      this.globals = globals;
-      this.carDefaults = carDefaults;
-      this.cars = cars;
-      return '';
+      this.configObject = root;
     } catch (e) {
-      if (e instanceof ConfigError) return e.message;
-      throw e;
-    }
-  }
-
-  // The members of an object into `target`: only the keys that `target` has; numbers, or one of the words for the settings that have
-  // words (CAR_WORDS), and null when allowed.
-  private fill(target: Record<string, CarValue>, node: unknown, where: string, allowNull: boolean): void {
-    if (!isObject(node)) throw new ConfigError(`${where} must be an object`);
-    for (const [name, value] of Object.entries(node)) {
-      if (!(name in target)) throw new ConfigError(`unknown parameter "${name}" of ${where}`);
-      const orNull = allowNull ? ' or null' : '';
-      if (value === null) {
-        if (!allowNull) throw new ConfigError(`"${name}" of ${where} must be a number`);
-      } else if (typeof value !== 'number') {
-        throw new ConfigError(`"${name}" of ${where} must be a number${orNull}`);
-      }
-      target[name] = value;
+      throw new ConfigError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -140,38 +105,51 @@ export class ConfigManager {
    * a value of the car that is set wins, else the one of "carDefaults" when it has that key, else the car's file, else the fallback.
    */
   resolveCar(id: CarId, file: GameFileCar): EngineSettings {
-    const g = this.globals;
-    const own = this.cars[id];
+    const g = this.configObject;
+    const carConfigSelected = g.cars[id] as Partial<ConfigPartCarType>;
+    const carConfigFallback = g.carDefaults as Partial<ConfigPartCarType>;
+    const carConfigSelectedDefault = CAR_DEFAULTS_PER_CAR[id] as Partial<ConfigPartCarType>;
+    const carConfigFallbackDefault = CAR_DEFAULTS as Partial<ConfigPartCarType>;
     // the value of a key of the car: its own, else the common one, else the built-in one (null: nothing set: the caller looks further)
-    const raw = (key: string): CarValue => own[key] ?? this.carDefaults[key] ?? CAR_BUILTIN[id][key] ?? null;
-    const value = (key: string): number | null => {
-      const v = raw(key);
-      if (typeof v === 'string') throw new Error(`"${key}" of the car "${id}" is a word, not a number`);
-      return v;
-    };
-    const need = (key: string): number => {
+    const value = <K extends keyof ConfigPartCarType>(key: K): ConfigPartCarType[K] | undefined => (
+      getOwn(carConfigSelected, key)
+      ?? getOwn(carConfigFallback, key)
+      ?? getOwn(carConfigSelectedDefault, key)
+      ?? getOwn(carConfigFallbackDefault, key)
+      ?? undefined
+    );
+    const need = <K extends keyof ConfigPartCarType>(key: K): ConfigPartCarType[K] => {
       const v = value(key);
-      if (v === null) throw new Error(`no value for "${key}" of the car "${id}"`);
-      return v;
-    };
-    const needWord = (key: string): string => {
-      const v = raw(key);
-      if (typeof v !== 'string') throw new Error(`no word for "${key}" of the car "${id}"`);
+      if (v === undefined) throw new Error(`no value for "${key}" of the car "${id}"`);
       return v;
     };
     const toy = file.toy > 0.5;
     const sizeScale = toy ? Math.max(0.02, (file.boundsMax[2] - file.boundsMin[2]) / CAR_LENGTH_REFERENCE) : 1;
 
-    // mass, spring and damper: set, else the car's files, else the fallback
-    const mass = value('mass') ?? (file.mass > 0 ? file.mass : need('massDefault'));
+    // mass, spring and damper: the car's files when enabled and they say, else the configured one
+    const mass = need('massFromFile') > 0.5 && file.mass > 0 ? file.mass : need('massDefault');
     // the spring constant: the car's files (times the ratio) when enabled and they say, else the configured one
     const suspensionSpringK = need('suspensionSpringKFromFileEnabled') > 0.5 && file.suspensionSpringK > 0
       ? file.suspensionSpringK * need('suspensionSpringKFromFileRatio')
       : need('suspensionSpringK');
-    const rawDamperCoefficient = value('suspensionDamperCoefficient') ?? (file.damper > 0 ? file.damper : FALLBACK_DAMPER);
-    // the damper from a ratio to the critical damping when asked for: 1 is the critical damping of the spring that carries a quarter of the car
-    const damperRatioToCritical = need('suspensionDamperRatioToCritical');
-    const suspensionDamperCoefficient = damperRatioToCritical > 0 ? damperRatioToCritical * 2 * Math.sqrt(suspensionSpringK * mass * 0.25) : rawDamperCoefficient;
+
+    const suspensionDamperCoefficient = (() => {
+      const suspensionDamperCoefficientSource = value('suspensionDamperCoefficientSource');
+
+      if (suspensionDamperCoefficientSource === "file" && !isNullish(file?.damper) && file.damper > 0) {
+        return file.damper;
+      }
+
+      if (suspensionDamperCoefficientSource === "relative" && !isNullish(file?.damper) && file.damper > 0) {
+        const damperRatioToCritical = need('suspensionDamperCoefficientAsFractionOfCritical');
+        if (damperRatioToCritical > 0) {
+          const criticalCoefficient = 2 * Math.sqrt(suspensionSpringK * mass * 0.25);
+          return damperRatioToCritical * criticalCoefficient;
+        }
+      }
+
+      return need('suspensionDamperCoefficient');
+    })();
 
     // wheel radii: the car's files when they say (and the configuration allows it), else the meshes, else the fallback
     const radii = [0, 1, 2, 3].map((i) =>
@@ -196,7 +174,7 @@ export class ConfigManager {
     const sz = sizeScale;
     const carScale = sz * need('cameraScale');
 
-    const car: Record<string, number> = {
+    const car: EngineSettings["car"] = {
       toy: toy ? 1 : 0,
       sizeScale: sz,
       mass,
@@ -242,7 +220,6 @@ export class ConfigManager {
       downforceHeightCompensation: need('downforceHeightCompensation'),
       hullWallBounce: need('hullWallBounce'),
       handbrakeAllWheels: need('handbrakeAllWheels'),
-      gripMode: GRIP_MODES.indexOf(needWord('gripMode') as GripMode),  // the engine gets the position of the word
       hullSphereScale: need('hullSphereScale'),
       hullMiddleSphereScale: need('hullMiddleSphereScale'),
       hullRearSphereScale: need('hullRearSphereScale'),
@@ -264,8 +241,57 @@ export class ConfigManager {
       cameraSlideMinSpeed: g.cameraSlideMinSpeed * sz,
       cameraSpeedCap: g.cameraSpeedCap * sz,
     };
-    const globals: Record<string, number> = {};
-    for (const key of Object.keys(g)) if (!COMPUTED_FROM_GLOBALS.has(key)) globals[key] = g[key];
+    const globals: EngineSettings["globals"] = {
+      rollInertiaFactor: g.rollInertiaFactor,
+      maxPhysicsStep: g.maxPhysicsStep,
+      vehicleMaxFrameSeconds: g.vehicleMaxFrameSeconds,
+      bottomOutPushOut: g.bottomOutPushOut,
+      bumpStopStiffness: g.bumpStopStiffness,
+      tyreSlipCurve: g.tyreSlipCurve,
+      tyreSlipKnee: g.tyreSlipKnee,
+      tyreSlipKneeValue: g.tyreSlipKneeValue,
+      tyreSlipFull: g.tyreSlipFull,
+      tyreStopFraction: g.tyreStopFraction,
+      slideGrip: g.slideGrip,
+      brakeForce: g.brakeForce,
+      rollResist: g.rollResist,
+      maxSpeed: g.maxSpeed,
+      rollCentre: g.rollCentre,
+      controlMinPedal: g.controlMinPedal,
+      lateralStiffness: g.lateralStiffness,
+      airAngularDamping: g.airAngularDamping,
+      groundAngularDamping: g.groundAngularDamping,
+      floorNormalY: g.floorNormalY,
+      floorFriction: g.floorFriction,
+      wallFriction: g.wallFriction,
+      hullPushOut: g.hullPushOut,
+      roundSeconds: g.roundSeconds,
+      pointsPowerup: g.pointsPowerup,
+      pointsNotable: g.pointsNotable,
+      pointsTimeBonus: g.pointsTimeBonus,
+      timeBonusSeconds: g.timeBonusSeconds,
+      pointsUpgrade: g.pointsUpgrade,
+      pointsCredit: g.pointsCredit,
+      pointsPickup: g.pointsPickup,
+      pointsStar: g.pointsStar,
+      finishBonusPerSecond: g.finishBonusPerSecond,
+      maxFrameSeconds: g.maxFrameSeconds,
+      safeSpotSeconds: g.safeSpotSeconds,
+      worldFloorBelow: g.worldFloorBelow,
+      cameraSpeedDistance: g.cameraSpeedDistance,
+      cameraYawFollow: g.cameraYawFollow,
+      cameraPositionFollow: g.cameraPositionFollow,
+      cameraPositionDampingRatio: g.cameraPositionDampingRatio,
+      cameraSlideBlend: g.cameraSlideBlend,
+      keySteerRise: g.keySteerRise,
+      keySteerReturn: g.keySteerReturn,
+      keySteerReverse: g.keySteerReverse,
+      keyAccelRise: g.keyAccelRise,
+      keyAccelFall: g.keyAccelFall,
+      keyBrakeRise: g.keyBrakeRise,
+      keyBrakeFall: g.keyBrakeFall,
+      gamepadDeadzone: g.gamepadDeadzone,
+    };
     return { globals, car };
   }
 }

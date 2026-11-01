@@ -1,9 +1,10 @@
 // The overlay of the driving minigame: back button, score, time, speed and the end-of-round message.
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { TOUCH, gameParamsJson, gameStick, gameTouch, saveGameParams, setDebugForces, setDebugSpheres, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
+import { TOUCH, getGameParamsJsonText, gameStick, gameTouch, saveGameParamsJsonText, setDebugForces, setDebugSpheres, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
 import { useUi } from './store.ts';
 import {mapSum} from "../utils/math.ts";
+import {ConfigError} from "../config/config.ts";
 
 /** An on-screen button: held while a finger is on it (several can be held at once), or a single press when `tap` is set. */
 function TouchButton({ control, tap, class: cls, label, children }: { control: number; tap?: boolean; class?: string; label: string; children: ComponentChildren }) {
@@ -209,12 +210,22 @@ function ParamsEditor() {
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (open) { setText(gameParamsJson()); setMessage(null); }
+    if (open) { setText(getGameParamsJsonText()); setMessage(null); }
   }, [open]);
   if (!open) return null;
   const save = () => {
-    const error = saveGameParams(field.current?.value ?? text);  // what is in the field now
-    setMessage(error ? { text: error, error: true } : { text: 'Saved', error: false });
+    const saveAndHandleError = () => {
+      try {
+        saveGameParamsJsonText(field.current?.value ?? text);
+        return { text: 'Saved', error: false };
+      } catch (e) {
+        if (e instanceof ConfigError) {
+          return { text: e.message, error: true };
+        }
+        throw e;
+      }
+    };
+    setMessage(saveAndHandleError());
   };
   return (
     <div class="gh-params" role="dialog" aria-label="Minigame parameters">
@@ -223,7 +234,7 @@ function ParamsEditor() {
         <textarea class="gp-text" ref={field} spellcheck={false} value={text} onInput={(e) => { setText(e.currentTarget.value); setMessage(null); }} />
         <div class="gp-foot">
           <span class={'gp-msg' + (message?.error ? ' error' : '')}>{message?.text ?? ''}</span>
-          <button type="button" onClick={() => { setText(gameParamsJson(true)); setMessage(null); }}>Reset to defaults</button>
+          <button type="button" onClick={() => { setText(getGameParamsJsonText(true)); setMessage(null); }}>Reset to defaults</button>
           <button type="button" class="primary" onClick={save}>Save</button>
           <button type="button" onClick={() => setParamsEditor(false)}>Close</button>
         </div>

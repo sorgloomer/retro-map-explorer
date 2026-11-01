@@ -420,7 +420,7 @@ export async function startGame(mode: number): Promise<void> {
   busy(true, 'Loading the car…');
   await paint();
   const saved = store.get(PARAMS_KEY);  // the parameters the player edited earlier (a bad text is just not used)
-  if (saved) applyGameParams(saved);
+  if (saved) applyGameParamsJsonText(saved);
   let ok = 0;
   try {
     ok = await call('rme_game_start', 'number', ['number', 'number'], [mode, carToDrive()], true);
@@ -433,7 +433,7 @@ export async function startGame(mode: number): Promise<void> {
   busy(false);
   if (!ok) setStatus('Could not start the game: ' + call('rme_last_error', 'string', [], []), true);
 }
-const PARAMS_KEY = 'rme.params.v24';  // the edited minigame configuration (JSON text; v1 was the flat format of the first version)
+const PARAMS_KEY = 'rme.params.v26';  // the edited minigame configuration (JSON text; v1 was the flat format of the first version)
 
 // The car that was configured last (the engine asks for it when a game starts) with what its game files said: the engine's numbers
 // are computed again from that when the player changes the configuration.
@@ -463,19 +463,18 @@ function pushSettings(): string {
 }
 
 /** The configuration as multi-line JSON, sorted (the defaults with `defaults`). */
-export function gameParamsJson(defaults = false): string {
-  return config.text(defaults);
+export function getGameParamsJsonText(defaults = false): string {
+  return config.getText(defaults);
 }
 /** Applies the configuration from JSON text; returns '' on success, else the reason (with the line number). */
-export function applyGameParams(text: string): string {
-  const error = config.apply(text);
-  return error || pushSettings();
+export function applyGameParamsJsonText(text: string): void {
+  config.applyText(text);
+  pushSettings();
 }
 /** Applies the parameters and, when they are valid, remembers them for the next visit. Returns '' or the reason. */
-export function saveGameParams(text: string): string {
-  const error = applyGameParams(text);
-  if (!error) store.set(PARAMS_KEY, text);
-  return error;
+export function saveGameParamsJsonText(text: string): void {
+  applyGameParamsJsonText(text);
+  store.set(PARAMS_KEY, text);
 }
 export function setParamsEditor(open: boolean): void {
   update({ paramsOpen: open });

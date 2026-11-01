@@ -1,8 +1,16 @@
 // The defaults of every configuration value (see config.ts). Units: metres, seconds, kilograms, newtons, radians, unless said otherwise.
 // Generated once from the old C++ parameter list; this file is the source of truth now.
+import * as z from "zod/mini";
+import {hasOwn} from "../utils/objects.ts";
+import type {
+  CarId,
+  ConfigGlobalType,
+  ConfigPartCarType,
+  ConfigPartial
+} from "./config.schema.ts";
 
 /** Values that are not about a particular car. */
-export const GLOBAL_DEFAULTS: Record<string, number> = {
+export const GLOBAL_DEFAULTS: ConfigGlobalType = {
   // --- shape of the cars
   rollInertiaFactor: 1.5,  // turns the roll (about the forward axis) inertia up or down
   // --- world and time step
@@ -79,25 +87,19 @@ export const GLOBAL_DEFAULTS: Record<string, number> = {
   gamepadDeadzone: 0.12,  // the stick's dead zone, 0..1
 };
 
-/** The car configurations that exist, in the order of the car selector. */
-export const CAR_IDS = ['eagle', 'rcBandit'] as const;
-export type CarId = (typeof CAR_IDS)[number];
-
 /**
  * Values that every car starts from, unless the car sets its own: a car value that is missing or null is taken from here, so these
  * can be changed for all cars at once ("carDefaults" in the JSON).
  */
-/** How the grip of a tyre is limited by the load on it (see gripMode); the engine gets the position of the word. */
-export type GripMode = 'physical' | 'constant' | 'weighted';
-export const GRIP_MODES: readonly GripMode[] = ['physical', 'constant', 'weighted'];
 
-/** A value of a car as it is written in the JSON text: a number, one of the words of the settings that have words, or null (not set). */
-export type CarValue = number | string | null;
+export const CAR_DEFAULTS = {
+  cameraScale: 1,  // the chase camera's distance and height are multiplied by this (on top of the size of the car)
 
-export const CAR_DEFAULTS: Record<string, CarValue> = {
   downforceHeightCompensation: 1,  // 1: the springs are free just that much longer under the downforce, so the ride height stays; 0: the car sinks
   handbrakeAllWheels: 1,  // 1: the handbrake brakes (and loosens the grip of) all four wheels; 0: only the rear ones
-  suspensionDamperRatioToCritical: 0.85,  // damper as a part of the critical damping of the spring (1 = no overshoot at all); 0: use suspensionDamperCoefficient
+  suspensionDamperCoefficientSource: "file",
+  suspensionDamperCoefficient: 3300, // N s/m
+  suspensionDamperCoefficientAsFractionOfCritical: 0.85,  // damper as a part of the critical damping of the spring (1 = no overshoot at all); 0: use suspensionDamperCoefficient
   suspensionSpringK: 30000,  // N/m: used when the spring constant is not taken from the car's files
   suspensionSpringKFromFileEnabled: 1,  // 1: the spring constant is the one of the car's game files (when it has one) times suspensionSpringKFromFileRatio; 0: suspensionSpringK
   suspensionSpringKFromFileRatio: 1,  // the file's spring constant is multiplied by this
@@ -119,17 +121,20 @@ export const CAR_DEFAULTS: Record<string, CarValue> = {
   tyreLoadDistributionSensitivity: 1,  // how the tyres share the weight of the car: 0: equally; 1: in proportion to what their suspensions carry (weight transfer decides what each tyre can hold)
   tyreLoadScalingSensitivity: 1,  // what the weight shared by the tyres adds up to: 0: the weight of the car (downforce and bumps add no grip); 1: what the suspensions really carry
   wheelRadiusFromFile: 1,  // 1: the wheel radii of the car's files (front and rear differ); 0: measured from the wheel meshes
-};
+} as const satisfies Partial<ConfigPartCarType>;
+
+type ConfigForCarKeysWithDefaults = keyof ConfigPartCarType & keyof typeof CAR_DEFAULTS;
+type ConfigForCarKeysWithoutDefaults = Exclude<keyof ConfigPartCarType, ConfigForCarKeysWithDefaults>;
 
 /**
  * What each car's own values start as ("cars" in the JSON). Every car has the same keys. null: not set here: the value of
  * "carDefaults" when the key is there, else the value from the car's files when they have one (mass, spring, damper coefficient).
  */
-export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
+type ConfigSpecificCarType = ConfigPartial<Pick<ConfigPartCarType, ConfigForCarKeysWithDefaults>> & Pick<ConfigPartCarType, ConfigForCarKeysWithoutDefaults>;
+export const CAR_DEFAULTS_PER_CAR: Record<CarId, ConfigSpecificCarType> = {
   eagle: {
     afterburnerForce: 36000,  // N: about three times the car's weight, in the direction the car faces
-    bumpStopZone: 0.03,  // within this distance of the bump stop (length 0) the spring turns stiffer
-    cameraScale: 1,  // the chase camera's distance and height are multiplied by this (on top of the size of the car)
+    bumpStopZone: 0.03,
     centreOfMassFromFileEnabled: 0,  // 1: use the centre of mass of the car's files when it has one; 0: the two numbers centreOfMassHeight, centreOfMassFromRearAxle
     centreOfMassFromFileLoweringAbsolute: 0,  // m: the centre of mass of the car's files is moved down by this much (0 = where the file says)
     centreOfMassFromFileLoweringFraction: 0.3,  // the centre of mass is lowered by this part of the height of the car's hull
@@ -149,8 +154,8 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     hullRearSphereScale: 1,  // the three hull spheres at the rear are this many times wider (for a spoiler)
     hullSphereScale: 1.6,  // the hull spheres are this many times the size that fits the car (their bottoms stay at the hull's bottom)
     kangarooSpeed: 8,  // m/s added upwards per jump (about 3 m high from rest)
-    mass: null,  // kg: the car's files, else massDefault
-    massDefault: 1250,  // kg, when mass is not set and the car's files do not say
+    massDefault: 1250,  // kg: used when the mass is not taken from the car's files (massFromFile 0, or the files do not say)
+    massFromFile: 1,  // 1: the mass of the car's game files, when they have one; 0: mass
     slipFloorSpeed: 3.5,  // m/s: the slip is measured against at least this speed, so it stays small near a standstill
     suspensionLengthMax: 0.4,  // m: fully extended (the wheel hangs in the air)
     suspensionLengthAtRest: 0.2,  // m: the spring length the car stands on at rest (its weight compresses the spring to this)
@@ -167,7 +172,6 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     centreOfMassFromFileLoweringFraction: 0,
     centreOfMassFromRearAxle: 0.36,
     centreOfMassHeight: 0.03,  // m above the road
-    massDefault: 2,
     suspensionDamperCoefficient: 20,  // N s/m: used when suspensionDamperRatioToCritical is 0
     downforceKnee: 10.0,  // m/s (50 km/h)
     downforceRate: 0.50,  // N per m/s: about one car weight at 50 km/h
@@ -182,7 +186,8 @@ export const CAR_BUILTIN: Record<CarId, Record<string, CarValue>> = {
     hullRearSphereScale: 1,  // for the spoiler
     hullSphereScale: 1.6,
     kangarooSpeed: 2.4,  // m/s added upwards per jump (about 30 cm high)
-    mass: 2,  // kg
+    massDefault: 2,  // kg
+    massFromFile: 0,  // the mass above, whatever the car's files say
     slipFloorSpeed: 0.5,
     steerAngleCentrifugalLimitFactor: 0.5,
     suspensionLengthMax: 0.05,  // m: the travel

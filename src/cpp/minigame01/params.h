@@ -109,7 +109,6 @@ namespace minigame01 {
     X(downforceHeightCompensation) \
     X(hullWallBounce) \
     X(handbrakeAllWheels) \
-    X(gripMode) \
     X(hullSphereScale) \
     X(hullMiddleSphereScale) \
     X(hullRearSphereScale) \
