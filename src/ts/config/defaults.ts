@@ -30,14 +30,13 @@ export const GLOBAL_DEFAULTS: ConfigGlobalType = {
   brakeForce: 1,  // brake pedal fully down asks for this part of the friction limit
   rollResist: 0.016,  // rolling resistance, as a fraction of the tyre load
   maxSpeed: 500,  // m/s (hard limit)
-  rollCentre: 0,  // tyre forces act this far above the road: less body roll
   // --- steering
   // --- driving details
   controlMinPedal: 0.01,  // a pedal below this counts as released
   lateralStiffness: 0.85,  // how much of the sideways speed a tyre tries to cancel in one step (below the limit)
   // --- rotation damping (1/s): the spin loses this part of its speed every second
-  airAngularDamping: 0.6,  // no wheel touches the road
-  groundAngularDamping: 0.35,  // at least one wheel does
+  angularDampingAir: 0.1,  // no wheel touches the road
+  angularDampingGround: 0.1,  // at least one wheel does
   // --- hull contacts (the chassis against the level)
   floorNormalY: 0.7,  // a contact whose normal points up at least this much counts as floor, else as a wall
   floorFriction: 0.9,  // sliding friction on a floor contact, as a multiple of the normal impulse
@@ -92,7 +91,7 @@ export const GLOBAL_DEFAULTS: ConfigGlobalType = {
  * can be changed for all cars at once ("carDefaults" in the JSON).
  */
 
-export const CAR_DEFAULTS = {
+export const CAR_DEFAULTS_COMMON = {
   cameraScale: 1,  // the chase camera's distance and height are multiplied by this (on top of the size of the car)
 
   downforceHeightCompensation: 1,  // 1: the springs are free just that much longer under the downforce, so the ride height stays; 0: the car sinks
@@ -108,6 +107,7 @@ export const CAR_DEFAULTS = {
   driftSlipDeadZone: 0.12,  // radians of slip angle that is just cornering
   driftSlipRange: 0.45,  // radians more of slip angle for the measure to go from 0 to 1
   driftPointsFactor: 0.5,  // score per (drift measure * m/s * second)
+  rendererCarBrightness: 0.5,  // the car is drawn this many times as bright (multiplies the exposure of the lit car; 1: as the lighting makes it)
   reverseForceFraction: 0.55,  // reverse has this part of the engine force...
   reversePowerFraction: 0.4,  // ...and of the power
   handbrakeBrake: 0.85,  // the handbrake brakes the wheels it acts on with this part of the friction limit
@@ -117,13 +117,15 @@ export const CAR_DEFAULTS = {
   steerAngleCentrifugalLimitFactor: 0.7,  // multiplies the sideways force the tyres can hold before slipping, which limits the steering angle at speed (0: no turning at speed)
   steerAngleMax: 0.45,  // radians of front wheel turn at a standstill (full lock)
   steerResponse: 20,  // 1/s: how quickly the wheels follow the steering input
+  tyreForceLiftOffset: 0,  // m: the tyre's forces act this much higher than the road (on top of tyreForceLiftRadiusFraction): less body roll
+  tyreForceLiftRadiusFraction: 0,  // where the tyre's forces (friction, engine, brakes) act, as a height above the road in tyre radii: 0: the contact point; 1: the middle of the tyre; 2: the top of the tyre
   tyreSurfaceFrictionEffectFactor: 1,  // how much the surface's WHEEL_FRICTION (grass 0.8, slippery rock 0, road 1) counts: 0 none, 1 as the game does
   tyreLoadDistributionSensitivity: 1,  // how the tyres share the weight of the car: 0: equally; 1: in proportion to what their suspensions carry (weight transfer decides what each tyre can hold)
   tyreLoadScalingSensitivity: 1,  // what the weight shared by the tyres adds up to: 0: the weight of the car (downforce and bumps add no grip); 1: what the suspensions really carry
-  wheelRadiusFromFile: 1,  // 1: the wheel radii of the car's files (front and rear differ); 0: measured from the wheel meshes
+  tyreRadiusFromFile: 1,  // 1: the wheel radii of the car's files (front and rear differ); 0: measured from the wheel meshes
 } as const satisfies Partial<ConfigPartCarType>;
 
-type ConfigForCarKeysWithDefaults = keyof ConfigPartCarType & keyof typeof CAR_DEFAULTS;
+type ConfigForCarKeysWithDefaults = keyof ConfigPartCarType & keyof typeof CAR_DEFAULTS_COMMON;
 type ConfigForCarKeysWithoutDefaults = Exclude<keyof ConfigPartCarType, ConfigForCarKeysWithDefaults>;
 
 /**
@@ -137,9 +139,9 @@ export const CAR_DEFAULTS_PER_CAR: Record<CarId, ConfigSpecificCarType> = {
     bumpStopZone: 0.03,
     centreOfMassFromFileEnabled: 0,  // 1: use the centre of mass of the car's files when it has one; 0: the two numbers centreOfMassHeight, centreOfMassFromRearAxle
     centreOfMassFromFileLoweringAbsolute: 0,  // m: the centre of mass of the car's files is moved down by this much (0 = where the file says)
-    centreOfMassFromFileLoweringFraction: 0.3,  // the centre of mass is lowered by this part of the height of the car's hull
-    centreOfMassFromRearAxle: 0.65,  // between the axles when not taken from the files: 0 = on the rear axle, 1 = on the front axle
-    centreOfMassHeight: 0.375,  // m above the road, when not taken from the car's files
+    centreOfMassFromFileLoweringFraction: 0.2,  // the centre of mass is lowered by this part of the height of the car's hull
+    centreOfMassFromRearAxle: 0.60,  // between the axles when not taken from the files: 0 = on the rear axle, 1 = on the front axle
+    centreOfMassHeight: 0.8,  // m above the road, when not taken from the car's files
     downforceKnee: 40,  // m/s: below about this speed the downforce grows like the square of the speed, above it in proportion; smooth in between
     downforceRate: 90,  // N per m/s at high speed (the slope the downforce settles to): presses the car onto the road, along its down axis
     drag: 0.25,  // 0.5 * rho * Cd * A: air drag force is drag * speed^2, against the velocity
@@ -159,7 +161,8 @@ export const CAR_DEFAULTS_PER_CAR: Record<CarId, ConfigSpecificCarType> = {
     slipFloorSpeed: 3.5,  // m/s: the slip is measured against at least this speed, so it stays small near a standstill
     suspensionLengthMax: 0.4,  // m: fully extended (the wheel hangs in the air)
     suspensionLengthAtRest: 0.2,  // m: the spring length the car stands on at rest (its weight compresses the spring to this)
-    suspensionLengthInLoadedModel: 0.35,  // m: the spring length the wheel positions of the car's model files correspond to (equal to suspensionLengthAtRest: the wheels are where the model has them at rest)
+    suspensionLengthInLoadedModel: 0.3,  // m: the spring length the wheel positions of the car's model files correspond to (equal to suspensionLengthAtRest: the wheels are where the model has them at rest)
+    tyreForceLiftRadiusFraction: 0.5,  // the forces act at the middle of the tyre
     tyreLoadDistributionSensitivity: 0,
     tyreLoadScalingSensitivity: 0,
   },

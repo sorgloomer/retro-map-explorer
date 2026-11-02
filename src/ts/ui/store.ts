@@ -78,6 +78,8 @@ export interface UiState {
   debugForces: boolean;  // the wheel force arrows are drawn in the game
   debugPanel: boolean;   // the lateral force panel of the game is shown (not just its title)
   paramsOpen: boolean;   // the minigame parameter editor is open
+  paramsText: string | null;   // the text the editor opens with, when it is not the configuration in use (the saved one that could not be loaded)
+  paramsError: string | null;  // why that text could not be loaded
   tip: { text: string; cat: string; x: number; y: number; swatch: string | null } | null;  // swatch: a CSS colour shown next to the text
 }
 
@@ -115,6 +117,8 @@ export const state: UiState = {
   debugForces: store.get('rme.debugForces.v1') === '1',
   debugPanel: store.get('rme.debugPanel.v1') === '1',
   paramsOpen: false,
+  paramsText: null,
+  paramsError: null,
   tip: null,
 };
 

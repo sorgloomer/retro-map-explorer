@@ -15,11 +15,10 @@ export type EngineSettings = {
     brakeForce: number;
     rollResist: number;
     maxSpeed: number;
-    rollCentre: number;
     controlMinPedal: number;
     lateralStiffness: number;
-    airAngularDamping: number;
-    groundAngularDamping: number;
+    angularDampingAir: number;
+    angularDampingGround: number;
     floorNormalY: number;
     floorFriction: number;
     wallFriction: number;
@@ -80,10 +79,13 @@ export type EngineSettings = {
     steerAngleCentrifugalLimitFactor: number;
     steerAngleMax: number;
     steerResponse: number;
+    tyreForceLiftOffset: number;
+    tyreForceLiftRadiusFraction: number;
     tyreLoadDistributionSensitivity: number;
     tyreLoadScalingSensitivity: number;
     hullProbeRadius: number;
     tyreSurfaceFrictionEffectFactor: number;
+    rendererCarBrightness: number;
     reverseForceFraction: number;
     reversePowerFraction: number;
     handbrakeBrake: number;

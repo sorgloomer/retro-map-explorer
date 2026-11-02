@@ -24,11 +24,10 @@ namespace minigame01 {
     X(brakeForce) \
     X(rollResist) \
     X(maxSpeed) \
-    X(rollCentre) \
     X(controlMinPedal) \
     X(lateralStiffness) \
-    X(airAngularDamping) \
-    X(groundAngularDamping) \
+    X(angularDampingAir) \
+    X(angularDampingGround) \
     X(floorNormalY) \
     X(floorFriction) \
     X(wallFriction) \
@@ -90,10 +89,13 @@ namespace minigame01 {
     X(steerAngleCentrifugalLimitFactor) \
     X(steerAngleMax) \
     X(steerResponse) \
+    X(tyreForceLiftOffset) \
+    X(tyreForceLiftRadiusFraction) \
     X(tyreLoadDistributionSensitivity) \
     X(tyreLoadScalingSensitivity) \
     X(hullProbeRadius) \
     X(tyreSurfaceFrictionEffectFactor) \
+    X(rendererCarBrightness) \
     X(reverseForceFraction) \
     X(reversePowerFraction) \
     X(handbrakeBrake) \

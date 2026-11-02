@@ -173,7 +173,7 @@ body.playing #canvas { cursor: default; }
 .gp-text { flex: 1; resize: none; padding: 8px; font: 12px/1.45 ui-monospace, Consolas, monospace; color: #e6edf6; background: #0d1117;
   border: 1px solid var(--border); border-radius: 6px; white-space: pre; overflow: auto; }
 .gp-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-.gp-msg { margin-right: auto; font-size: 12px; color: #62c46a; }
+.gp-msg { margin-right: auto; min-width: 0; max-height: 8em; overflow: auto; white-space: pre-wrap; font-size: 12px; color: #62c46a; }
 .gp-msg.error { color: #ff8a8a; }
 #gameHud .gp-foot button { position: static; margin: 0; width: auto; padding: 6px 12px; backdrop-filter: none; }
 #gameHud .gp-foot button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

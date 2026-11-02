@@ -224,6 +224,11 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         Vec3f contactPoint;           // world position where the tyre touches the road
         float suspensionForce = 0;    // N
     } contact[4];
+    // Where the forces of a wheel act on the car, from the centre of mass: the suspension's (spring, damper, bottom-out) and the tyre's
+    // (engine, brakes, grip) alike. Above the point where the tyre touches the road, by a distance and by a part of the tyre's radius.
+    auto forceLeverOf = [&](int i, const Vec3f& contactPoint) {
+        return contactPoint - pos + upAxis * (C.tyreForceLiftOffset + 2.0f * C.tyreForceLiftRadiusFraction * wheelRadii[i]);
+    };
     // The upper end of a suspension in the world, from the car's position now.
     auto suspensionMountOf = [&](int i) {
         const Vec3f wheelOffsetFromCentreOfMass = wheelRest[i] - centreOfMass;  // in car space
@@ -270,7 +275,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         // the car is lifted out of the overlap without any speed, so it does not bounce.
         const float bottomedBy = wheelRadii[i] - rayHitDistance;  // m past the stop, > 0 when bottomed out
         if (bottomedBy > 0) {
-            const Vec3f pressLever = c.contactPoint - pos;  // where the road holds the tyre, from the centre of mass
+            const Vec3f pressLever = forceLeverOf(i, c.contactPoint);  // where the stop pushes the car, from the centre of mass
             const float pressSpeed = suspensionExtensionRate(i, c, rayHitDistance);  // < 0: the suspension is shortening: moving into the road
             if (pressSpeed < 0) {
                 const Vec3f turning = cross(pressLever, upAxis);
@@ -288,7 +293,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
     for (int i = 0; i < 4; i++) {
         if (!contact[i].grounded) continue;
         WheelContact& c = contact[i];
-        const Vec3f contactOffset = c.contactPoint - pos;  // from the centre of mass to where the tyre touches the road
+        const Vec3f forceLever = forceLeverOf(i, c.contactPoint);  // where the suspension pushes the car, from the centre of mass
         const float extensionRate = suspensionExtensionRate(i, c, c.suspensionLength + wheelRadii[i]);  // m/s, positive: the suspension extends
         // spring + damper (stiffer at the bump stop); a suspension cannot pull the car down, so never negative
         // The spring is free a little longer when the downforce presses on it, so the ride height stays (a fraction of the compression
@@ -300,14 +305,15 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
                                            damping * -extensionRate);
         wheels[i].load = c.suspensionForce;  // N: how hard the tyre is pressed on the road
         suspensionForceSum += c.suspensionForce;
-        // The road pushes the tyre perpendicular to its surface, at the contact point (not along the suspension: a pitched car on a
+        // The road pushes the tyre perpendicular to its surface, at the point where the wheel's forces act (not along the suspension: a pitched car on a
         // flat road would then be pushed forward by the horizontal part of the suspension force). The spring, the damper and the
         // bottom-out above still work along the car's up axis, the direction the suspension moves in.
         const Vec3f roadNormal = dot(c.groundNormal, upAxis) >= 0 ? c.groundNormal : c.groundNormal * -1.0f;  // towards the car
         const Vec3f suspensionForceVector = roadNormal * c.suspensionForce;
         totalForce += suspensionForceVector;
-        totalTorque += cross(contactOffset, suspensionForceVector);
+        totalTorque += cross(forceLever, suspensionForceVector);
         wheels[i].force = suspensionForceVector;
+        wheels[i].tyreForceOrigin = pos + forceLever;  // the very point the torques are worked out about, for the suspension and the tyre
     }
 
     // --- pass 3: the tyres
@@ -333,7 +339,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             // of mass also turns the car, which lets the point move more easily. That is what the stopping forces below are made for
             // (the force that would cancel the point's speed within one step); a quarter of the mass, as used before, overshoots when the
             // four wheels turn the car together. And only a part of it is asked for (tyreStopFraction), as the other wheels push too.
-            const Vec3f tyreLever = contactOffset + upAxis * P.rollCentre;  // where the tyre force acts, from the centre of mass
+            const Vec3f tyreLever = forceLeverOf(i, c.contactPoint);  // where the tyre force acts, from the centre of mass (the same point as the suspension force)
             auto effectiveMass = [&](const Vec3f& direction) {
                 const Vec3f turning = cross(tyreLever, direction);
                 const float inverseMass = 1.0f / mass + dot(turning, invInertia(turning));
@@ -397,9 +403,8 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             const Vec3f tyreForce = wheelForwardOnRoad * longitudinalForce + wheelSidewaysOnRoad * lateralForce;
             totalForce += tyreForce;
             wheel.contactPoint = c.contactPoint;
-            wheel.force += tyreForce;  // (the suspension force was put there in pass 2)
-            const Vec3f tyreForceOffset = tyreLever;  // acts a little above the road: less body roll
-            totalTorque += cross(tyreForceOffset, tyreForce);
+            wheel.tyreForce = tyreForce;  // (the suspension force was put in wheel.force in pass 2, with the point both act at)
+            totalTorque += cross(tyreLever, tyreForce);  // acts above the road (tyreForceLiftOffset, tyreForceLiftRadiusFraction): less body roll
 
             wheel.lateralForce = lateralForce;
             wheel.longitudinalForce = longitudinalForce;
@@ -416,6 +421,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             wheel.lateralForce = wheel.lateralLimit = 0;
             wheel.longitudinalForce = wheel.frictionLimit = 0;
             wheel.force = Vec3f();
+            wheel.tyreForce = Vec3f();
             wheel.sliding = false;
             if (isFrontWheel) wheel.steer = steerAngle;
         }
@@ -427,9 +433,9 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
 
     // damping of the spin: the car tumbles almost freely in the air
     if (groundedCount == 0) {
-        angVel = angVel * (1.0f - P.airAngularDamping * stepSeconds);
+        angVel = angVel * (1.0f - P.angularDampingAir * stepSeconds);
     } else {
-        angVel = angVel * (1.0f - P.groundAngularDamping * stepSeconds);
+        angVel = angVel * (1.0f - P.angularDampingGround * stepSeconds);
     }
 
     // --- integrate: forces change the velocity, torques the spin, those move and turn the car

@@ -93,13 +93,18 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
             return (int)scene.moverGeoms.size() - 1;
         };
         const uint8_t colours[10][3] = {{255, 220, 60}, {255, 220, 60}, {255, 220, 60}, {255, 220, 60}, {70, 120, 255},
-                                        {255, 70, 70}, {60, 230, 230}, {255, 150, 30}, {190, 190, 190}, {0, 0, 0}};
-        int geomOf[9];
-        for (int i = 0; i < 9; i++) geomOf[i] = i == 0 || i >= 4 ? makeArrow(colours[i][0], colours[i][1], colours[i][2]) : -1;
+                                        {255, 70, 70}, {60, 230, 230}, {255, 150, 30}, {190, 190, 190}, {90, 235, 110}};
+        int geomOf[10];
+        for (int i = 0; i < 10; i++) geomOf[i] = i == 0 || i >= 4 ? makeArrow(colours[i][0], colours[i][1], colours[i][2]) : -1;
         for (int i = 0; i < 8; i++) {
             carMover[5 + i] = addMover(geomOf[i < 4 ? 0 : i]);
             scene.movers[carMover[5 + i]].lit = false;
             scene.movers[carMover[5 + i]].alwaysOnTop = true;
+        }
+        for (int i = 0; i < 4; i++) {  // green: the tyres' forces, where the physics applies them
+            carMover[13 + i] = addMover(geomOf[9]);
+            scene.movers[carMover[13 + i]].lit = false;
+            scene.movers[carMover[13 + i]].alwaysOnTop = true;
         }
         hullArrowGeom = geomOf[8];  // grey: one arrow per force the level puts on the hull, as many as there are hull spheres
         hullArrowMovers.clear();
@@ -409,6 +414,7 @@ void MiniGame::updateCamera(float dt, bool snap) {
 }
 
 void MiniGame::syncMovers(Scene& scene) {
+    scene.carBrightness = carSettings().rendererCarBrightness;
     Mat4f M = vehicle.modelMatrix();
     // the car is in metres, the level in its own units: scale the matrices (axes and translation) up
     auto toLevel = [&](Mat4f m) {
@@ -448,17 +454,20 @@ void MiniGame::syncMovers(Scene& scene) {
     }
     // the force arrows: from the contact point along the force, one car weight per tuning length (params), thin
     const CarSettings& C = carSettings();
-    // the four wheels at their contact points, then the forces on the whole car at its centre of mass
+    // the four suspensions at the points where the physics applies their forces, then the forces on the whole car at its centre of mass,
+    // then the four tyres at the same points as their suspensions
     struct Arrow { Vec3f from, force; bool on; };
     const Vec3f centre = vehicle.position();
-    std::vector<Arrow> arrows(8);
-    std::vector<int> arrowMover(8);
+    std::vector<Arrow> arrows(12);
+    std::vector<int> arrowMover(12);
     for (int i = 0; i < 8; i++) arrowMover[i] = carMover[5 + i];
-    for (int i = 0; i < 4; i++) arrows[i] = {vehicle.wheel(i).contactPoint, vehicle.wheel(i).force, vehicle.wheel(i).grounded};
+    for (int i = 0; i < 4; i++) arrowMover[8 + i] = carMover[13 + i];
+    for (int i = 0; i < 4; i++) arrows[i] = {vehicle.wheel(i).tyreForceOrigin, vehicle.wheel(i).force, vehicle.wheel(i).grounded};
     arrows[4] = {centre, vehicle.gravityForce(), true};
     arrows[5] = {centre, vehicle.dragForce(), true};
     arrows[6] = {centre, vehicle.downforce(), true};
     arrows[7] = {centre, vehicle.thrustForce(), true};
+    for (int i = 0; i < 4; i++) arrows[8 + i] = {vehicle.wheel(i).tyreForceOrigin, vehicle.wheel(i).tyreForce, vehicle.wheel(i).grounded};
     // one grey arrow per force of the level on the hull, from the point of the sphere that touched it
     for (int i = 0; i < vehicle.probeCount() && i < (int)hullArrowMovers.size(); i++) {
         arrows.push_back({vehicle.probeContactPoint(i), vehicle.probeForce(i), vehicle.probeTouched(i)});

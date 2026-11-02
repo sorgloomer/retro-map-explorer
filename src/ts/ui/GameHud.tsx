@@ -183,10 +183,14 @@ function LateralForces() {
           <label class="gd-forces">
             <input type="checkbox" checked={forces} onChange={(e) => setDebugForces(e.currentTarget.checked)} /> force vectors
             <Info>
-              Arrows from each tyre (suspension and tyre together) and from the centre of mass. A car's weight is 4 m long.
-              <span class="gd-key" style={{ color: '#ffdc3c' }}>■ wheels</span> <span class="gd-key" style={{ color: '#4678ff' }}>■ gravity</span>{' '}
-              <span class="gd-key" style={{ color: '#ff4646' }}>■ air drag</span> <span class="gd-key" style={{ color: '#3ce6e6' }}>■ downforce</span>{' '}
-              <span class="gd-key" style={{ color: '#ff961e' }}>■ afterburner, side thrust</span> <span class="gd-key" style={{ color: '#bebebe' }}>■ hull contact</span>
+              Arrows from each wheel (the suspension's force and the tyre's force, both from the point where the physics applies them) and from the centre of mass. A car's weight is 4 m long.
+              <span class="gd-key" style={{ color: '#ffdc3c' }}>■ suspensions</span>{' '}
+              <span class="gd-key" style={{ color: '#5aeb6e' }}>■ tyres</span>{' '}
+              <span class="gd-key" style={{ color: '#4678ff' }}>■ gravity</span>{' '}
+              <span class="gd-key" style={{ color: '#ff4646' }}>■ air drag</span>{' '}
+              <span class="gd-key" style={{ color: '#3ce6e6' }}>■ downforce</span>{' '}
+              <span class="gd-key" style={{ color: '#ff961e' }}>■ afterburner, side thrust</span>{' '}
+              <span class="gd-key" style={{ color: '#bebebe' }}>■ hull contact</span>
             </Info>
           </label>
           <label class="gd-forces">
@@ -206,11 +210,15 @@ function LateralForces() {
  * built-in values in the text (not saved until Save). A text that is not valid is refused with the line number. */
 function ParamsEditor() {
   const open = useUi((s) => s.paramsOpen);
+  const startText = useUi((s) => s.paramsText);    // set when the saved parameters could not be loaded when the game started...
+  const startError = useUi((s) => s.paramsError);  // ...and why
   const [text, setText] = useState('');
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (open) { setText(getGameParamsJsonText()); setMessage(null); }
+    if (!open) return;
+    setText(startText ?? getGameParamsJsonText());
+    setMessage(startError !== null ? { text: 'The saved parameters could not be loaded, the defaults are in use: ' + startError, error: true } : null);
   }, [open]);
   if (!open) return null;
   const save = () => {

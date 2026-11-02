@@ -29,14 +29,13 @@ export const ConfigGlobalSchema = z.strictObject({
   brakeForce: z.number(),  // brake pedal fully down asks for this part of the friction limit
   rollResist: z.number(),  // rolling resistance, as a fraction of the tyre load
   maxSpeed: z.number(),  // m/s (hard limit)
-  rollCentre: z.number(),  // tyre forces act this far above the road: less body roll
   // --- steering
   // --- driving details
   controlMinPedal: z.number(),  // a pedal below this counts as released
   lateralStiffness: z.number(),  // how much of the sideways speed a tyre tries to cancel in one step (below the limit)
   // --- rotation damping (1/s): the spin loses this part of its speed every second
-  airAngularDamping: z.number(),  // no wheel touches the road
-  groundAngularDamping: z.number(),  // at least one wheel does
+  angularDampingAir: z.number(),  // no wheel touches the road
+  angularDampingGround: z.number(),  // at least one wheel does
   // --- hull contacts (the chassis against the level)
   floorNormalY: z.number(),  // a contact whose normal points up at least this much counts as floor, else as a wall
   floorFriction: z.number(),  // sliding friction on a floor contact, as a multiple of the normal impulse
@@ -122,6 +121,7 @@ export const ConfigPartCarSchema = z.strictObject({
   kangarooSpeed: z.number(),
   massDefault: z.number(),
   massFromFile: z.number(),
+  rendererCarBrightness: z.number(),
   reverseForceFraction: z.number(),
   reversePowerFraction: z.number(),
   slipFloorSpeed: z.number(),
@@ -138,10 +138,12 @@ export const ConfigPartCarSchema = z.strictObject({
   suspensionSpringK: z.number(),
   suspensionSpringKFromFileEnabled: z.number(),
   suspensionSpringKFromFileRatio: z.number(),
+  tyreForceLiftOffset: z.number(),
+  tyreForceLiftRadiusFraction: z.number(),
   tyreLoadDistributionSensitivity: z.number(),
   tyreLoadScalingSensitivity: z.number(),
   tyreSurfaceFrictionEffectFactor: z.number(),
-  wheelRadiusFromFile: z.number(),
+  tyreRadiusFromFile: z.number(),
 });
 
 type ConfigPartialShape<S extends z.core.$ZodShape> = {

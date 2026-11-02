@@ -747,7 +747,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             const WorldLocs& L = lit ? litLocs : worldLocs;
             if (lit) {
                 glUseProgram(progLit);
-                glUniform1f(L.exposure, curExposure);
+                glUniform1f(L.exposure, curExposure * scene->carBrightness);
                 glUniform1f(L.fade, curFade);
             }
             glUniformMatrix4fv(L.model, 1, GL_FALSE, model.m);

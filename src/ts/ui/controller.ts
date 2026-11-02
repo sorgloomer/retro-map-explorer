@@ -9,7 +9,7 @@ import {
   MODE_KEY, STORE_KEY, absorbSecretFromHash, folds, prefs, readLocalView, saveFolds, setLayerPrefs, setOptPref,
   store, storedSecret,
 } from '../storage.ts';
-import { CAR_IDS, config } from '../config/config.ts';
+import { CAR_IDS, ConfigError, config } from '../config/config.ts';
 import type { CarId, GameFileCar } from '../config/config.ts';
 import type { Catalog, RmeApi, RmeModule, SavedView, SceneInfo, ViewSnapshot } from '../types.ts';
 import { OPTS } from './options.ts';
@@ -419,8 +419,17 @@ export async function shareView(): Promise<void> {
 export async function startGame(mode: number): Promise<void> {
   busy(true, 'Loading the car…');
   await paint();
-  const saved = store.get(PARAMS_KEY);  // the parameters the player edited earlier (a bad text is just not used)
-  if (saved) applyGameParamsJsonText(saved);
+  const saved = store.get(PARAMS_KEY);  // the parameters the player edited earlier
+  if (saved) {
+    try {
+      applyGameParamsJsonText(saved);
+    } catch (e) {
+      if (!(e instanceof ConfigError)) throw e;
+      // The saved text cannot be used: the game starts with the defaults, and the editor opens (it is shown when the game runs) with that
+      // text and the reason, so that the player can fix the text or apply the defaults.
+      update({ paramsOpen: true, paramsText: saved, paramsError: e.message });
+    }
+  }
   let ok = 0;
   try {
     ok = await call('rme_game_start', 'number', ['number', 'number'], [mode, carToDrive()], true);
@@ -431,9 +440,12 @@ export async function startGame(mode: number): Promise<void> {
     setStatus('Could not start the game: ' + errorMessage(e), true);
   }
   busy(false);
-  if (!ok) setStatus('Could not start the game: ' + call('rme_last_error', 'string', [], []), true);
+  if (!ok) {
+    update({ paramsOpen: false, paramsText: null, paramsError: null });  // (the game does not run: nothing shows the editor)
+    setStatus('Could not start the game: ' + call('rme_last_error', 'string', [], []), true);
+  }
 }
-const PARAMS_KEY = 'rme.params.v26';  // the edited minigame configuration (JSON text; v1 was the flat format of the first version)
+const PARAMS_KEY = 'rme.params.v29';  // the edited minigame configuration (JSON text; v1 was the flat format of the first version)
 
 // The car that was configured last (the engine asks for it when a game starts) with what its game files said: the engine's numbers
 // are computed again from that when the player changes the configuration.
@@ -477,7 +489,7 @@ export function saveGameParamsJsonText(text: string): void {
   store.set(PARAMS_KEY, text);
 }
 export function setParamsEditor(open: boolean): void {
-  update({ paramsOpen: open });
+  update(open ? { paramsOpen: true } : { paramsOpen: false, paramsText: null, paramsError: null });
 }
 
 /** The car to drive: the chosen one, or the other when only that one's files are there. */

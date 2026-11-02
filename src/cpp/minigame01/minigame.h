@@ -83,8 +83,9 @@ private:
     CarModel car;
     Vehicle vehicle;
     Input input;
-    // body, FL, FR, RL, RR, then the debug arrows: the four wheels' forces, then gravity, air drag, downforce, afterburner, hull contact
-    int carMover[13] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    // body, FL, FR, RL, RR, then the debug arrows: the four suspensions' forces, then gravity, air drag, downforce, afterburner, then the
+    // four tyres' forces (the hull contact arrows are in hullArrowMovers)
+    int carMover[17] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     bool showForces_ = false, showSpheres_ = false;
     std::vector<int> hullArrowMovers;  // a grey arrow for each hull sphere that is pushed by the level (debug)
     int hullArrowGeom = -1;

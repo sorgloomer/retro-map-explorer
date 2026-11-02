@@ -34,7 +34,9 @@ public:
         float longitudinalForce = 0;  // N, along the wheel on the road (positive: forward); for the debug display
         float frictionLimit = 0;      // N, the most the tyre could push in any direction (the friction circle)
         Vec3f contactPoint;      // world position where the tyre touches the road (model metres), when grounded
-        Vec3f force;             // N, world: everything the wheel pushes the car with (suspension and tyre); for the debug display
+        Vec3f force;             // N, world: what the suspension pushes the car with, at tyreForceOrigin; for the debug display
+        Vec3f tyreForceOrigin;   // world position where the forces of the wheel act, the suspension's and the tyre's: above contactPoint, see tyreForceLiftOffset
+        Vec3f tyreForce;         // N, world: what the tyre (engine, brakes, grip) pushes the car with, at tyreForceOrigin; for the debug display
         bool sliding = false;    // the sideways force wanted was over the limit: the tyre slides
         bool grounded = false;
     };

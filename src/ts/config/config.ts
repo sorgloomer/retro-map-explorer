@@ -6,7 +6,7 @@
 //     single object of final values. Where a file value can be overridden, the decision is made here and only here.
 import {
   CAR_DEFAULTS_PER_CAR,
-  CAR_DEFAULTS,
+  CAR_DEFAULTS_COMMON,
   GLOBAL_DEFAULTS,
 } from './defaults.ts';
 import {sum} from "../utils/math.ts";
@@ -68,7 +68,7 @@ export const mergeShallowConfigObjects = (...args: (Record<string, unknown> | nu
 
 const getDefaultConfig = (): ConfigType => ({
   ...GLOBAL_DEFAULTS,
-  carDefaults: CAR_DEFAULTS,
+  carDefaults: CAR_DEFAULTS_COMMON,
   cars: CAR_DEFAULTS_PER_CAR,
 });
 
@@ -79,7 +79,7 @@ export class ConfigManager {
   /** The configuration as JSON text; the defaults when `defaults` is set. Every object is sorted alphabetically. */
   getText(defaults = false): string {
     const root = defaults
-      ? { ...GLOBAL_DEFAULTS, carDefaults: { ...CAR_DEFAULTS }, cars: CAR_DEFAULTS_PER_CAR }
+      ? { ...GLOBAL_DEFAULTS, carDefaults: { ...CAR_DEFAULTS_COMMON }, cars: CAR_DEFAULTS_PER_CAR }
       : this.configObject;
     return prettyJson(root);
   }
@@ -109,7 +109,7 @@ export class ConfigManager {
     const carConfigSelected = g.cars[id] as Partial<ConfigPartCarType>;
     const carConfigFallback = g.carDefaults as Partial<ConfigPartCarType>;
     const carConfigSelectedDefault = CAR_DEFAULTS_PER_CAR[id] as Partial<ConfigPartCarType>;
-    const carConfigFallbackDefault = CAR_DEFAULTS as Partial<ConfigPartCarType>;
+    const carConfigFallbackDefault = CAR_DEFAULTS_COMMON as Partial<ConfigPartCarType>;
     // the value of a key of the car: its own, else the common one, else the built-in one (null: nothing set: the caller looks further)
     const value = <K extends keyof ConfigPartCarType>(key: K): ConfigPartCarType[K] | undefined => (
       getOwn(carConfigSelected, key)
@@ -153,7 +153,7 @@ export class ConfigManager {
 
     // wheel radii: the car's files when they say (and the configuration allows it), else the meshes, else the fallback
     const radii = [0, 1, 2, 3].map((i) =>
-      need('wheelRadiusFromFile') > 0.5 && file.wheelRadiusFile[i] > 0
+      need('tyreRadiusFromFile') > 0.5 && file.wheelRadiusFile[i] > 0
         ? file.wheelRadiusFile[i]
         : file.wheelRadiusMesh[i] > 0 ? file.wheelRadiusMesh[i] : file.wheelRadiusFallback);
     const wheelR = sum(radii) / 4;
@@ -200,9 +200,12 @@ export class ConfigManager {
       steerAngleCentrifugalLimitFactor: need('steerAngleCentrifugalLimitFactor'),
       steerAngleMax: need('steerAngleMax'),
       steerResponse: need('steerResponse'),
+      tyreForceLiftOffset: need('tyreForceLiftOffset'),
+      tyreForceLiftRadiusFraction: need('tyreForceLiftRadiusFraction'),
       tyreLoadDistributionSensitivity: need('tyreLoadDistributionSensitivity'),
       tyreLoadScalingSensitivity: need('tyreLoadScalingSensitivity'),
       hullProbeRadius: need('hullProbeRadius'),
+      rendererCarBrightness: need('rendererCarBrightness'),
       reverseForceFraction: need('reverseForceFraction'),
       reversePowerFraction: need('reversePowerFraction'),
       handbrakeBrake: need('handbrakeBrake'),
@@ -256,11 +259,10 @@ export class ConfigManager {
       brakeForce: g.brakeForce,
       rollResist: g.rollResist,
       maxSpeed: g.maxSpeed,
-      rollCentre: g.rollCentre,
       controlMinPedal: g.controlMinPedal,
       lateralStiffness: g.lateralStiffness,
-      airAngularDamping: g.airAngularDamping,
-      groundAngularDamping: g.groundAngularDamping,
+      angularDampingAir: g.angularDampingAir,
+      angularDampingGround: g.angularDampingGround,
       floorNormalY: g.floorNormalY,
       floorFriction: g.floorFriction,
       wallFriction: g.wallFriction,
