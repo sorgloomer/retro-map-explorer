@@ -434,7 +434,7 @@ export async function startGame(mode: number): Promise<void> {
   try {
     ok = await call('rme_game_start', 'number', ['number', 'number'], [mode, carToDrive()], true);
     call('rme_game_show_forces', null, ['number'], [state.debugForces ? 1 : 0]);
-    call('rme_game_show_spheres', null, ['number'], [state.debugSpheres ? 1 : 0]);
+    call('rme_game_show_colliders', null, ['number'], [state.debugColliders ? 1 : 0]);
   } catch (e) {
     console.error(e);
     setStatus('Could not start the game: ' + errorMessage(e), true);
@@ -445,7 +445,7 @@ export async function startGame(mode: number): Promise<void> {
     setStatus('Could not start the game: ' + call('rme_last_error', 'string', [], []), true);
   }
 }
-const PARAMS_KEY = 'rme.params.v29';  // the edited minigame configuration (JSON text; v1 was the flat format of the first version)
+const PARAMS_KEY = 'rme.params.v33';  // the edited minigame configuration (JSON text; v1 was the flat format of the first version)
 
 // The car that was configured last (the engine asks for it when a game starts) with what its game files said: the engine's numbers
 // are computed again from that when the player changes the configuration.
@@ -506,11 +506,11 @@ export function chooseCar(car: number): void {
     void loadSelected();
   }
 }
-/** Draws or hides the hull's collision spheres (remembered); the ones touching the level are red. */
-export function setDebugSpheres(on: boolean): void {
-  update({ debugSpheres: on });
-  store.set('rme.debugSpheres.v1', on ? '1' : '0');
-  call('rme_game_show_spheres', null, ['number'], [on ? 1 : 0]);
+/** Draws or hides the collision shapes of the car (remembered); the ones touching the level are red. */
+export function setDebugColliders(on: boolean): void {
+  update({ debugColliders: on });
+  store.set('rme.debugColliders.v1', on ? '1' : '0');
+  call('rme_game_show_colliders', null, ['number'], [on ? 1 : 0]);
 }
 /** Draws or hides the arrows of the forces the wheels push the car with (remembered). */
 export function setDebugForces(on: boolean): void {

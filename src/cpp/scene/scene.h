@@ -198,7 +198,7 @@ struct Scene : BatchSet {
     std::vector<BatchSet> moverGeoms;
     std::vector<Mover> movers;
     Lighting lighting;  // for the meshes marked `lit`; defaults when the game has no light data
-    float carBrightness = 1.0f;  // multiplies the exposure of the lit meshes (the minigame's car); set by the minigame from the car's settings
+    float carBrightness = 1.0f;  // multiplies the colour of the sun for the lit meshes (the minigame's car); set by the minigame from the car's settings
     // The game's own collision meshes, read on first use (ensureCollision): the physics and the collision overlay need them,
     // the plain viewer does not. `collision` is the overlay (translucent, coloured by surface type).
     std::vector<CollisionMesh> collisionMeshes;

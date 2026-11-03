@@ -278,10 +278,31 @@ bool CarmaGame::loadCarModel(Scene& scene, minigame01::CarModel& out) {
                 const Vec3f v(-p[0], p[1], p[2]);  // mirrored like the rest of the car
                 lo = vmin(lo, v);
                 hi = vmax(hi, v);
+                out.hullPoints.push_back(v);
             }
             out.hullBoxMin = lo;
             out.hullBoxMax = hi;
             out.hasHullBox = true;
+            // The faces follow the points: a count, then for each face its plane normal (3 floats), the number of its corners and their
+            // indices. (Then come the edges: a count and 20 bytes for each; they are not read.) Every face is a fan of triangles.
+            size_t at = 64 + (size_t)points * 12;
+            uint32_t faceCount = 0;
+            if (at + 4 <= dcol.size()) {
+                memcpy(&faceCount, &dcol[at], 4);
+                at += 4;
+            }
+            for (uint32_t face = 0; face < faceCount && at + 16 <= dcol.size(); face++) {
+                uint32_t corners = 0;
+                memcpy(&corners, &dcol[at + 12], 4);
+                if (corners < 3 || corners > 64 || at + 16 + (size_t)corners * 4 > dcol.size()) break;
+                std::vector<uint32_t> index(corners);
+                memcpy(index.data(), &dcol[at + 16], (size_t)corners * 4);
+                bool valid = true;
+                for (uint32_t c : index) valid = valid && c < points;
+                if (valid)
+                    for (uint32_t k = 2; k < corners; k++) out.hullTriangleIndices.insert(out.hullTriangleIndices.end(), {index[0], index[k - 1], index[k]});
+                at += 16 + (size_t)corners * 4;
+            }
         }
     }
     return true;

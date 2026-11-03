@@ -1,0 +1,38 @@
+# Builds the whole application (the WebAssembly module with Emscripten and Box3D, the page with TypeScript and the bundler) in a container:
+#
+#   docker compose run --rm build                 the optimised build, into ./dist
+#   docker compose run --rm build --debug         the debug build
+#   docker compose run --rm build --legacy-physics    with the engine's own car physics instead of Box3D
+#
+# The first run fetches Emscripten (a few hundred MB), Box3D and the Node packages into the named volumes; the next ones find them there
+# and compile only what changed. `docker compose down -v` forgets the volumes (and so all that).
+# On a Linux host, `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose run --rm build` makes ./dist belong to you, not to root.
+name: retro-map-explorer
+
+services:
+  build:
+    build:
+      context: scripts/build
+    environment:
+      HOST_UID: ${HOST_UID:-}
+      HOST_GID: ${HOST_GID:-}
+    volumes:
+      - type: bind            # the sources: read-only
+        source: .
+        target: /src
+        read_only: true
+      - type: bind            # the output: read-write
+        source: ./dist
+        target: /dist
+        bind:
+          create_host_path: true
+      - type: volume          # Emscripten, Box3D and the compiled objects: on the engine's own file system, not on the host's
+        source: rme-tools
+        target: /opt/rme-tools
+      - type: volume          # the Node packages
+        source: rme-node-modules
+        target: /work/node_modules
+
+volumes:
+  rme-tools:
+  rme-node-modules:

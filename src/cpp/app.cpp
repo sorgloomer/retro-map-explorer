@@ -325,7 +325,7 @@ void stopGame() {
 
 // Sends the minigame's heads-up display values to the page.
 void pushGameHud() {
-    const minigame01::Vehicle& v = app.mg.vehicleState();
+    const minigame01::CarPhysics& v = app.mg.vehicleState();
     const minigame01::Hud& h = app.mg.hud();
     EM_ASM({
         if (window.RME && window.RME.onGameHud) window.RME.onGameHud($0, $1, $2, $3, $4, $5, $6, UTF8ToString($7), $8);
@@ -335,7 +335,7 @@ void pushGameHud() {
     int len = 0;
     len += snprintf(json + len, sizeof json - len, R"({"toy":%d,"wheels":[)", v.isToy() ? 1 : 0);
     for (int i = 0; i < 4; i++) {
-        const minigame01::Vehicle::Wheel& w = app.mg.vehicleState().wheel(i);
+        const minigame01::CarPhysics::Wheel& w = app.mg.vehicleState().wheel(i);
         len += snprintf(
             json + len,
             sizeof json - len,
@@ -639,8 +639,8 @@ EMSCRIPTEN_KEEPALIVE const char* rme_config_apply(const char* json) {
     return error.c_str();
 }
 
-// Debug: draws the hull's collision spheres (red where they touch the level).
-EMSCRIPTEN_KEEPALIVE void rme_game_show_spheres(int on) { app.mg.showSpheres(on != 0); }
+// Debug: draws the collision shapes of the car (red where they touch the level).
+EMSCRIPTEN_KEEPALIVE void rme_game_show_colliders(int on) { app.mg.showColliders(on != 0); }
 
 // Debug: draws an arrow per wheel for the force it pushes the car with.
 EMSCRIPTEN_KEEPALIVE void rme_game_show_forces(int on) { app.mg.showForces(on != 0); }

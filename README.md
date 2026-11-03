@@ -71,6 +71,14 @@ node scripts/build.mjs          # -> dist/   (--debug: unoptimised wasm, unminif
 node scripts/serve.mjs 8080     # http://localhost:8080
 ```
 
+The car runs on the [Box3D](https://github.com/erincatto/box3d) physics engine (MIT): the build fetches it into `.tools/lib/box3d`, at the commit named in
+`scripts/build.mjs`, and compiles it with the rest (single thread, SIMD on). `node scripts/build.mjs --legacy-physics` builds with the engine's own raycast vehicle
+(`src/cpp/minigame01/vehicle.cpp`) instead, without Box3D.
+
+Everything can also be built in a container, without installing anything: `docker compose run --rm build` (add `--debug`, `--legacy-physics`, ... after it).
+The sources are mounted read-only, `./dist` read-write; Emscripten, Box3D, the Node packages and the compiled objects are kept in named volumes, so only the first
+build fetches and compiles everything. See `docker-compose.yml` and `scripts/build/`.
+
 The page is written in TypeScript with Preact components (`src/ts/`, the UI in `src/ts/ui/`). The build type-checks it with `tsc` (`npm run typecheck` does only that), then
 rolldown compiles, bundles and minifies it into the single script `dist/app.js`. `dist/` only receives `app.js`, `index.html`,
 `style.css` and the wasm files: the TypeScript sources are never published.

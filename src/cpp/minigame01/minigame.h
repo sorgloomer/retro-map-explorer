@@ -9,8 +9,19 @@
 #include "minigame01/collision_world.h"
 #include "minigame01/input.h"
 #include "minigame01/vehicle.h"
+#ifndef RME_PHYSICS_LEGACY
+#include "minigame01/box3d_level.h"
+#include "minigame01/box3d_vehicle.h"
+#endif
 
 namespace minigame01 {
+
+// The car's physics: Box3D (box3d_vehicle.h), or the engine's own raycast vehicle when the build says --legacy-physics (vehicle.h).
+#ifdef RME_PHYSICS_LEGACY
+using CarPhysics = Vehicle;
+#else
+using CarPhysics = Box3dVehicle;
+#endif
 
 struct Hud {
     float speedKmh = 0;
@@ -47,9 +58,9 @@ public:
     // The player's own view of the chase camera: turns it around the car (radians), and makes it closer or farther (factor)
     void orbitCamera(float dYaw, float dPitch);
     void zoomCamera(float factor);
-    void showSpheres(bool on) { showSpheres_ = on; }  // debug: the hull's collision spheres, red where they touch the level
+    void showColliders(bool on) { showColliders_ = on; }  // debug: the collision shapes of the car, red where they touch the level
     void showForces(bool on) { showForces_ = on; }  // debug: an arrow per wheel for the force it pushes the car with
-    const Vehicle& vehicleState() const { return vehicle; }  // for the debug display
+    const CarPhysics& vehicleState() const { return vehicle; }  // for the debug display
     // The parameters changed: the car's mass, centre of mass, inertia and probes follow (the car stays where it is).
     void applyTuning() { if (isPrepared) vehicle.applyTuning(); }
     const Input& inputRef() const { return input; }
@@ -79,18 +90,24 @@ private:
     float scale = 1.0f;
     std::vector<int> iconCats;        // categories whose markers are replaced by gem movers while playing
     std::vector<char> iconCatShown;   // their visibility in the viewer
-    CollisionWorld world;
+    CollisionWorld world;   // for the camera and the places to put the car
+#ifndef RME_PHYSICS_LEGACY
+    Box3dLevel physicsLevel;   // the level in the physics engine
+#endif
     CarModel car;
-    Vehicle vehicle;
+    CarPhysics vehicle;
     Input input;
     // body, FL, FR, RL, RR, then the debug arrows: the four suspensions' forces, then gravity, air drag, downforce, afterburner, then the
     // four tyres' forces (the hull contact arrows are in hullArrowMovers)
     int carMover[17] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
-    bool showForces_ = false, showSpheres_ = false;
+    bool showForces_ = false, showColliders_ = false;
     std::vector<int> hullArrowMovers;  // a grey arrow for each hull sphere that is pushed by the level (debug)
     int hullArrowGeom = -1;
-    std::vector<int> sphereMovers;  // one per hull collision sphere (debug)
+    std::vector<int> sphereMovers;  // one per collision sphere of the car (debug)
     int sphereGeoms[2] = {-1, -1};  // green: free, red: touching
+    int hullDotMover = -1;          // little white dots on the vertices of that hull (debug)
+    int hullMover = -1;            // the convex hull of the chassis, when the physics has one (debug)
+    int hullGeoms[2] = {-1, -1};    // the same colours
     std::vector<Pickup> pickups;
     Hud hud_;
     Vec3f startPos;

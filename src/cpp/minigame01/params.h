@@ -89,8 +89,6 @@ namespace minigame01 {
     X(steerAngleCentrifugalLimitFactor) \
     X(steerAngleMax) \
     X(steerResponse) \
-    X(tyreForceLiftOffset) \
-    X(tyreForceLiftRadiusFraction) \
     X(tyreLoadDistributionSensitivity) \
     X(tyreLoadScalingSensitivity) \
     X(hullProbeRadius) \
@@ -111,6 +109,7 @@ namespace minigame01 {
     X(downforceHeightCompensation) \
     X(hullWallBounce) \
     X(handbrakeAllWheels) \
+    X(tractionControl) \
     X(hullSphereScale) \
     X(hullMiddleSphereScale) \
     X(hullRearSphereScale) \

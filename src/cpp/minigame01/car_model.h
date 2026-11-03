@@ -31,6 +31,11 @@ struct CarModel {
     // The chassis hull of the car's files (the physics shape, without the roof spike and the like), as a box in car space.
     bool hasHullBox = false;
     Vec3f hullBoxMin, hullBoxMax;
+    // The points the physics shape of the chassis is made from (car space): the hull points of the car's files, else the points of its body.
+    // The physics makes its convex hull of them.
+    std::vector<Vec3f> hullPoints;
+    // The faces of the hull when the car's files give them (the .dcol of the Eagle: a convex polyhedron), as triangles over hullPoints.
+    std::vector<uint32_t> hullTriangleIndices;
 };
 
 }  // namespace minigame01

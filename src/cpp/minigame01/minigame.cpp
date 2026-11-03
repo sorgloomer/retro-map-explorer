@@ -45,6 +45,13 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
         error = "this level has no solid ground to drive on";
         return false;
     }
+#ifndef RME_PHYSICS_LEGACY
+    if (!physicsLevel.build(scene, scale, !scene.cullBackfaces)) {
+        error = "the physics engine could not use this level";
+        return false;
+    }
+    vehicle.attach(physicsLevel);
+#endif
     vehicle.init(car);
     int g0 = (int)scene.moverGeoms.size();
     scene.moverGeoms.push_back(car.body);
@@ -108,7 +115,7 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
         }
         hullArrowGeom = geomOf[8];  // grey: one arrow per force the level puts on the hull, as many as there are hull spheres
         hullArrowMovers.clear();
-        for (int i = 0; i < vehicle.probeCount(); i++) {
+        for (int i = 0; i < vehicle.hullArrowCount(); i++) {
             hullArrowMovers.push_back(addMover(hullArrowGeom));
             scene.movers[hullArrowMovers.back()].lit = false;
             scene.movers[hullArrowMovers.back()].alwaysOnTop = true;
@@ -117,17 +124,28 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
     // the debug spheres of the hull: a unit sphere, green or red (translucent), one mover per collision sphere
     {
         auto makeSphere = [&](uint8_t r, uint8_t g, uint8_t b) {
-            std::vector<Vec3f> pts = {Vec3f(1, 0, 0), Vec3f(-1, 0, 0), Vec3f(0, 1, 0), Vec3f(0, -1, 0), Vec3f(0, 0, 1), Vec3f(0, 0, -1)};
-            const uint32_t tris[24] = {2, 0, 4, 2, 4, 1, 2, 1, 5, 2, 5, 0, 3, 4, 0, 3, 1, 4, 3, 5, 1, 3, 0, 5};
-            std::vector<uint32_t> fine;
-            for (size_t t = 0; t < 24; t += 3) {  // one round of subdivision, the new points pushed out to the sphere
-                uint32_t v[3] = {tris[t], tris[t + 1], tris[t + 2]}, m[3];
-                for (int k = 0; k < 3; k++) {
-                    pts.push_back(normalize(pts[v[k]] + pts[v[(k + 1) % 3]]));
-                    m[k] = (uint32_t)pts.size() - 1;
+            // a sphere of 8 segments around and 5 bands from pole to pole (64 triangles), poles on the y axis
+            constexpr int kSegments = 8, kBands = 5;
+            std::vector<Vec3f> pts;
+            pts.push_back(Vec3f(0, 1, 0));
+            for (int band = 1; band < kBands; band++) {
+                const float polar = 3.14159265f * (float)band / (float)kBands;
+                for (int segment = 0; segment < kSegments; segment++) {
+                    const float around = 6.28318531f * (float)segment / (float)kSegments;
+                    pts.push_back(Vec3f(std::sin(polar) * std::cos(around), std::cos(polar), std::sin(polar) * std::sin(around)));
                 }
-                const uint32_t quad[12] = {v[0], m[0], m[2], m[0], v[1], m[1], m[2], m[1], v[2], m[0], m[1], m[2]};
-                fine.insert(fine.end(), quad, quad + 12);
+            }
+            pts.push_back(Vec3f(0, -1, 0));
+            const uint32_t south = (uint32_t)pts.size() - 1;
+            auto ring = [&](int band, int segment) { return (uint32_t)(1 + (band - 1) * kSegments + (segment % kSegments)); };
+            std::vector<uint32_t> fine;
+            for (int segment = 0; segment < kSegments; segment++) {
+                fine.insert(fine.end(), {0u, ring(1, segment), ring(1, segment + 1)});                                 // the cap at the top
+                for (int band = 1; band < kBands - 1; band++) {                                                        // the bands between
+                    fine.insert(fine.end(), {ring(band, segment), ring(band + 1, segment), ring(band + 1, segment + 1)});
+                    fine.insert(fine.end(), {ring(band, segment), ring(band + 1, segment + 1), ring(band, segment + 1)});
+                }
+                fine.insert(fine.end(), {ring(kBands - 1, segment), south, ring(kBands - 1, segment + 1)});            // the cap at the bottom
             }
             std::vector<SceneVertex> verts;
             for (const Vec3f& p : pts) {
@@ -138,6 +156,7 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
                 verts.push_back(v);
             }
             BatchSet sphere;
+            sphere.lit = true;  // shaded by the level's light; the renderer derives the smooth normals
             sphere.appendIndexed(-1, BLEND_ALPHA, verts.data(), verts.size(), fine.data(), fine.size(), true);
             scene.moverGeoms.push_back(sphere);
             return (int)scene.moverGeoms.size() - 1;
@@ -147,8 +166,89 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
         sphereMovers.clear();
         for (int i = 0; i < vehicle.probeCount(); i++) {
             sphereMovers.push_back(addMover(sphereGeoms[0]));
-            scene.movers[sphereMovers.back()].lit = false;
+            scene.movers[sphereMovers.back()].lit = true;
             scene.movers[sphereMovers.back()].alwaysOnTop = true;
+        }
+    }
+    // the convex hull of the chassis as the physics engine made it: its triangles, green or red (translucent), one mover, in car space
+    {
+        std::vector<Vec3f> hullVertices;
+        std::vector<uint32_t> hullIndices;
+        if (vehicle.colliderMesh(hullVertices, hullIndices)) {
+            auto makeHull = [&](uint8_t r, uint8_t g, uint8_t b) {
+                // The renderer shades it with the level's light. Flat, so that the facets can be told apart: every triangle has its
+                // own vertices and the normal of its face, pointing away from the hull's middle whichever way the triangle is wound.
+                Vec3f middle(0, 0, 0);
+                for (const Vec3f& p : hullVertices) middle = middle + p;
+                if (!hullVertices.empty()) middle = middle * (1.0f / (float)hullVertices.size());
+                std::vector<SceneVertex> verts;
+                std::vector<Vec3f> normals;
+                std::vector<uint32_t> indices;
+                for (size_t k = 0; k + 2 < hullIndices.size(); k += 3) {
+                    const Vec3f& p0 = hullVertices[hullIndices[k]];
+                    const Vec3f& p1 = hullVertices[hullIndices[k + 1]];
+                    const Vec3f& p2 = hullVertices[hullIndices[k + 2]];
+                    Vec3f normal = cross(p1 - p0, p2 - p0);
+                    const float length = std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+                    if (length > 1e-12f) normal = normal * (1.0f / length);
+                    const Vec3f centre = (p0 + p1 + p2) * (1.0f / 3.0f);
+                    const Vec3f outward = centre - middle;
+                    if (normal.x * outward.x + normal.y * outward.y + normal.z * outward.z < 0) normal = normal * -1.0f;
+                    for (const Vec3f* p : {&p0, &p1, &p2}) {
+                        SceneVertex v;
+                        v.x = p->x; v.y = p->y; v.z = p->z;
+                        v.r = r; v.g = g; v.b = b; v.a = 150;
+                        v.u = v.v = 0;
+                        indices.push_back((uint32_t)verts.size());
+                        verts.push_back(v);
+                        normals.push_back(normal);
+                    }
+                }
+                BatchSet hull;
+                hull.lit = true;
+                hull.appendIndexed(-1, BLEND_ALPHA, verts.data(), verts.size(), indices.data(), indices.size(), true, normals.data());
+                scene.moverGeoms.push_back(hull);
+                return (int)scene.moverGeoms.size() - 1;
+            };
+            hullGeoms[0] = makeHull(60, 220, 90);
+            hullGeoms[1] = makeHull(255, 60, 60);
+            hullMover = addMover(hullGeoms[0]);
+            scene.movers[hullMover].lit = true;
+            scene.movers[hullMover].alwaysOnTop = true;
+            // the vertices of the hull: a little white octahedron on each, sized by the hull (one mover, unlit, opaque)
+            {
+                Vec3f low = hullVertices[0], high = hullVertices[0];
+                for (const Vec3f& p : hullVertices) {
+                    low = Vec3f(std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z));
+                    high = Vec3f(std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z));
+                }
+                const float dot = 0.008f * std::max(high.x - low.x, std::max(high.y - low.y, high.z - low.z));
+                std::vector<bool> used(hullVertices.size(), false);
+                for (uint32_t index : hullIndices) used[index] = true;   // (the points that no face uses are not part of the shape)
+                std::vector<SceneVertex> dotVerts;
+                std::vector<uint32_t> dotIndices;
+                const uint32_t octahedron[24] = {0, 2, 4, 2, 1, 4, 1, 3, 4, 3, 0, 4, 2, 0, 5, 1, 2, 5, 3, 1, 5, 0, 3, 5};
+                for (size_t k = 0; k < hullVertices.size(); k++) {
+                    if (!used[k]) continue;
+                    const Vec3f& p = hullVertices[k];
+                    const Vec3f corners[6] = {Vec3f(dot, 0, 0), Vec3f(-dot, 0, 0), Vec3f(0, dot, 0), Vec3f(0, -dot, 0), Vec3f(0, 0, dot), Vec3f(0, 0, -dot)};
+                    const uint32_t base = (uint32_t)dotVerts.size();
+                    for (const Vec3f& c : corners) {
+                        SceneVertex v;
+                        v.x = p.x + c.x; v.y = p.y + c.y; v.z = p.z + c.z;
+                        v.r = v.g = v.b = v.a = 255;
+                        v.u = v.v = 0;
+                        dotVerts.push_back(v);
+                    }
+                    for (uint32_t corner : octahedron) dotIndices.push_back(base + corner);
+                }
+                BatchSet dots;
+                dots.appendIndexed(-1, BLEND_OPAQUE, dotVerts.data(), dotVerts.size(), dotIndices.data(), dotIndices.size(), true);
+                scene.moverGeoms.push_back(dots);
+                hullDotMover = addMover((int)scene.moverGeoms.size() - 1);
+                scene.movers[hullDotMover].lit = false;
+                scene.movers[hullDotMover].alwaysOnTop = true;
+            }
         }
     }
     worldFloor = scene.bmin.y / scale - tuning().worldFloorBelow;
@@ -158,12 +258,18 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
 }
 
 void MiniGame::forget() {
+#ifndef RME_PHYSICS_LEGACY
+    vehicle.detach();
+    physicsLevel.destroy();
+#endif
     isPrepared = false;
     running = false;
     pickups.clear();
     iconCats.clear();
     for (int& m : carMover) m = -1;
     sphereMovers.clear();
+    hullMover = -1;
+    hullDotMover = -1;
     hullArrowMovers.clear();
     input.releaseAll();
 }
@@ -283,6 +389,8 @@ void MiniGame::stop(Scene& scene) {
         if (m >= 0 && m < (int)scene.movers.size()) scene.movers[m].hidden = true;
     for (int m : sphereMovers)
         if (m >= 0 && m < (int)scene.movers.size()) scene.movers[m].hidden = true;
+    if (hullMover >= 0 && hullMover < (int)scene.movers.size()) scene.movers[hullMover].hidden = true;
+    if (hullDotMover >= 0 && hullDotMover < (int)scene.movers.size()) scene.movers[hullDotMover].hidden = true;
     for (int m : hullArrowMovers)
         if (m >= 0 && m < (int)scene.movers.size()) scene.movers[m].hidden = true;
     for (Pickup& p : pickups)
@@ -424,7 +532,7 @@ void MiniGame::syncMovers(Scene& scene) {
     scene.movers[carMover[0]].model = toLevel(M);
     scene.movers[carMover[0]].hidden = false;
     for (int i = 0; i < 4; i++) {
-        const Vehicle::Wheel& w = vehicle.wheel(i);
+        const CarPhysics::Wheel& w = vehicle.wheel(i);
         float cs = std::cos(w.steer), sn = std::sin(w.steer);
         float spin = std::fmod(w.spin, kTwoPi);
         float cp = std::cos(spin), sp = std::sin(spin);
@@ -439,10 +547,10 @@ void MiniGame::syncMovers(Scene& scene) {
         m.model = toLevel(Mat4f::mul(M, L));
         m.hidden = false;
     }
-    // the hull's collision spheres: at their centres in the car, red when they touched the level during the last frame
+    // the collision shapes of the car: the spheres at their centres in the car, the hull; red when they touched the level during the last frame
     for (size_t i = 0; i < sphereMovers.size(); i++) {
         Mover& m = scene.movers[sphereMovers[i]];
-        m.hidden = !showSpheres_ || (int)i >= vehicle.probeCount();
+        m.hidden = !showColliders_ || (int)i >= vehicle.probeCount();
         if (m.hidden) continue;
         const float r = vehicle.probeRadius((int)i);
         const Vec3f c = vehicle.probeCentre((int)i);
@@ -452,25 +560,38 @@ void MiniGame::syncMovers(Scene& scene) {
         m.geom = sphereGeoms[vehicle.probeTouched((int)i) ? 1 : 0];
         m.model = toLevel(Mat4f::mul(M, S));
     }
+    if (hullMover >= 0) {
+        Mover& m = scene.movers[hullMover];
+        m.hidden = !showColliders_;
+        if (!m.hidden) {
+            m.geom = hullGeoms[vehicle.hullTouched() ? 1 : 0];
+            m.model = toLevel(M);
+        }
+    }
+    if (hullDotMover >= 0) {
+        Mover& m = scene.movers[hullDotMover];
+        m.hidden = !showColliders_;
+        if (!m.hidden) m.model = toLevel(M);
+    }
     // the force arrows: from the contact point along the force, one car weight per tuning length (params), thin
     const CarSettings& C = carSettings();
     // the four suspensions at the points where the physics applies their forces, then the forces on the whole car at its centre of mass,
     // then the four tyres at the same points as their suspensions
     struct Arrow { Vec3f from, force; bool on; };
-    const Vec3f centre = vehicle.position();
+    const Vec3f centre = vehicle.forceCentre();
     std::vector<Arrow> arrows(12);
     std::vector<int> arrowMover(12);
     for (int i = 0; i < 8; i++) arrowMover[i] = carMover[5 + i];
     for (int i = 0; i < 4; i++) arrowMover[8 + i] = carMover[13 + i];
-    for (int i = 0; i < 4; i++) arrows[i] = {vehicle.wheel(i).tyreForceOrigin, vehicle.wheel(i).force, vehicle.wheel(i).grounded};
+    for (int i = 0; i < 4; i++) arrows[i] = {vehicle.wheel(i).suspensionForceOrigin, vehicle.wheel(i).force, vehicle.wheel(i).grounded};
     arrows[4] = {centre, vehicle.gravityForce(), true};
     arrows[5] = {centre, vehicle.dragForce(), true};
     arrows[6] = {centre, vehicle.downforce(), true};
     arrows[7] = {centre, vehicle.thrustForce(), true};
     for (int i = 0; i < 4; i++) arrows[8 + i] = {vehicle.wheel(i).tyreForceOrigin, vehicle.wheel(i).tyreForce, vehicle.wheel(i).grounded};
     // one grey arrow per force of the level on the hull, from the point of the sphere that touched it
-    for (int i = 0; i < vehicle.probeCount() && i < (int)hullArrowMovers.size(); i++) {
-        arrows.push_back({vehicle.probeContactPoint(i), vehicle.probeForce(i), vehicle.probeTouched(i)});
+    for (int i = 0; i < vehicle.hullArrowCount() && i < (int)hullArrowMovers.size(); i++) {
+        arrows.push_back({vehicle.hullArrowPoint(i), vehicle.hullArrowForce(i), vehicle.hullArrowOn(i)});
         arrowMover.push_back(hullArrowMovers[i]);
     }
     for (size_t i = 0; i < arrows.size(); i++) {
@@ -510,7 +631,11 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     vi.afterburner = c.afterburner;
     vi.sideThrust = c.sideThrust;
     vi.jump = c.kangaroo;
+#ifdef RME_PHYSICS_LEGACY
     vehicle.step(dt, vi, world);
+#else
+    vehicle.step(dt, vi);
+#endif
 
     // last safe spot (wheels down, upright), for falling out of the world
     safeTimer += dt;

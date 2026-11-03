@@ -225,10 +225,8 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         float suspensionForce = 0;    // N
     } contact[4];
     // Where the forces of a wheel act on the car, from the centre of mass: the suspension's (spring, damper, bottom-out) and the tyre's
-    // (engine, brakes, grip) alike. Above the point where the tyre touches the road, by a distance and by a part of the tyre's radius.
-    auto forceLeverOf = [&](int i, const Vec3f& contactPoint) {
-        return contactPoint - pos + upAxis * (C.tyreForceLiftOffset + 2.0f * C.tyreForceLiftRadiusFraction * wheelRadii[i]);
-    };
+    // (engine, brakes, grip) alike: at the point where the tyre touches the road.
+    auto forceLeverOf = [&](int, const Vec3f& contactPoint) { return contactPoint - pos; };
     // The upper end of a suspension in the world, from the car's position now.
     auto suspensionMountOf = [&](int i) {
         const Vec3f wheelOffsetFromCentreOfMass = wheelRest[i] - centreOfMass;  // in car space
@@ -313,7 +311,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
         totalForce += suspensionForceVector;
         totalTorque += cross(forceLever, suspensionForceVector);
         wheels[i].force = suspensionForceVector;
-        wheels[i].tyreForceOrigin = pos + forceLever;  // the very point the torques are worked out about, for the suspension and the tyre
+        wheels[i].tyreForceOrigin = wheels[i].suspensionForceOrigin = pos + forceLever;  // the very point the torques are worked out about, for the suspension and the tyre
     }
 
     // --- pass 3: the tyres
@@ -404,7 +402,7 @@ void Vehicle::substep(float stepSeconds, const VehicleInput& in, const Collision
             totalForce += tyreForce;
             wheel.contactPoint = c.contactPoint;
             wheel.tyreForce = tyreForce;  // (the suspension force was put in wheel.force in pass 2, with the point both act at)
-            totalTorque += cross(tyreLever, tyreForce);  // acts above the road (tyreForceLiftOffset, tyreForceLiftRadiusFraction): less body roll
+            totalTorque += cross(tyreLever, tyreForce);  // acts at the contact point
 
             wheel.lateralForce = lateralForce;
             wheel.longitudinalForce = longitudinalForce;

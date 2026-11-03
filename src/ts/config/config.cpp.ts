@@ -79,8 +79,6 @@ export type EngineSettings = {
     steerAngleCentrifugalLimitFactor: number;
     steerAngleMax: number;
     steerResponse: number;
-    tyreForceLiftOffset: number;
-    tyreForceLiftRadiusFraction: number;
     tyreLoadDistributionSensitivity: number;
     tyreLoadScalingSensitivity: number;
     hullProbeRadius: number;
@@ -101,6 +99,7 @@ export type EngineSettings = {
     downforceHeightCompensation: number;
     hullWallBounce: number;
     handbrakeAllWheels: number;
+    tractionControl: number;
     hullSphereScale: number;
     hullMiddleSphereScale: number;
     hullRearSphereScale: number;

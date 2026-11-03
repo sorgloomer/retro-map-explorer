@@ -35,7 +35,8 @@ public:
         float frictionLimit = 0;      // N, the most the tyre could push in any direction (the friction circle)
         Vec3f contactPoint;      // world position where the tyre touches the road (model metres), when grounded
         Vec3f force;             // N, world: what the suspension pushes the car with, at tyreForceOrigin; for the debug display
-        Vec3f tyreForceOrigin;   // world position where the forces of the wheel act, the suspension's and the tyre's: above contactPoint, see tyreForceLiftOffset
+        Vec3f tyreForceOrigin;   // world position where the forces of the wheel act, the suspension's and the tyre's: at contactPoint
+        Vec3f suspensionForceOrigin;  // where the suspension's force acts (the same point for this vehicle, the centre of the wheel for the Box3D one)
         Vec3f tyreForce;         // N, world: what the tyre (engine, brakes, grip) pushes the car with, at tyreForceOrigin; for the debug display
         bool sliding = false;    // the sideways force wanted was over the limit: the tyre slides
         bool grounded = false;
@@ -55,6 +56,7 @@ public:
     Vec3f up() const { return axes[1]; }
     Vec3f forward() const { return axes[2]; }
     Vec3f position() const { return pos; }   // centre of mass
+    Vec3f forceCentre() const { return pos; }   // (the wheels of this vehicle have no mass)
     Vec3f centreOfMassInCarSpace() const { return centreOfMass; }  // relative to the car's origin, for the debug marker
     Vec3f velocity() const { return vel; }
     float speed() const { return length(vel); }  // in the model's metres per second
@@ -72,6 +74,13 @@ public:
     Vec3f probeContactPoint(int i) const { return i < (int)probeContact_.size() ? probeContact_[i] : Vec3f(); }
     // The hull's collision spheres (debug display): centres in car space, radius, and which touched the level during the last frame
     int probeCount() const { return (int)probes.size(); }
+    // the arrows of the forces of the level on the hull: one per hull sphere
+    int hullArrowCount() const { return probeCount(); }
+    Vec3f hullArrowPoint(int i) const { return probeContactPoint(i); }
+    Vec3f hullArrowForce(int i) const { return probeForce(i); }
+    bool hullArrowOn(int i) const { return probeTouched(i); }
+    bool colliderMesh(std::vector<Vec3f>&, std::vector<uint32_t>&) const { return false; }  // (its hull is the spheres above)
+    bool hullTouched() const { return false; }
     Vec3f probeCentre(int i) const { return probes[i]; }
     float probeRadius(int i) const { return i < (int)probeRadii.size() ? probeRadii[i] : probeR; }
     bool probeTouched(int i) const { return i < (int)probeTouched_.size() && probeTouched_[i]; }

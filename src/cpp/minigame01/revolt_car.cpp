@@ -169,6 +169,7 @@ bool loadRevoltCar(Scene& scene, CarModel& out) {
         for (const SceneVertex& v : b.verts) {
             lo = vmin(lo, Vec3f(v.x, v.y, v.z));
             hi = vmax(hi, Vec3f(v.x, v.y, v.z));
+            out.hullPoints.push_back(Vec3f(v.x, v.y, v.z));
         }
     out.boundsMin = lo;
     out.boundsMax = hi;

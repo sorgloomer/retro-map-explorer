@@ -74,7 +74,7 @@ export interface UiState {
     lights: { inRange: number; max: number; colours: string[] };  // the point lights that reach the car, and how many the shader can use
   };
   car: number;           // the car to drive: 0 = the Carmageddon Eagle, 1 = the Re-Volt RC Bandit (a rookie RC car)
-  debugSpheres: boolean;  // the hull's collision spheres are drawn in the game
+  debugColliders: boolean;  // the collision shapes of the car are drawn in the game
   debugForces: boolean;  // the wheel force arrows are drawn in the game
   debugPanel: boolean;   // the lateral force panel of the game is shown (not just its title)
   paramsOpen: boolean;   // the minigame parameter editor is open
@@ -113,7 +113,7 @@ export const state: UiState = {
     lights: { inRange: 0, max: 0, colours: [] },
   },
   car: store.get('rme.car.v1') === '1' ? 1 : 0,
-  debugSpheres: store.get('rme.debugSpheres.v1') === '1',
+  debugColliders: store.get('rme.debugColliders.v1') === '1',
   debugForces: store.get('rme.debugForces.v1') === '1',
   debugPanel: store.get('rme.debugPanel.v1') === '1',
   paramsOpen: false,

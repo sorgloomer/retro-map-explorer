@@ -734,7 +734,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 glUniform3f(glGetUniformLocation(progLit, "uCam"), vp.eye.x, vp.eye.y, vp.eye.z);
                 glUniform3f(glGetUniformLocation(progLit, "uAmbient"), li.ambient.x, li.ambient.y, li.ambient.z);
                 glUniform3f(glGetUniformLocation(progLit, "uSunDir"), li.sunDir.x, li.sunDir.y, li.sunDir.z);
-                glUniform3f(glGetUniformLocation(progLit, "uSunColor"), li.sunColor.x, li.sunColor.y, li.sunColor.z);
+                glUniform3f(glGetUniformLocation(progLit, "uSunColor"), li.sunColor.x * scene->carBrightness, li.sunColor.y * scene->carBrightness, li.sunColor.z * scene->carBrightness);
                 glUniform1i(glGetUniformLocation(progLit, "uNumLights"), n);
                 glUniform3fv(glGetUniformLocation(progLit, "uLightPos"), kMaxLights, pos);
                 glUniform3fv(glGetUniformLocation(progLit, "uLightCol"), kMaxLights, col);
@@ -747,7 +747,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             const WorldLocs& L = lit ? litLocs : worldLocs;
             if (lit) {
                 glUseProgram(progLit);
-                glUniform1f(L.exposure, curExposure * scene->carBrightness);
+                glUniform1f(L.exposure, curExposure);
                 glUniform1f(L.fade, curFade);
             }
             glUniformMatrix4fv(L.model, 1, GL_FALSE, model.m);
@@ -862,11 +862,11 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         // debug markers: over everything, whatever is in front of them (no depth test, so they show through the car's hull)
         glDisable(GL_DEPTH_TEST);
         for (size_t i = 0; i < scene->movers.size(); i++)
-            if (shown[i] && scene->movers[i].alwaysOnTop) drawSet(geomGpu[scene->movers[i].geom], 0, models[i], false);
+            if (shown[i] && scene->movers[i].alwaysOnTop) drawSet(geomGpu[scene->movers[i].geom], 0, models[i], scene->movers[i].lit);
         glEnable(GL_BLEND);  // then the translucent ones (the collision spheres)
         glDepthMask(GL_FALSE);
         for (size_t i = 0; i < scene->movers.size(); i++)
-            if (shown[i] && scene->movers[i].alwaysOnTop) drawSet(geomGpu[scene->movers[i].geom], 1, models[i], false);
+            if (shown[i] && scene->movers[i].alwaysOnTop) drawSet(geomGpu[scene->movers[i].geom], 1, models[i], scene->movers[i].lit);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);

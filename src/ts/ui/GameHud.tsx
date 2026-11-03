@@ -1,7 +1,7 @@
 // The overlay of the driving minigame: back button, score, time, speed and the end-of-round message.
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { TOUCH, getGameParamsJsonText, gameStick, gameTouch, saveGameParamsJsonText, setDebugForces, setDebugSpheres, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
+import { TOUCH, getGameParamsJsonText, gameStick, gameTouch, saveGameParamsJsonText, setDebugColliders, setDebugForces, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
 import { useUi } from './store.ts';
 import {mapSum} from "../utils/math.ts";
 import {ConfigError} from "../config/config.ts";
@@ -98,7 +98,7 @@ function LateralForces() {
   const { label: torqueUnitLabel, divisor: torqueUnitDiv } = toy ? TORQUE_UNITS.small : TORQUE_UNITS.big;
   const torqueDigits = 1;
   const spinDigits = toy ? 2 : 1;
-  const spheres = useUi((s) => s.debugSpheres);
+  const colliders = useUi((s) => s.debugColliders);
   const playing = useUi((s) => s.gameMode);
   const totalLatForce = mapSum(wheels, w => w.lat);
   // L shows and hides the panel (the game does not use that key)
@@ -194,9 +194,10 @@ function LateralForces() {
             </Info>
           </label>
           <label class="gd-forces">
-            <input type="checkbox" checked={spheres} onChange={(e) => setDebugSpheres(e.currentTarget.checked)} /> collision spheres
+            <input type="checkbox" checked={colliders} onChange={(e) => setDebugColliders(e.currentTarget.checked)} /> draw car colliders
             <Info>
-              The spheres the chassis collides with: <span class="gd-key" style={{ color: '#3cdc5a' }}>■ green</span> free,{' '}
+              The shapes the car collides with, the hull and the tyres (or the hull's spheres, with the engine's own physics):{' '}
+              <span class="gd-key" style={{ color: '#3cdc5a' }}>■ green</span> free,{' '}
               <span class="gd-key" style={{ color: '#ff3c3c' }}>■ red</span> touching the level (during the last frame).
             </Info>
           </label>
