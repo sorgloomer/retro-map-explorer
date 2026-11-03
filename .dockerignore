@@ -1,0 +1,11 @@
+# what the build does not read (the context is what the client sends to the builder)
+.git
+.idea
+.tools
+.unpacked
+assets
+cmake-build-debug
+dist
+node_modules
+notes
+__pycache__

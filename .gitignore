@@ -3,5 +3,6 @@
 dist/
 assets/
 node_modules/
+cmake-build-debug/
 .unpacked/
 __pycache__/

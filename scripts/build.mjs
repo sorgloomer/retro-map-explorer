@@ -6,13 +6,13 @@
 //   node scripts/build.mjs --debug       assertions, no optimisation (wasm), unminified bundle with a source map
 //   node scripts/build.mjs --web-only    skip the WebAssembly build (fast iteration on the page)
 //   node scripts/build.mjs --legacy-physics  the car runs on the engine's own physics (the default is Box3D, see minigame01/box3d_vehicle.h)
-// RME_TOOLS_DIR (default .tools) and RME_DIST_DIR (default dist) move the tools and the output (docker-compose.yml uses them).
+// RME_TOOLS_DIR (default .tools) and RME_DIST_DIR (default dist) move the tools and the output (the container of docker-compose.yml uses them). It installs what it needs the first time: the Node packages, Emscripten, Box3D.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rolldown } from 'rolldown';
+import crypto from 'node:crypto';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // where the tools are (Emscripten, Box3D, the compiled objects) and where the output goes: the project's .tools and dist, unless the
@@ -44,17 +44,51 @@ function ensureBox3d() {
   git('checkout', '-q', 'FETCH_HEAD');
 }
 
+// Emscripten: cloned into <tools>/emsdk and installed there when em++ is not there yet (or when a stamp left by an earlier install says it
+// was another version; an emsdk that was put there by hand, with no stamp, is left as it is).
+const EMSDK_VERSION = '6.0.13';   // the Emscripten the project was made with
+function ensureEmscripten(emxx) {
+  const stamp = path.join(emsdk, '.rme-version');
+  const stamped = fs.existsSync(stamp) ? fs.readFileSync(stamp, 'utf8').trim() : null;
+  if (fs.existsSync(emxx) && (stamped === null || stamped === EMSDK_VERSION)) return;
+  console.log('installing Emscripten', EMSDK_VERSION, 'into', emsdk);
+  const run = (cmd, args, cwd) => {
+    const r = spawnSync(cmd, args, { cwd, stdio: 'inherit', shell: win });
+    if (r.status !== 0) { console.error(cmd + ' failed'); process.exit(r.status || 1); }
+  };
+  if (!fs.existsSync(path.join(emsdk, '.git'))) {
+    fs.mkdirSync(emsdk, { recursive: true });
+    run('git', ['clone', '--depth', '1', 'https://github.com/emscripten-core/emsdk', emsdk], toolsDir);
+  }
+  const emsdkCommand = win ? 'emsdk.bat' : './emsdk';
+  run(emsdkCommand, ['install', EMSDK_VERSION], emsdk);
+  run(emsdkCommand, ['activate', EMSDK_VERSION], emsdk);
+  fs.writeFileSync(stamp, EMSDK_VERSION + '\n');
+}
+
+// The Node packages (the bundler is one of them), installed when node_modules is not there or was installed from another lock file. The
+// sources may be read-only (the container): npm ci only writes node_modules, which may be a volume of its own.
+function ensureNodePackages() {
+  const lockFile = path.join(root, 'package-lock.json');
+  const hasLock = fs.existsSync(lockFile);
+  const hash = crypto.createHash('sha256').update(fs.readFileSync(hasLock ? lockFile : path.join(root, 'package.json'))).digest('hex');
+  const stamp = path.join(root, 'node_modules', '.rme-lock-hash');
+  if (fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8').trim() === hash) return;
+  if (!fs.existsSync(path.join(root, 'package.json'))) {
+    console.error('no package.json in ' + root + ': is the project mounted? In it:', fs.readdirSync(root).join(' '));
+    process.exit(1);
+  }
+  console.log('installing the Node packages');
+  const r = spawnSync('npm', hasLock ? ['ci', '--no-audit', '--no-fund'] : ['install', '--no-package-lock', '--no-audit', '--no-fund'], { cwd: root, stdio: 'inherit', shell: win });
+  if (r.status !== 0) { console.error('npm failed'); process.exit(r.status || 1); }
+  fs.writeFileSync(stamp, hash + '\n');
+}
+
 async function buildWasm() {
   const emscriptenDir = path.join(emsdk, 'upstream', 'emscripten');
   const emxx = path.join(emscriptenDir, win ? 'em++.exe' : 'em++');
   const emcc = path.join(emscriptenDir, win ? 'emcc.exe' : 'emcc');
-  if (!fs.existsSync(emxx)) {
-    console.error('Emscripten not found. Install it into .tools/emsdk:\n' +
-      '  git clone --depth 1 https://github.com/emscripten-core/emsdk .tools/emsdk\n' +
-      '  .tools/emsdk/emsdk install latest && .tools/emsdk/emsdk activate latest\n' +
-      'or build in a container that does it: docker compose run --rm build');
-    process.exit(1);
-  }
+  ensureEmscripten(emxx);
 
   const env = { ...process.env, EMSDK: emsdk, EMSDK_QUIET: '1', EM_CONFIG: path.join(emsdk, '.emscripten') };
   env.PATH = [emscriptenDir, path.join(emsdk, 'upstream', 'bin'), process.env.PATH].join(path.delimiter);
@@ -143,6 +177,7 @@ async function buildWeb() {
     console.error('TypeScript errors: not bundling');
     process.exit(tsc.status || 1);
   }
+  const { rolldown } = await import('rolldown');
   const bundle = await rolldown({ input: path.join(root, 'src', 'ts', 'main.tsx'), platform: 'browser', logLevel: 'warn' });
   await bundle.write({ file: path.join(dist, 'app.js'), format: 'iife', minify: !debug, sourcemap: debug });
   await bundle.close();
@@ -151,6 +186,8 @@ async function buildWeb() {
   for (const stale of ['ui.js', 'remotezip.js', ...(debug ? [] : ['app.js.map'])]) fs.rmSync(path.join(dist, stale), { force: true });
 }
 
+ensureNodePackages();
 if (!webOnly) await buildWasm();
 await buildWeb();
 console.log('Built ->', dist);
+
