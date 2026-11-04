@@ -1,27 +1,17 @@
 // Minigame 01 - "Powerup Rush": drive the Eagle through the level you were viewing and collect its powerups before
 // the clock runs out. Time bonuses add seconds, upgrades and credits are worth the most, and sliding earns drift points.
-// The level's own triangles are the road (CollisionWorld), the car is a raycast vehicle (Vehicle).
+// The level's own triangles are the road (Box3dLevel, in the Box3D physics engine; its ray casts also serve the camera and the places to put the car), the car is a Box3D body with ray cast wheels (Box3dVehicle).
 #pragma once
 #include <vector>
 #include "../scene/camera.h"
 #include "../scene/scene.h"
 #include "minigame01/car_model.h"
-#include "minigame01/collision_world.h"
 #include "minigame01/input.h"
-#include "minigame01/vehicle.h"
-#ifndef RME_PHYSICS_LEGACY
 #include "minigame01/box3d_level.h"
+#include "minigame01/box3d_props.h"
 #include "minigame01/box3d_vehicle.h"
-#endif
 
 namespace minigame01 {
-
-// The car's physics: Box3D (box3d_vehicle.h), or the engine's own raycast vehicle when the build says --legacy-physics (vehicle.h).
-#ifdef RME_PHYSICS_LEGACY
-using CarPhysics = Vehicle;
-#else
-using CarPhysics = Box3dVehicle;
-#endif
 
 struct Hud {
     float speedKmh = 0;
@@ -37,7 +27,7 @@ struct Hud {
 class MiniGame {
 public:
     bool prepared() const { return isPrepared; }
-    // Adds the car to the scene (once per scene) and builds the collision world from the level.
+    // Adds the car to the scene (once per scene) and builds the physics world from the level.
     // False with a reason in `error` when the level cannot be played (no collision meshes, or some could not be read).
     bool prepare(Scene& scene, const CarModel& car, std::string& error);
     // Forgets everything about the current scene (call when a new level replaced it).
@@ -52,15 +42,15 @@ public:
     Camera camera() const { return cam; }
     // World units per metre of the level (the physics runs in metres; Re-Volt's units are much smaller than a metre).
     float unitsPerMetre() const { return scale; }
-    // The size of the car against a car of 4.3 m (see Vehicle::sizeScale): the near plane of the camera follows it.
+    // The size of the car against a car of 4.3 m (see Box3dVehicle::sizeScale): the near plane of the camera follows it.
     float sizeScale() const { return vehicle.sizeScale(); }
     const Hud& hud() const { return hud_; }
     // The player's own view of the chase camera: turns it around the car (radians), and makes it closer or farther (factor)
     void orbitCamera(float dYaw, float dPitch);
     void zoomCamera(float factor);
-    void showColliders(bool on) { showColliders_ = on; }  // debug: the collision shapes of the car, red where they touch the level
+    void showColliders(bool on) { showColliders_ = on; collidersChanged_ = true; }  // debug: the collision shapes of the car, red where they touch the level, and of the movable objects
     void showForces(bool on) { showForces_ = on; }  // debug: an arrow per wheel for the force it pushes the car with
-    const CarPhysics& vehicleState() const { return vehicle; }  // for the debug display
+    const Box3dVehicle& vehicleState() const { return vehicle; }  // for the debug display
     // The parameters changed: the car's mass, centre of mass, inertia and probes follow (the car stays where it is).
     void applyTuning() { if (isPrepared) vehicle.applyTuning(); }
     const Input& inputRef() const { return input; }
@@ -90,21 +80,19 @@ private:
     float scale = 1.0f;
     std::vector<int> iconCats;        // categories whose markers are replaced by gem movers while playing
     std::vector<char> iconCatShown;   // their visibility in the viewer
-    CollisionWorld world;   // for the camera and the places to put the car
-#ifndef RME_PHYSICS_LEGACY
     Box3dLevel physicsLevel;   // the level in the physics engine
-#endif
+    Box3dProps props_;         // the movable objects of the level in it
     CarModel car;
-    CarPhysics vehicle;
+    Box3dVehicle vehicle;
     Input input;
     // body, FL, FR, RL, RR, then the debug arrows: the four suspensions' forces, then gravity, air drag, downforce, afterburner, then the
     // four tyres' forces (the hull contact arrows are in hullArrowMovers)
     int carMover[17] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
-    bool showForces_ = false, showColliders_ = false;
+    bool showForces_ = false, showColliders_ = false, collidersChanged_ = false;   // (the last: the objects have to be told in the next frame)
     std::vector<int> hullArrowMovers;  // a grey arrow for each hull sphere that is pushed by the level (debug)
     int hullArrowGeom = -1;
     std::vector<int> sphereMovers;  // one per collision sphere of the car (debug)
-    int sphereGeoms[2] = {-1, -1};  // green: free, red: touching
+    int wheelGeoms[4][2] = {{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}};   // the same for the tyres that the Box3D car casts down (per wheel: its own size)
     int hullDotMover = -1;          // little white dots on the vertices of that hull (debug)
     int hullMover = -1;            // the convex hull of the chassis, when the physics has one (debug)
     int hullGeoms[2] = {-1, -1};    // the same colours

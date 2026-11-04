@@ -163,6 +163,7 @@ struct Mover {
     bool staticModel = false;  // geometry is already in world space (merged props): draw with an identity transform
     bool external = false;     // `model` is set from outside every frame (the minigame's car); `cat` may be -1
     bool lit = false;          // shaded with the scene's Lighting
+    bool lightProbe = false;   // the point lights of the level are chosen for where this lit mover is (else for the first lit one)
     bool alwaysOnTop = false;  // drawn last without a depth test: visible through everything (debug markers)
     bool hidden = false;       // not drawn (collected pickups, the parked car)
     Mat4f model = Mat4f::identity();
@@ -197,6 +198,25 @@ struct Scene : BatchSet {
     float pickupBottomY = 0.0f;  // height of its bottom above its origin: the point icons grow from when they are scaled up
     std::vector<BatchSet> moverGeoms;
     std::vector<Mover> movers;
+    // The movable objects of a level (Carmageddon's MOVABLE_OBJECTS): each one has a mover of its own (the model matrix of an external mover is
+    // set from outside: the physics moves it while the minigame runs), and the kind of the object says what it is made of. A body space has its
+    // origin at the centre of mass of the object (the .dcol's, else the middle of the box of its mesh), and is what the geometry and the collider
+    // points of the kind are in.
+    struct PropType {
+        std::string name;                 // the hierarchy file it comes from
+        int geom = -1;                    // index into moverGeoms (body space)
+        float mass = 0;                   // kg; 0: the game's files do not say (the physics works it out from the volume)
+        std::vector<Vec3f> collider;      // points of the convex hull that is its collider, body space (level units)
+        bool colliderFromFile = false;    // from the game's collision file (.dcol); else the points of its visible mesh
+        int colliderGeom[2] = {-1, -1};   // index into moverGeoms: the collider as a solid shape (body space), at rest and moving; made by the physics
+    };
+    struct Prop {
+        int type = 0;                     // index into propTypes
+        int mover = -1;                   // index into movers
+        Mat4f placement = Mat4f::identity();   // body space -> level, where it starts
+    };
+    std::vector<PropType> propTypes;
+    std::vector<Prop> props;
     Lighting lighting;  // for the meshes marked `lit`; defaults when the game has no light data
     float carBrightness = 1.0f;  // multiplies the colour of the sun for the lit meshes (the minigame's car); set by the minigame from the car's settings
     // The game's own collision meshes, read on first use (ensureCollision): the physics and the collision overlay need them,

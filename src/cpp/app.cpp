@@ -325,7 +325,7 @@ void stopGame() {
 
 // Sends the minigame's heads-up display values to the page.
 void pushGameHud() {
-    const minigame01::CarPhysics& v = app.mg.vehicleState();
+    const minigame01::Box3dVehicle& v = app.mg.vehicleState();
     const minigame01::Hud& h = app.mg.hud();
     EM_ASM({
         if (window.RME && window.RME.onGameHud) window.RME.onGameHud($0, $1, $2, $3, $4, $5, $6, UTF8ToString($7), $8);
@@ -335,7 +335,7 @@ void pushGameHud() {
     int len = 0;
     len += snprintf(json + len, sizeof json - len, R"({"toy":%d,"wheels":[)", v.isToy() ? 1 : 0);
     for (int i = 0; i < 4; i++) {
-        const minigame01::CarPhysics::Wheel& w = app.mg.vehicleState().wheel(i);
+        const minigame01::Box3dVehicle::Wheel& w = app.mg.vehicleState().wheel(i);
         len += snprintf(
             json + len,
             sizeof json - len,

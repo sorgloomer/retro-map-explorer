@@ -39,19 +39,12 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
         }
         return false;
     }
-    if (haveMeshes) world.build(scene.collisionMeshes, 1.0f / scale);
-    else world.build(scene, 1.0f / scale, !scene.cullBackfaces);
-    if (world.empty()) {
+    if (!physicsLevel.build(scene, scale, !scene.cullBackfaces)) {
         error = "this level has no solid ground to drive on";
         return false;
     }
-#ifndef RME_PHYSICS_LEGACY
-    if (!physicsLevel.build(scene, scale, !scene.cullBackfaces)) {
-        error = "the physics engine could not use this level";
-        return false;
-    }
     vehicle.attach(physicsLevel);
-#endif
+    props_.build(scene, physicsLevel.world(), scale);
     vehicle.init(car);
     int g0 = (int)scene.moverGeoms.size();
     scene.moverGeoms.push_back(car.body);
@@ -69,6 +62,7 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
         return (int)scene.movers.size() - 1;
     };
     carMover[0] = addMover(g0);
+    scene.movers[carMover[0]].lightProbe = true;
     for (int i = 0; i < 4; i++) carMover[1 + i] = addMover(g0 + 1 + i);
     // the debug arrows of the forces: a long pointed shape along +z (length 1), unshaded and seen through everything. Yellow for
     // the wheels, then blue gravity, red air drag, cyan downforce, orange afterburner, grey what the level pushes the hull with.
@@ -121,53 +115,70 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
             scene.movers[hullArrowMovers.back()].alwaysOnTop = true;
         }
     }
-    // the debug spheres of the hull: a unit sphere, green or red (translucent), one mover per collision sphere
+    // the colliders of the wheels (debug)
     {
-        auto makeSphere = [&](uint8_t r, uint8_t g, uint8_t b) {
-            // a sphere of 8 segments around and 5 bands from pole to pole (64 triangles), poles on the y axis
-            constexpr int kSegments = 8, kBands = 5;
-            std::vector<Vec3f> pts;
-            pts.push_back(Vec3f(0, 1, 0));
-            for (int band = 1; band < kBands; band++) {
-                const float polar = 3.14159265f * (float)band / (float)kBands;
-                for (int segment = 0; segment < kSegments; segment++) {
-                    const float around = 6.28318531f * (float)segment / (float)kSegments;
-                    pts.push_back(Vec3f(std::sin(polar) * std::cos(around), std::cos(polar), std::sin(polar) * std::sin(around)));
+        // The colliders of the wheels are the tyres as the shape that is cast to find the road: a cylinder with rounded edges, turned by the
+        // steering. In wheel space x is the axle. A surface of revolution about it, with the normals of the shape (so that the renderer shades
+        // it smoothly) and the corners of the cast polygon.
+        auto makeWheel = [&](int wheel, uint8_t r, uint8_t g, uint8_t b) {
+            const Box3dVehicle::WheelShape shape = vehicle.wheelShape(wheel);
+            const float halfWidth = shape.sideOffset + shape.rounding;
+            struct Profile { float axial, radial, normalAxial, normalRadial; };
+            std::vector<Profile> profile;
+            constexpr int kArc = 4;
+            // The outline is the sweep of the circles of the cast polygons (the rings across the tyre) by the rounding sphere: an arc round each
+            // of them, and straight lines between the arcs. The tread bulges out a little in the middle.
+            constexpr int kRings = Box3dVehicle::kWheelCastRings;
+            auto arc = [&](float centreAxial, float centreRadial, float from, float to, int steps) {
+                for (int k = 0; k <= steps; k++) {
+                    const float a = from + (to - from) * (float)k / (float)steps;
+                    profile.push_back({centreAxial + shape.rounding * std::cos(a), centreRadial + shape.rounding * std::sin(a), std::cos(a), std::sin(a)});
                 }
+            };
+            profile.push_back({halfWidth, 0, 1, 0});
+            // the direction of the normal of the straight part of the tread between two rings, as the angle from the axle direction
+            float slopeAngle[kRings - 1];
+            for (int k = 0; k + 1 < kRings; k++) slopeAngle[k] = std::atan2(shape.offset[k] - shape.offset[k + 1], shape.radius[k] - shape.radius[k + 1]);
+            for (int k = 0; k < kRings; k++) {
+                const float from = k == 0 ? 0.0f : slopeAngle[k - 1];
+                const float to = k == kRings - 1 ? 3.14159265f : slopeAngle[k];
+                arc(shape.offset[k], shape.radius[k], from, to, k == 0 || k == kRings - 1 ? kArc : 1);
             }
-            pts.push_back(Vec3f(0, -1, 0));
-            const uint32_t south = (uint32_t)pts.size() - 1;
-            auto ring = [&](int band, int segment) { return (uint32_t)(1 + (band - 1) * kSegments + (segment % kSegments)); };
-            std::vector<uint32_t> fine;
-            for (int segment = 0; segment < kSegments; segment++) {
-                fine.insert(fine.end(), {0u, ring(1, segment), ring(1, segment + 1)});                                 // the cap at the top
-                for (int band = 1; band < kBands - 1; band++) {                                                        // the bands between
-                    fine.insert(fine.end(), {ring(band, segment), ring(band + 1, segment), ring(band + 1, segment + 1)});
-                    fine.insert(fine.end(), {ring(band, segment), ring(band + 1, segment + 1), ring(band, segment + 1)});
-                }
-                fine.insert(fine.end(), {ring(kBands - 1, segment), south, ring(kBands - 1, segment + 1)});            // the cap at the bottom
-            }
+            profile.push_back({-halfWidth, 0, -1, 0});
+            const int sides = Box3dVehicle::kWheelCastSides;
             std::vector<SceneVertex> verts;
-            for (const Vec3f& p : pts) {
-                SceneVertex v;
-                v.x = p.x; v.y = p.y; v.z = p.z;
-                v.r = r; v.g = g; v.b = b; v.a = 90;
-                v.u = v.v = 0;
-                verts.push_back(v);
-            }
-            BatchSet sphere;
-            sphere.lit = true;  // shaded by the level's light; the renderer derives the smooth normals
-            sphere.appendIndexed(-1, BLEND_ALPHA, verts.data(), verts.size(), fine.data(), fine.size(), true);
-            scene.moverGeoms.push_back(sphere);
+            std::vector<Vec3f> normals;
+            std::vector<uint32_t> indices;
+            for (const Profile& p : profile)
+                for (int s = 0; s < sides; s++) {
+                    const float around = 6.28318531f * (float)s / (float)sides;
+                    SceneVertex v;
+                    v.x = p.axial; v.y = p.radial * std::cos(around); v.z = p.radial * std::sin(around);
+                    v.r = r; v.g = g; v.b = b; v.a = 255;
+                    v.u = v.v = 0;
+                    verts.push_back(v);
+                    normals.push_back(Vec3f(p.normalAxial, p.normalRadial * std::cos(around), p.normalRadial * std::sin(around)));
+                }
+            for (size_t row = 0; row + 1 < profile.size(); row++)
+                for (int s = 0; s < sides; s++) {
+                    const uint32_t a = (uint32_t)(row * sides + s), b2 = (uint32_t)(row * sides + (s + 1) % sides);
+                    const uint32_t c = a + sides, d = b2 + sides;
+                    indices.insert(indices.end(), {a, c, d, a, d, b2});
+                }
+            BatchSet geom;
+            geom.lit = true;
+            geom.appendIndexed(-1, BLEND_OPAQUE, verts.data(), verts.size(), indices.data(), indices.size(), true, normals.data());
+            scene.moverGeoms.push_back(geom);
             return (int)scene.moverGeoms.size() - 1;
         };
-        sphereGeoms[0] = makeSphere(60, 220, 90);
-        sphereGeoms[1] = makeSphere(255, 60, 60);
+        for (int i = 0; i < vehicle.probeCount(); i++) {
+            wheelGeoms[i][0] = makeWheel(i, 60, 220, 90);
+            wheelGeoms[i][1] = makeWheel(i, 255, 60, 60);
+        }
         sphereMovers.clear();
         for (int i = 0; i < vehicle.probeCount(); i++) {
-            sphereMovers.push_back(addMover(sphereGeoms[0]));
+            sphereMovers.push_back(addMover(wheelGeoms[i][0]));
             scene.movers[sphereMovers.back()].lit = true;
-            scene.movers[sphereMovers.back()].alwaysOnTop = true;
         }
     }
     // the convex hull of the chassis as the physics engine made it: its triangles, green or red (translucent), one mover, in car space
@@ -197,7 +208,7 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
                     for (const Vec3f* p : {&p0, &p1, &p2}) {
                         SceneVertex v;
                         v.x = p->x; v.y = p->y; v.z = p->z;
-                        v.r = r; v.g = g; v.b = b; v.a = 150;
+                        v.r = r; v.g = g; v.b = b; v.a = 255;
                         v.u = v.v = 0;
                         indices.push_back((uint32_t)verts.size());
                         verts.push_back(v);
@@ -206,7 +217,7 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
                 }
                 BatchSet hull;
                 hull.lit = true;
-                hull.appendIndexed(-1, BLEND_ALPHA, verts.data(), verts.size(), indices.data(), indices.size(), true, normals.data());
+                hull.appendIndexed(-1, BLEND_OPAQUE, verts.data(), verts.size(), indices.data(), indices.size(), true, normals.data());
                 scene.moverGeoms.push_back(hull);
                 return (int)scene.moverGeoms.size() - 1;
             };
@@ -214,7 +225,6 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
             hullGeoms[1] = makeHull(255, 60, 60);
             hullMover = addMover(hullGeoms[0]);
             scene.movers[hullMover].lit = true;
-            scene.movers[hullMover].alwaysOnTop = true;
             // the vertices of the hull: a little white octahedron on each, sized by the hull (one mover, unlit, opaque)
             {
                 Vec3f low = hullVertices[0], high = hullVertices[0];
@@ -247,7 +257,6 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
                 scene.moverGeoms.push_back(dots);
                 hullDotMover = addMover((int)scene.moverGeoms.size() - 1);
                 scene.movers[hullDotMover].lit = false;
-                scene.movers[hullDotMover].alwaysOnTop = true;
             }
         }
     }
@@ -258,10 +267,9 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
 }
 
 void MiniGame::forget() {
-#ifndef RME_PHYSICS_LEGACY
     vehicle.detach();
+    props_.destroy();
     physicsLevel.destroy();
-#endif
     isPrepared = false;
     running = false;
     pickups.clear();
@@ -277,7 +285,7 @@ void MiniGame::forget() {
 bool MiniGame::groundBelow(const Vec3f& from, Vec3f& hit) const {
     float t;
     Vec3f n;
-    if (!world.raycast(from, Vec3f(0, -1, 0), 120.0f, false, t, n)) return false;
+    if (!physicsLevel.rayCast(from, Vec3f(0, -1, 0), 120.0f, t, n)) return false;
     hit = from + Vec3f(0, -t, 0);
     return true;
 }
@@ -306,6 +314,7 @@ void MiniGame::start(Scene& scene, const Vec3f& sceneCenter, bool free) {
 }
 
 void MiniGame::newRound(Scene& scene) {
+    props_.reset(scene);
     hud_ = Hud();
     const Params& P = tuning();
     hud_.timeLeft = P.roundSeconds;
@@ -383,6 +392,7 @@ void MiniGame::makePickupIcons(Scene& scene) {
 
 void MiniGame::stop(Scene& scene) {
     running = false;
+    props_.reset(scene);
     input.releaseAll();
     for (size_t i = 0; i < iconCats.size() && i < iconCatShown.size(); i++) scene.cats[iconCats[i]].visible = iconCatShown[i] != 0;
     for (int m : carMover)
@@ -513,7 +523,7 @@ void MiniGame::updateCamera(float dt, bool snap) {
         Vec3f dir = toCam * (1.0f / len);
         float t;
         Vec3f n;
-        if (world.raycast(rayStart, dir, len + C.cameraWallMargin, true, t, n)) camPos = rayStart + dir * std::max(C.cameraMinDistance, t - C.cameraWallMargin);
+        if (physicsLevel.rayCast(rayStart, dir, len + C.cameraWallMargin, t, n)) camPos = rayStart + dir * std::max(C.cameraMinDistance, t - C.cameraWallMargin);
     }
     Vec3f look = lookAt - camPos;
     cam.pos = camPos * scale;
@@ -522,6 +532,10 @@ void MiniGame::updateCamera(float dt, bool snap) {
 }
 
 void MiniGame::syncMovers(Scene& scene) {
+    if (collidersChanged_) {
+        collidersChanged_ = false;
+        props_.showColliders(scene, showColliders_);
+    }
     scene.carBrightness = carSettings().rendererCarBrightness;
     Mat4f M = vehicle.modelMatrix();
     // the car is in metres, the level in its own units: scale the matrices (axes and translation) up
@@ -530,9 +544,9 @@ void MiniGame::syncMovers(Scene& scene) {
         return m;
     };
     scene.movers[carMover[0]].model = toLevel(M);
-    scene.movers[carMover[0]].hidden = false;
+    scene.movers[carMover[0]].hidden = showColliders_;   // (the colliders are drawn instead of the car)
     for (int i = 0; i < 4; i++) {
-        const CarPhysics::Wheel& w = vehicle.wheel(i);
+        const Box3dVehicle::Wheel& w = vehicle.wheel(i);
         float cs = std::cos(w.steer), sn = std::sin(w.steer);
         float spin = std::fmod(w.spin, kTwoPi);
         float cp = std::cos(spin), sp = std::sin(spin);
@@ -545,19 +559,21 @@ void MiniGame::syncMovers(Scene& scene) {
         L.m[12] = w.centre.x; L.m[13] = w.centre.y; L.m[14] = w.centre.z;
         Mover& m = scene.movers[carMover[1 + i]];
         m.model = toLevel(Mat4f::mul(M, L));
-        m.hidden = false;
+        m.hidden = showColliders_;
     }
     // the collision shapes of the car: the spheres at their centres in the car, the hull; red when they touched the level during the last frame
     for (size_t i = 0; i < sphereMovers.size(); i++) {
         Mover& m = scene.movers[sphereMovers[i]];
         m.hidden = !showColliders_ || (int)i >= vehicle.probeCount();
         if (m.hidden) continue;
-        const float r = vehicle.probeRadius((int)i);
         const Vec3f c = vehicle.probeCentre((int)i);
+        // the tyre that is cast: at the wheel's place, its axle turned by the steering (it does not spin)
+        const float steer = vehicle.wheel((int)i).steer;
         Mat4f S = Mat4f::identity();
-        S.m[0] = r; S.m[5] = r; S.m[10] = r;
+        S.m[0] = std::cos(steer); S.m[2] = -std::sin(steer);
+        S.m[8] = std::sin(steer); S.m[10] = std::cos(steer);
         S.m[12] = c.x; S.m[13] = c.y; S.m[14] = c.z;
-        m.geom = sphereGeoms[vehicle.probeTouched((int)i) ? 1 : 0];
+        m.geom = wheelGeoms[i][vehicle.probeTouched((int)i) ? 1 : 0];
         m.model = toLevel(Mat4f::mul(M, S));
     }
     if (hullMover >= 0) {
@@ -631,11 +647,8 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     vi.afterburner = c.afterburner;
     vi.sideThrust = c.sideThrust;
     vi.jump = c.kangaroo;
-#ifdef RME_PHYSICS_LEGACY
-    vehicle.step(dt, vi, world);
-#else
     vehicle.step(dt, vi);
-#endif
+    props_.sync(scene);
 
     // last safe spot (wheels down, upright), for falling out of the world
     safeTimer += dt;

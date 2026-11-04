@@ -35,8 +35,8 @@ folders, so zip the game folder (store without compression for the fastest loadi
 
 Press **▶ Play** (Carmageddon levels) to drop the Eagle into the level you are viewing and collect its powerups before
 the 90 second clock runs out. Time bonuses add 15 s, upgrades and credits are worth the most, sliding earns drift points,
-and the water is a hazard. The level's own triangles are the road (a raycast vehicle with spring / damper wheels, a friction
-circle for the tyres and sphere probes around the hull for walls). All of it lives in `src/cpp/minigame01/`.
+and the water is a hazard. The level's own triangles are the road (Box3D: the car is one body with its convex hull, the wheels are shape casts with spring / damper
+suspensions and a friction circle for the tyres). All of it lives in `src/cpp/minigame01/`.
 
 | | Keyboard | Gamepad |
 |---|---|---|
@@ -72,10 +72,9 @@ node scripts/serve.mjs 8080     # http://localhost:8080
 ```
 
 The car runs on the [Box3D](https://github.com/erincatto/box3d) physics engine (MIT): the build fetches it into `.tools/lib/box3d`, at the commit named in
-`scripts/build.mjs`, and compiles it with the rest (single thread, SIMD on). `node scripts/build.mjs --legacy-physics` builds with the engine's own raycast vehicle
-(`src/cpp/minigame01/vehicle.cpp`) instead, without Box3D.
+`scripts/build.mjs`, and compiles it with the rest (single thread, SIMD on).
 
-Everything can also be built in a container, without installing anything: `docker buildx bake` (`FLAGS=--debug docker buildx bake`, `FLAGS=--legacy-physics ...`). The sources go to the builder with the build context and the output comes back to `dist`, so it works from a network drive too.
+Everything can also be built in a container, without installing anything: `docker buildx bake` (`FLAGS=--debug docker buildx bake`). The sources go to the builder with the build context and the output comes back to `dist`, so it works from a network drive too.
 Emscripten, Box3D, the Node packages' download cache and the compiled objects are kept in the builder's cache, so only the first build fetches and compiles everything. See `docker-compose.yml` and `scripts/build/`.
 
 The page is written in TypeScript with Preact components (`src/ts/`, the UI in `src/ts/ui/`). The build type-checks it with `tsc` (`npm run typecheck` does only that), then

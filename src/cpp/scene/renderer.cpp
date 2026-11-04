@@ -701,10 +701,10 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             const Mover* car = nullptr;
             Vec3f carPos;
             for (size_t i = 0; i < scene->movers.size(); i++)
-                if (shown[i] && scene->movers[i].lit) {
+                if (shown[i] && scene->movers[i].lit && (scene->movers[i].lightProbe || !car)) {
                     car = &scene->movers[i];
                     carPos = Vec3f(models[i].m[12], models[i].m[13], models[i].m[14]);
-                    break;
+                    if (car->lightProbe) break;
                 }
             if (car) {
                 const Lighting& li = scene->lighting;

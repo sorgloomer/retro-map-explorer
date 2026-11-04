@@ -408,30 +408,157 @@ void CarmaGame::addLightMarkers(const KeyFile& kf, Scene& out) {
     }
 }
 
+namespace {
+
+// The connected pieces of a mesh: triangles that share a vertex (the same vertex of the mesh, not just one at the same place: the segments of a
+// fence touch each other) are one piece. Every piece is a mesh of its own, with the batches (textures) that its triangles are in.
+std::vector<BatchSet> connectedPieces(const BatchSet& mesh) {
+    struct Triangle { size_t batch; uint32_t corner[3]; };
+    std::vector<Triangle> triangles;
+    std::vector<std::vector<int>> welded(mesh.batches.size());   // per batch: the number of each of its vertices
+    int vertexCount = 0;
+    for (size_t b = 0; b < mesh.batches.size(); b++) {
+        const Batch& batch = mesh.batches[b];
+        welded[b].resize(batch.verts.size());
+        for (size_t i = 0; i < batch.verts.size(); i++) welded[b][i] = vertexCount++;
+        for (size_t k = 0; k + 2 < batch.idx.size(); k += 3) triangles.push_back({b, {batch.idx[k], batch.idx[k + 1], batch.idx[k + 2]}});
+    }
+    std::vector<int> parent(vertexCount);
+    for (int i = 0; i < vertexCount; i++) parent[i] = i;
+    auto find = [&](int i) { while (parent[i] != i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+    for (const Triangle& t : triangles) {
+        const int a = find(welded[t.batch][t.corner[0]]);
+        for (int k = 1; k < 3; k++) parent[find(welded[t.batch][t.corner[k]])] = a;
+    }
+    std::map<int, std::vector<const Triangle*>> pieces;   // root -> its triangles
+    for (const Triangle& t : triangles) pieces[find(welded[t.batch][t.corner[0]])].push_back(&t);
+    std::vector<BatchSet> result;
+    for (const auto& piece : pieces) {
+        BatchSet out;
+        for (size_t b = 0; b < mesh.batches.size(); b++) {
+            const Batch& batch = mesh.batches[b];
+            std::map<uint32_t, uint32_t> renumber;
+            std::vector<SceneVertex> vs;
+            std::vector<uint32_t> idx;
+            for (const Triangle* t : piece.second) {
+                if (t->batch != b) continue;
+                for (int k = 0; k < 3; k++) {
+                    auto it = renumber.emplace(t->corner[k], (uint32_t)vs.size());
+                    if (it.second) vs.push_back(batch.verts[t->corner[k]]);
+                    idx.push_back(it.first->second);
+                }
+            }
+            if (!idx.empty()) out.appendIndexed(batch.texture, batch.blend, vs.data(), vs.size(), idx.data(), idx.size(), batch.twoSided);
+        }
+        if (!out.batches.empty()) result.push_back(std::move(out));
+    }
+    return result;
+}
+
+}  // namespace
+
 void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
     int cProps = out.addCategory("props", "Destructible & movable props", rgb(0x9aa0a6), SHAPE_CUBE, 1.0f, false, true);
-    out.moverGeoms.emplace_back();
-    int propsGeom = (int)out.moverGeoms.size() - 1;
     int instances = 0;
 
+    // What one kind of object is made of, from its mesh (in the space of the mesh, raw) and what its .dcol says (if it has one): its geometry
+    // in body space (the origin at the centre of mass, mirrored like the level), the points of its collider and its mass. The centre of mass is
+    // the .dcol's, else the middle of the box of the mesh. Returns the index into out.propTypes, and the centre of mass in mesh space.
+    auto makeKind = [&](const std::string& name, const BatchSet& mesh, const DcolData& collision, Vec3f& centre) {
+        Vec3f lo(1e30f, 1e30f, 1e30f), hi(-1e30f, -1e30f, -1e30f);
+        for (const Batch& bt : mesh.batches)
+            for (const SceneVertex& sv : bt.verts) {
+                lo = Vec3f(std::min(lo.x, sv.x), std::min(lo.y, sv.y), std::min(lo.z, sv.z));
+                hi = Vec3f(std::max(hi.x, sv.x), std::max(hi.y, sv.y), std::max(hi.z, sv.z));
+            }
+        centre = collision.found ? collision.centreOfMass : (lo + hi) * 0.5f;
+        auto toBody = [&](Vec3f p) { return fixX(p - centre); };
+        BatchSet body;
+        std::vector<Vec3f> meshPoints;
+        for (const Batch& bt : mesh.batches) {
+            std::vector<SceneVertex> vs = bt.verts;
+            for (SceneVertex& sv : vs) {
+                const Vec3f p = toBody(Vec3f(sv.x, sv.y, sv.z));
+                sv.x = p.x; sv.y = p.y; sv.z = p.z;
+                meshPoints.push_back(p);
+            }
+            std::vector<uint32_t> idx(bt.idx.begin(), bt.idx.end());
+            if (kMirrorX)
+                for (size_t i = 0; i + 2 < idx.size(); i += 3) std::swap(idx[i + 1], idx[i + 2]);
+            body.appendIndexed(bt.texture, bt.blend, vs.data(), vs.size(), idx.data(), idx.size(), bt.twoSided);
+        }
+        Scene::PropType kind;
+        kind.name = name;
+        out.moverGeoms.push_back(std::move(body));
+        kind.geom = (int)out.moverGeoms.size() - 1;
+        kind.mass = collision.mass > 1.0f ? collision.mass : 0.0f;   // 0: the physics works it out from the volume
+        if (collision.points.size() >= 4) {   // the collider of the game's files
+            for (const Vec3f& p : collision.points) kind.collider.push_back(toBody(p));
+            kind.colliderFromFile = true;
+        } else {                              // none: the visible mesh is the collider
+            kind.collider = std::move(meshPoints);
+        }
+        out.propTypes.push_back(std::move(kind));
+        return (int)out.propTypes.size() - 1;
+    };
+    // An object of a kind: a mover of its own, a place in out.props. `placement` takes body space to the level.
+    auto addInstance = [&](int type, const Mat4f& placement) {
+        Scene::Prop prop;
+        prop.type = type;
+        prop.placement = placement;
+        Mover m;
+        m.geom = out.propTypes[type].geom;
+        m.cat = cProps;
+        m.name = out.propTypes[type].name;
+        m.external = true;
+        m.model = placement;
+        out.movers.push_back(std::move(m));
+        prop.mover = (int)out.movers.size() - 1;
+        out.props.push_back(std::move(prop));
+        instances++;
+    };
+    // The placement in the mirrored level of an object that stands at `at` (the world position of its centre of mass) turned by the rotation `r`
+    // (row, column): the rotation with the signs of the axes of the mirror applied to both sides, R' = F R F, and the position mirrored.
+    auto placementOf = [&](const float r[3][3], Vec3f at) {
+        const float sign[3] = {kMirrorX ? -1.0f : 1.0f, 1.0f, 1.0f};
+        Mat4f placement = Mat4f::identity();
+        for (int col = 0; col < 3; col++)
+            for (int row = 0; row < 3; row++) placement.m[col * 4 + row] = sign[row] * sign[col] * r[row][col];
+        at = fixX(at);
+        placement.m[12] = at.x; placement.m[13] = at.y; placement.m[14] = at.z;
+        return placement;
+    };
+
+    // The breakables: one hierarchy that has the meshes of the level's breakable walls and fences (with the matrices that put them in place):
+    // every connected piece of a mesh is an object (a segment of a fence, a pane of a window). They have no collision file: the centre of mass is the middle of the box of the mesh.
     std::string brk = kf.str("BREAKABLES_DESCRIPTOR"), bt;
     if (!brk.empty() && readNamedText(brk, bt)) {
         for (const std::string& l : splitLines(bt)) {
             auto q = quotedStrings(stripComment(l));
             if (q.empty() || !endsWith(vfs::lower(q[0]), ".hie")) continue;
-            dst = &out.moverGeoms[propsGeom];
+            std::vector<HiePiece> pieces;
             int mc = 0;
-            emitHie(q[0].substr(0, q[0].size() - 4), mc);  // matrices already place the pieces in the level
-            dst = nullptr;
-            instances += mc > 0 ? 1 : 0;
+            emitHie(q[0].substr(0, q[0].size() - 4), mc, false, MIR_NONE, nullptr, &pieces);
+            for (const HiePiece& piece : pieces) {
+                // a mesh has many walls, panes or fence segments in it: every one that is in one piece is an object
+                float r[3][3];
+                for (int row = 0; row < 3; row++)
+                    for (int col = 0; col < 3; col++) r[row][col] = piece.world.m[col * 4 + row];
+                for (const BatchSet& part : connectedPieces(piece.geometry)) {
+                    Vec3f centre;
+                    const int type = makeKind(q[0], part, DcolData(), centre);
+                    addInstance(type, placementOf(r, piece.world.transformPoint(centre)));
+                }
+            }
             break;
         }
     }
 
+    // The movable objects: every line of the descriptor is one object (a hierarchy, the position of its centre of mass, a rotation as a
+    // quaternion). What the objects of one hierarchy share (the geometry, the collider, the mass) is made once.
     std::string mo = kf.str("MOVABLE_OBJECTS"), mt;
     if (!mo.empty() && readNamedText(mo, mt)) {
-        std::map<std::string, std::unique_ptr<BatchSet>> cache;
-        std::map<std::string, float> centresOfMass;
+        std::map<std::string, int> typeOf;   // lower case hierarchy name -> index into out.propTypes, or -1 when it has no mesh
         for (const std::string& raw : splitLines(mt)) {
             std::string l = stripComment(raw);
             if (l.empty() || l[0] != '"') continue;
@@ -440,60 +567,30 @@ void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
             std::string hie = l.substr(1, e - 1);
             float v[7];
             if (sscanf(l.c_str() + e + 1, "%f %f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6]) != 7) continue;
-            auto it = cache.find(vfs::lower(hie));
-            if (it == cache.end()) {
-                auto bs = std::make_unique<BatchSet>();
-                dst = bs.get();
+            auto it = typeOf.find(vfs::lower(hie));
+            if (it == typeOf.end()) {
+                int type = -1;
+                BatchSet mesh;
+                dst = &mesh;
                 int mc = 0;
-                float centreOfMass = 0;
-                emitHie(hie, mc, false, MIR_NONE, &centreOfMass);
+                DcolData collision;
+                emitHie(hie, mc, false, MIR_NONE, &collision);
                 dst = nullptr;
-                if (mc == 0) bs.reset();
-                it = cache.emplace(vfs::lower(hie), std::move(bs)).first;
-                centresOfMass[vfs::lower(hie)] = centreOfMass;
+                if (mc > 0 && !mesh.batches.empty()) {
+                    Vec3f centre;
+                    type = makeKind(hie, mesh, collision, centre);
+                }
+                it = typeOf.emplace(vfs::lower(hie), type).first;
             }
-            if (!it->second) continue;
-            // The descriptor places the object's centre of mass (the .dcol holds its height); the mesh sits on y = 0.
-            float centreOfMass = centresOfMass[vfs::lower(hie)];
-            // position + rotation quaternion (x, y, z, w)
+            if (it->second < 0) continue;
             float qx = v[3], qy = v[4], qz = v[5], qw = v[6];
             float r[3][3] = {{1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw), 2 * (qx * qz + qy * qw)},
                              {2 * (qx * qy + qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qx * qw)},
                              {2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw), 1 - 2 * (qx * qx + qy * qy)}};
-            std::vector<SceneVertex> vs;
-            std::vector<uint32_t> fl;
-            for (const Batch& b : it->second->batches) {
-                vs = b.verts;
-                for (SceneVertex& sv : vs) {
-                    float x = sv.x, y = sv.y - centreOfMass, z = sv.z;
-                    Vec3f w = fixX({r[0][0] * x + r[0][1] * y + r[0][2] * z + v[0], r[1][0] * x + r[1][1] * y + r[1][2] * z + v[1],
-                                   r[2][0] * x + r[2][1] * y + r[2][2] * z + v[2]});
-                    sv.x = w.x; sv.y = w.y; sv.z = w.z;
-                }
-                const auto* idx = b.idx.data();
-                if (kMirrorX) {
-                    fl.assign(b.idx.begin(), b.idx.end());
-                    for (size_t i = 0; i + 2 < fl.size(); i += 3) std::swap(fl[i + 1], fl[i + 2]);
-                    idx = fl.data();
-                }
-                out.moverGeoms[propsGeom].appendIndexed(b.texture, b.blend, vs.data(), vs.size(), idx, b.idx.size(), b.twoSided);
-            }
-            instances++;
+            addInstance(it->second, placementOf(r, Vec3f(v[0], v[1], v[2])));
         }
     }
-
-    if (instances > 0 && !out.moverGeoms[propsGeom].batches.empty()) {
-        Mover m;
-        m.geom = propsGeom;
-        m.cat = cProps;
-        m.fixed = true;
-        m.staticModel = true;
-        m.path = {Vec3f()};
-        out.movers.push_back(std::move(m));
-        out.cats[cProps].count = instances;
-    } else {
-        out.moverGeoms.pop_back();
-    }
+    out.cats[cProps].count = instances;
 }
 
 std::string CarmaGame::summary(const Scene& out, int meshCount) const {

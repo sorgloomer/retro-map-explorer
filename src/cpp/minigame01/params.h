@@ -28,10 +28,7 @@ namespace minigame01 {
     X(lateralStiffness) \
     X(angularDampingAir) \
     X(angularDampingGround) \
-    X(floorNormalY) \
     X(floorFriction) \
-    X(wallFriction) \
-    X(hullPushOut) \
     X(roundSeconds) \
     X(pointsPowerup) \
     X(pointsNotable) \
@@ -91,7 +88,8 @@ namespace minigame01 {
     X(steerResponse) \
     X(tyreLoadDistributionSensitivity) \
     X(tyreLoadScalingSensitivity) \
-    X(hullProbeRadius) \
+    X(tyreForceLiftOffset) \
+    X(tyreForceLiftRadiusFraction) \
     X(tyreSurfaceFrictionEffectFactor) \
     X(rendererCarBrightness) \
     X(reverseForceFraction) \
@@ -110,11 +108,7 @@ namespace minigame01 {
     X(hullWallBounce) \
     X(handbrakeAllWheels) \
     X(tractionControl) \
-    X(hullSphereScale) \
-    X(hullMiddleSphereScale) \
-    X(hullRearSphereScale) \
     X(driftMinSpeed) \
-    X(hullMaxPushOut) \
     X(pickupRadius) \
     X(pickupReachY) \
     X(forceArrowLength) \

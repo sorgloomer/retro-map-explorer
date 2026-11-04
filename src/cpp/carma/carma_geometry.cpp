@@ -73,15 +73,34 @@ bool CarmaGame::loadHie(const std::string& base, Pak*& pk, Hie& hie) {
     return true;
 }
 
-void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int mir, float* centreOfMass) {
+void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int mir, DcolData* collision, std::vector<HiePiece>* pieces) {
     Pak* pk = nullptr;
     Hie hie;
     if (!loadHie(base, pk, hie)) return;
     std::vector<uint8_t> data;
-    if (centreOfMass && !hie.collNames.empty()) {
+    if (collision && !hie.collNames.empty()) {
         int ce = pk->find(hie.collNames[0]);
         std::vector<uint8_t> cd;
-        if (ce >= 0 && pk->extract(ce, cd) && cd.size() >= 28) memcpy(centreOfMass, &cd[24], 4);
+        if (ce >= 0 && pk->extract(ce, cd) && cd.size() >= 28) {
+            // header: mass (float 0), the size (1..3), the centre of mass (5..7); then at byte 60 the number of points, and the points (x y z)
+            collision->found = true;
+            memcpy(&collision->mass, &cd[0], 4);
+            float centre[3];
+            memcpy(centre, &cd[20], 12);
+            uint32_t pointCount = 0;
+            if (cd.size() >= 64) memcpy(&pointCount, &cd[60], 4);
+            if (pointCount >= 4 && pointCount <= 4096 && cd.size() >= 64 + (size_t)pointCount * 12) {
+                collision->points.resize(pointCount);
+                for (uint32_t i = 0; i < pointCount; i++) {
+                    float p[3];
+                    memcpy(p, &cd[64 + (size_t)i * 12], 12);
+                    collision->points[i] = Vec3f(p[0], p[1], p[2]);
+                }
+            }
+            // The centre of mass is the vector (5..7) from the origin of the mesh, as the file has it (it can lie outside the mesh: that is how
+            // an object is kept upright).
+            collision->centreOfMass = Vec3f(centre[0], centre[1], centre[2]);
+        }
     }
     const bool flip = kMirrorX && mir != MIR_NONE;
     if (!hie.mats.empty()) lastRootMat = hie.mats[0].m;
@@ -96,6 +115,8 @@ void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int
     walk(hie, [&](const Hie::Node& n, const State& st) {
         if (n.type != 3 || n.index < 0 || n.index >= (int)meshes.size()) return;
         const CMesh& m = meshes[n.index];
+        if (pieces) pieces->emplace_back();
+        if (pieces) pieces->back().world = st.m;
         int tex = -1;
         if (st.tex >= 0 && st.tex < (int)hie.textures.size()) {
             if (texOf[st.tex] == -2) texOf[st.tex] = textureFor(hie.textures[st.tex], pk);
@@ -111,7 +132,7 @@ void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int
         }
         for (size_t i = 0; i < m.nv(); i++) {
             const float* f = &m.v[i * 9];
-            Vec3f w = corona ? Vec3f(f[0], f[1], f[2]) : st.m.transformPoint({f[0], f[1], f[2]});
+            Vec3f w = (corona || pieces) ? Vec3f(f[0], f[1], f[2]) : st.m.transformPoint({f[0], f[1], f[2]});
             if (flip) {
                 if (mir == MIR_Z) w.z = -w.z;
                 else w.x = -w.x;
@@ -149,6 +170,7 @@ void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int
         // The water surface is seen from below as well (swimming under it, the car underwater): always two sided.
         bool two = water || (st.mat >= 0 && st.mat < (int)hie.matFlags.size() && (hie.matFlags[st.mat] & 1));
         if (corona) coronaDst->appendIndexed(tex, bl, vs.data(), vs.size(), idx, m.idx.size(), true);
+        else if (pieces) pieces->back().geometry.appendIndexed(tex, bl, vs.data(), vs.size(), idx, m.idx.size(), two);
         else if (dst) dst->appendIndexed(tex, bl, vs.data(), vs.size(), idx, m.idx.size(), two);
         else sc->addIndexed(tex, bl, vs.data(), vs.size(), idx, m.idx.size(), two);
         meshCount++;

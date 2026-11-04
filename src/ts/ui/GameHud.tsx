@@ -115,10 +115,15 @@ function LateralForces() {
     <div class={'gh-debug' + (shown ? '' : ' closed')}>
       <div class="gd-head">
         <button type="button" class="gd-title" onClick={(e) => { toggleDebugPanel(); e.currentTarget.blur(); }}
-          title="Show or hide the lateral force panel (L)">{shown ? '▾' : '▸'} tyre forces <kbd>L</kbd></button>
-        <button type="button" class="gd-config" onClick={(e) => { setParamsEditor(true); e.currentTarget.blur(); }}
-          title="Edit the minigame's parameters as JSON">configure</button>
+          title="Show or hide the debug panel (L)">{shown ? '▾' : '▸'} debug <kbd>L</kbd></button>
       </div>
+      {shown && (
+        <div class="gd-configrow">
+          <button type="button" class="gd-config" onClick={(e) => { setParamsEditor(true); e.currentTarget.blur(); }}
+            title="Edit the minigame's parameters as JSON">configure</button>
+        </div>
+      )}
+      {shown && <div class="gd-section">tyre forces</div>}
       {shown && (
         <div class="gd-table">
           <span class="gd-h gd-name" />
@@ -194,11 +199,14 @@ function LateralForces() {
             </Info>
           </label>
           <label class="gd-forces">
-            <input type="checkbox" checked={colliders} onChange={(e) => setDebugColliders(e.currentTarget.checked)} /> draw car colliders
+            <input type="checkbox" checked={colliders} onChange={(e) => setDebugColliders(e.currentTarget.checked)} /> draw colliders
             <Info>
-              The shapes the car collides with, the hull and the tyres (or the hull's spheres, with the engine's own physics):{' '}
+              The shapes that collide. The car's hull and tyres are drawn over the car:{' '}
               <span class="gd-key" style={{ color: '#3cdc5a' }}>■ green</span> free,{' '}
-              <span class="gd-key" style={{ color: '#ff3c3c' }}>■ red</span> touching the level (during the last frame).
+              <span class="gd-key" style={{ color: '#ff3c3c' }}>■ red</span> touching the level (during the last frame). The movable objects
+              (and the breakables) are drawn instead of their meshes, as solid shapes:{' '}
+              <span class="gd-key" style={{ color: '#5aaaff' }}>■ blue</span> at rest,{' '}
+              <span class="gd-key" style={{ color: '#ffaa3c' }}>■ orange</span> moving.
             </Info>
           </label>
         </div>

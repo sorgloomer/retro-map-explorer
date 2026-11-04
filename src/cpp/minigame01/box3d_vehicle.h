@@ -1,28 +1,53 @@
-// The car on the Box3D physics engine (https://github.com/erincatto/box3d): the chassis is one rigid body with the car's hull, every wheel
-// is a body with a sphere, held to the chassis by a wheel joint (suspension spring and limit, steering, spin motor). The engine does the
-// rest: the collision of hull and tyres with the level (Box3dLevel), the contact friction, the rolling. This class makes the settings of the
-// car (minigame01/params.h) its joints and motors, drives them from the keys, and reports what the debug display shows. It has the
-// interface of Vehicle (vehicle.h, the engine's own raycast vehicle, which is used when the build says --legacy-physics), so the game
-// does not care which one it has.
+// The car on the Box3D physics engine (https://github.com/erincatto/box3d): the car is one rigid body with the convex hull of its files, and
+// Box3D does the collision of that hull with the level (Box3dLevel) and the hull's contact friction. The wheels are not bodies: each one is
+// a shape cast down from the upper end of its suspension (the shape of the tyre: a rounded cylinder; also by Box3D, against the level only), and the suspension and the tyres are the
+// forces of the raycast vehicle of vehicle.h, applied to the body at the points where the tyres touch the road. The wheels have no mass and no
+// inertia; the speed and the angle that they turn with are worked out here (the engine and the brakes ask for them). This class makes the
+// settings of the car (minigame01/params.h) its body and its forces, drives them from the keys, and reports what the debug display shows.
 #pragma once
 #include <vector>
 #include "box3d/box3d.h"
 #include "minigame01/box3d_level.h"
 #include "minigame01/car_model.h"
 #include "minigame01/params.h"
-#include "minigame01/vehicle.h"
 
 namespace minigame01 {
 
+struct VehicleInput {
+    float accel = 0;      // 0..1
+    float brake = 0;      // 0..1 (also reverses once the car stands still)
+    float steer = 0;      // -1 left .. 1 right
+    float handbrake = 0;  // 0..1
+    bool afterburner = false;  // thrust forward while true
+    bool sideThrust = false;   // thrust to the car's right while true (same force as the afterburner)
+    bool jump = false;         // one upward impulse (kangaroo); the caller sets it for a single step per key press
+};
+
 class Box3dVehicle {
 public:
-    static constexpr int kWheelCount = Vehicle::kWheelCount;
-    using Wheel = Vehicle::Wheel;
+    static constexpr int kWheelCount = 4;
+    struct Wheel {
+        Vec3f centre;        // car space, including the suspension travel
+        float spin = 0;     // radians
+        float steer = 0;    // radians (front wheels)
+        float load = 0;     // N
+        float slip = 0;     // slip angle, radians
+        float lateralForce = 0;  // N, across the wheel on the road (positive: towards the car's right); for the debug display
+        float lateralLimit = 0;  // N, the most the tyre could push sideways (grip limit, handbrake included)
+        float longitudinalForce = 0;  // N, along the wheel on the road (positive: forward); for the debug display
+        float frictionLimit = 0;      // N, the most the tyre could push in any direction (the friction circle)
+        Vec3f contactPoint;      // world position where the tyre touches the road (model metres), when grounded
+        Vec3f force;             // N, world: what the suspension pushes the car with, at tyreForceOrigin; for the debug display
+        Vec3f tyreForceOrigin;   // world position where the forces of the wheel act, the suspension's and the tyre's: at contactPoint
+        Vec3f suspensionForceOrigin;  // where the suspension's force acts (the same point for this vehicle, the centre of the wheel for the Box3D one)
+        Vec3f tyreForce;         // N, world: what the tyre (engine, brakes, grip) pushes the car with, at tyreForceOrigin; for the debug display
+        bool sliding = false;    // the sideways force wanted was over the limit: the tyre slides
+        bool grounded = false;
+    };
 
     ~Box3dVehicle() { destroyBodies(); }
 
-    // What the level does to one body over a physics step, from its contacts: the force (N) along the normal, the friction (N, what the
-    // engine keeps of it as the accumulated friction impulse of the contacts), where they act, the normal force and the normal.
+    // What the level does to the body over a physics step, from its contacts: the force (N) along the normal, where it acts and the normal.
     struct ContactSum {
         Vec3f force, frictionForce, point, normal;
         float normalForce = 0;
@@ -31,7 +56,7 @@ public:
 
     // The level that the car drives in (Box3dLevel, its Box3D world): call before init.
     void attach(const Box3dLevel& level) { destroyBodies(); level_ = &level; world = level.world(); }
-    void detach() { chassis = b3_nullBodyId; for (b3BodyId& b : wheelBody) b = b3_nullBodyId; world = b3_nullWorldId; level_ = nullptr; }
+    void detach() { chassis = b3_nullBodyId; world = b3_nullWorldId; level_ = nullptr; }
 
     void init(const CarModel& model);
     // Makes the car again from the settings (mass, wheels, suspension, ...): it stays where it is, with its speed.
@@ -45,9 +70,7 @@ public:
     Vec3f up() const { return axes[1]; }
     Vec3f forward() const { return axes[2]; }
     Vec3f position() const { return pos; }   // centre of mass
-    // The centre of mass of the whole car, the wheels included: the drag, the downforce and the rockets act through it (position() is the one
-    // of the chassis alone, which is where the model is placed from).
-    Vec3f forceCentre() const { return carCentre_; }
+    Vec3f forceCentre() const { return pos; }   // (the wheels have no mass)
     Vec3f centreOfMassInCarSpace() const { return centreOfMass; }
     Vec3f velocity() const { return vel; }
     float speed() const { return length(vel); }
@@ -56,7 +79,7 @@ public:
     Vec3f dragForce() const { return dragForce_; }
     Vec3f downforce() const { return downforce_; }
     Vec3f thrustForce() const { return thrustForce_; }
-    // The collision spheres of the debug display: here the four tyres (centre in car space, radius, touching the level).
+    // The collision spheres of the debug display: here the four tyres (centre in car space, radius, touching the road).
     Vec3f probeForce(int i) const { return wheels[i].tyreForce; }
     Vec3f probeContactPoint(int i) const { return wheels[i].contactPoint; }
     int probeCount() const { return kWheelCount; }
@@ -66,10 +89,22 @@ public:
     Vec3f hullArrowPoint(int i) const { return hullArrowPoint_[i]; }
     Vec3f hullArrowForce(int i) const { return hullArrowForce_[i]; }
     bool hullArrowOn(int i) const { return i < hullArrowCount_; }
-    // The convex hull of the chassis, the other collision shape of the car, as the engine made it: its triangles (car space), and whether it
-    // touched the level.
+    // The convex hull of the car, its collision shape: its triangles (car space), and whether it touched the level.
     bool colliderMesh(std::vector<Vec3f>& vertices, std::vector<uint32_t>& indices) const { vertices = hullVertices_; indices = hullIndices_; return !hullIndices_.empty(); }
     bool hullTouched() const { return hullTouched_; }
+    // The shape of a tyre that is cast down to find the road under it: polygons of kWheelCastSides corners in the plane that the wheel rolls in
+    // (a corner straight up), kWheelCastRings of them evenly spaced across the tyre (the outer two at +- sideOffset), each a little smaller than
+    // the one in the middle (the tread bulges out a little in the middle, so that the tyre touches the road at a point), swept by a sphere of
+    // radius `rounding` (so the edges are rounded; the tyre is `radius[middle] + rounding` tall and 2 * (sideOffset + rounding) wide). Wheel space:
+    // x is the axle. The rings go from the +x side to the -x side.
+    static constexpr int kWheelCastSides = 16;
+    static constexpr int kWheelCastRings = 5;
+    struct WheelShape {
+        float offset[kWheelCastRings];   // where each ring is across the tyre
+        float radius[kWheelCastRings];   // and how big it is
+        float sideOffset, rounding;
+    };
+    WheelShape wheelShape(int i) const;
     Vec3f probeCentre(int i) const { return wheels[i].centre; }
     float probeRadius(int i) const { return wheelRadii[i]; }
     bool probeTouched(int i) const { return wheels[i].grounded; }
@@ -82,9 +117,9 @@ public:
     bool isToy() const { return toy_; }
     float sizeScale() const { return sizeScale_; }
     float forwardSpeed() const { return dot(vel, axes[2]); }
-    // what the spin motor of a wheel does now (N m, rad/s): for the tests
-    float spinTorque(int i) const { return b3WheelJoint_GetSpinTorque(wheelJoint[i]); }
-    float spinSpeed(int i) const { return wheelSpeed_[i]; }   // rad/s, how the wheel turns
+    // what the engine and the brakes push a wheel with, as a torque (N m), and how it turns (rad/s): for the tests
+    float spinTorque(int i) const { return wheelDriveForce_[i] * wheelRadii[i]; }
+    float spinSpeed(int i) const { return wheelSpeed_[i]; }
     Mat4f modelMatrix() const;
     const Wheel& wheel(int i) const { return wheels[i]; }
     bool anyGrounded() const { return groundedCount > 0; }
@@ -98,18 +133,14 @@ private:
     void destroyBodies();
     void readState();
     void substep(float h, const VehicleInput& in);
-    void readContacts(float h);
     void readHullArrows(float h);
+    float bumpStiffnessAt(float suspensionLength) const;  // 1 above the bump stop zone, up to bumpStopStiffness at the stop
+    Vec3f invInertia(const Vec3f& torque) const;           // I^-1 * torque in world space
 
     b3WorldId world = b3_nullWorldId;
     const Box3dLevel* level_ = nullptr;
-    ContactSum wheelContact_[kWheelCount];   // the contacts of the tyres over the last physics step
-    float roadFriction_[kWheelCount] = {1, 1, 1, 1};   // the multiplier of the friction of the surface under each tyre (from the last step)
     b3BodyId chassis = b3_nullBodyId;
-    b3BodyId wheelBody[kWheelCount] = {b3_nullBodyId, b3_nullBodyId, b3_nullBodyId, b3_nullBodyId};
-    b3JointId wheelJoint[kWheelCount] = {};
-    b3ShapeId wheelShape[kWheelCount] = {};
-    static constexpr int kSolverSteps = 4;   // the world is stepped this many times in a physics step, one solver step each (see substep)
+    static constexpr int kWorldSubSteps = 4;   // the solver steps of the world in a physics step
 
     // --- the car's data (from the model and the settings)
     Vec3f wheelRest[kWheelCount];
@@ -118,24 +149,25 @@ private:
     bool toy_ = false;
     float sizeScale_ = 1;
     float gravity_ = 9.81f, engineForce_ = 40000, enginePower_ = 420000, grip_ = 1.1f, dragCoefficient_ = 0.25f, afterburnerForce_ = 36000, kangarooSpeed_ = 8;
-    float suspensionLengthMax_ = 0.3f, suspensionLengthAtRest_ = 0.15f, suspensionLengthInLoadedModel_ = 0.15f, suspensionSpringNaturalLength_ = 0.33f;
+    float suspensionLengthMax_ = 0.3f, suspensionLengthAtRest_ = 0.15f, suspensionLengthInLoadedModel_ = 0.15f, suspensionSpringNaturalLength_ = 0.33f, bumpZone_ = 0.03f;
+    float springStiffness_ = 30000, damping_ = 3300;   // N/m, N s/m
     float wheelRadii[kWheelCount] = {0.34f, 0.34f, 0.34f, 0.34f};
-    float mass = 1250;              // of the whole car, wheels included
-    float wheelMass = 25;           // of one wheel
+    float wheelWidth_ = 0.25f;      // of the tyres (the shape that is cast to find the road under a wheel)
+    float mass = 1250;              // of the whole car
     Vec3f centreOfMass;             // in car space
-    Vec3f inertia;                  // of the chassis about its centre of mass: right, up, forward
+    Vec3f inertia;                  // about the centre of mass: right, up, forward
     std::vector<Vec3f> hullPoints_;                  // what the hull is made of (car space)
     std::vector<uint32_t> modelHullIndices_;         // the faces of the hull of the car's files, as triangles over hullPoints_ (none: the engine's hull is drawn)
-    std::vector<Vec3f> hullVertices_;                // the hull as the engine made it: its points...
+    std::vector<Vec3f> hullVertices_;                // the hull as it is drawn: its points...
     std::vector<uint32_t> hullIndices_;              // ...and its faces as triangles
     Vec3f hullArrowPoint_[kMaxHullArrows], hullArrowForce_[kMaxHullArrows];
     int hullArrowCount_ = 0;
     float wheelSpeed_[kWheelCount] = {0, 0, 0, 0};   // rad/s, how the wheels turn (see substep)
+    float wheelDriveForce_[kWheelCount] = {0, 0, 0, 0};   // N, what the engine pushes the wheel with along the road (this step; negative: reverse)
     bool hullTouched_ = false;
 
     // --- state, as the engine has it (readState)
-    Vec3f pos, vel, angVel;          // of the centre of mass (the chassis')
-    Vec3f carCentre_;                // centre of mass of the chassis and the four wheels together
+    Vec3f pos, vel, angVel;          // of the centre of mass
     Vec3f axes[3];                   // right, up, forward in world space
     Wheel wheels[kWheelCount];
     float steerAngle = 0;
@@ -143,8 +175,6 @@ private:
     float drift_ = 0, impact_ = 0;
     Vec3f gravityForce_, dragForce_, downforce_, thrustForce_;
     Vec3f torqueWheels_, torqueHull_;
-    Vec3f rollDirection_[kWheelCount];   // where each wheel rolls, along the road (from the last step)
-    Vec3f wheelPush_[kWheelCount];       // N, what the engine and the brakes push each wheel with (this step)
 };
 
 }  // namespace minigame01

@@ -19,10 +19,7 @@ export type EngineSettings = {
     lateralStiffness: number;
     angularDampingAir: number;
     angularDampingGround: number;
-    floorNormalY: number;
     floorFriction: number;
-    wallFriction: number;
-    hullPushOut: number;
     roundSeconds: number;
     pointsPowerup: number;
     pointsNotable: number;
@@ -81,7 +78,8 @@ export type EngineSettings = {
     steerResponse: number;
     tyreLoadDistributionSensitivity: number;
     tyreLoadScalingSensitivity: number;
-    hullProbeRadius: number;
+    tyreForceLiftOffset: number;
+    tyreForceLiftRadiusFraction: number;
     tyreSurfaceFrictionEffectFactor: number;
     rendererCarBrightness: number;
     reverseForceFraction: number;
@@ -100,11 +98,7 @@ export type EngineSettings = {
     hullWallBounce: number;
     handbrakeAllWheels: number;
     tractionControl: number;
-    hullSphereScale: number;
-    hullMiddleSphereScale: number;
-    hullRearSphereScale: number;
     driftMinSpeed: number;
-    hullMaxPushOut: number;
     pickupRadius: number;
     pickupReachY: number;
     forceArrowLength: number;

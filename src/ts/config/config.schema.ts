@@ -37,11 +37,7 @@ export const ConfigGlobalSchema = z.strictObject({
   angularDampingAir: z.number(),  // no wheel touches the road
   angularDampingGround: z.number(),  // at least one wheel does
   // --- hull contacts (the chassis against the level)
-  floorNormalY: z.number(),  // a contact whose normal points up at least this much counts as floor, else as a wall
   floorFriction: z.number(),  // sliding friction on a floor contact, as a multiple of the normal impulse
-  wallFriction: z.number(),  // and on a wall contact
-  hullPushOut: z.number(),  // how much of the penetration depth is corrected in one step...
-  hullMaxPushOut: z.number(),  // ...but never more than this many metres
   // --- rules
   roundSeconds: z.number(),  // s on the clock in Powerup Rush
   pickupRadius: z.number(),  // m: a powerup is collected this close to the car (horizontally)...
@@ -114,10 +110,6 @@ export const ConfigPartCarSchema = z.strictObject({
   tractionControl: z.number(),
   handbrakeBrake: z.number(),
   handbrakeGripLoss: z.number(),
-  hullMiddleSphereScale: z.number(),
-  hullProbeRadius: z.number(),
-  hullRearSphereScale: z.number(),
-  hullSphereScale: z.number(),
   hullWallBounce: z.number(),
   kangarooSpeed: z.number(),
   massDefault: z.number(),
@@ -141,6 +133,8 @@ export const ConfigPartCarSchema = z.strictObject({
   suspensionSpringKFromFileRatio: z.number(),
   tyreLoadDistributionSensitivity: z.number(),
   tyreLoadScalingSensitivity: z.number(),
+  tyreForceLiftOffset: z.number(),
+  tyreForceLiftRadiusFraction: z.number(),
   tyreSurfaceFrictionEffectFactor: z.number(),
   tyreRadiusFromFile: z.number(),
 });

@@ -4,7 +4,6 @@
 #
 #   docker buildx bake                                  the optimised build, into ./dist
 #   FLAGS=--debug docker buildx bake                    the debug build
-#   FLAGS=--legacy-physics docker buildx bake           with the engine's own car physics instead of Box3D
 #
 # The first run fetches Emscripten (a few hundred MB), Box3D and the Node packages into the builder's cache; the next ones find them there
 # and compile only what changed. `docker builder prune` forgets the cache (and so all that).

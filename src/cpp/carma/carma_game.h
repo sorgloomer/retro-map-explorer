@@ -139,8 +139,20 @@ public:
 
 
     // mir: MIR_WORLD for level geometry; MIR_X / MIR_Z mirror model-space meshes (icons / path followers, whose forward is +X);
-    // MIR_NONE leaves the mesh raw. centreOfMass receives the height of the centre of mass from the .dcol (movable objects).
-    void emitHie(const std::string& base, int& meshCount, bool water = false, int mir = MIR_WORLD, float* centreOfMass = nullptr);
+    // MIR_NONE leaves the mesh raw. `collision` receives what the .dcol of the hierarchy says (movable objects).
+    struct DcolData {
+        bool found = false;
+        float mass = 0;                      // kg
+        Vec3f centreOfMass;                  // in the space of the mesh (raw: not mirrored)
+        std::vector<Vec3f> points;           // the convex polyhedron of the collider, in the space of the mesh (raw: not mirrored)
+    };
+    // With `pieces` set, the meshes of the hierarchy are not put in the scene: each mesh node is one piece, its mesh as it is (raw) and the
+    // matrix that places it (a breakable's mesh and where it stands in the level).
+    struct HiePiece {
+        BatchSet geometry;
+        Mat4f world = Mat4f::identity();
+    };
+    void emitHie(const std::string& base, int& meshCount, bool water = false, int mir = MIR_WORLD, DcolData* collision = nullptr, std::vector<HiePiece>* pieces = nullptr);
 
     // Paths: .lins + hie placed with parent matrices.
     void emitPaths(const std::string& hieBase, int catAI, int catRace, int catStart, int catDrone, bool drone);

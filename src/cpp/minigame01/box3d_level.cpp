@@ -1,4 +1,3 @@
-#ifndef RME_PHYSICS_LEGACY  // (the build says --legacy-physics: the car runs on vehicle.cpp, and Box3D is not part of the build)
 #include "minigame01/box3d_level.h"
 #include <algorithm>
 #include <cstdint>
@@ -22,6 +21,35 @@ struct MeshPart {
 };
 
 }  // namespace
+
+void hullTriangles(const b3HullData* hull, std::vector<Vec3f>& vertices, std::vector<uint32_t>& indices) {
+    const b3Vec3* points = b3GetHullPoints(hull);
+    const b3HullHalfEdge* edges = b3GetHullEdges(hull);
+    const b3HullFace* faces = b3GetHullFaces(hull);
+    vertices.clear();
+    indices.clear();
+    for (int i = 0; i < hull->vertexCount; i++) vertices.push_back(Vec3f(points[i].x, points[i].y, points[i].z));
+    for (int f = 0; f < hull->faceCount; f++) {
+        const int first = faces[f].edge;
+        const uint32_t corner0 = edges[first].origin;
+        int e = edges[first].next;
+        while (edges[e].next != first) {
+            indices.insert(indices.end(), {corner0, (uint32_t)edges[e].origin, (uint32_t)edges[edges[e].next].origin});
+            e = edges[e].next;
+        }
+    }
+}
+
+bool Box3dLevel::rayCast(const Vec3f& origin, const Vec3f& direction, float maxDistance, float& distance, Vec3f& normal) const {
+    if (!created) return false;
+    b3QueryFilter filter = b3DefaultQueryFilter();
+    filter.maskBits = ~(kCarCategory | kPropCategory);
+    const b3RayResult hit = b3World_CastRayClosest(worldId, {origin.x, origin.y, origin.z}, {direction.x * maxDistance, direction.y * maxDistance, direction.z * maxDistance}, filter);
+    if (!hit.hit) return false;
+    distance = hit.fraction * maxDistance;
+    normal = Vec3f(hit.normal.x, hit.normal.y, hit.normal.z);
+    return true;
+}
 
 float Box3dLevel::surfaceFriction(uint64_t userMaterialId) const {
     const size_t mesh = (size_t)(userMaterialId >> 16), surface = (size_t)(userMaterialId & 0xffff);
@@ -124,4 +152,3 @@ bool Box3dLevel::build(const Scene& scene, float unitsPerMetre, bool bothSides) 
 }
 
 }  // namespace minigame01
-#endif  // RME_PHYSICS_LEGACY

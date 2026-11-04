@@ -38,11 +38,7 @@ export const GLOBAL_DEFAULTS: ConfigGlobalType = {
   angularDampingAir: 0.1,  // no wheel touches the road
   angularDampingGround: 0.1,  // at least one wheel does
   // --- hull contacts (the chassis against the level)
-  floorNormalY: 0.7,  // a contact whose normal points up at least this much counts as floor, else as a wall
   floorFriction: 0.6,  // sliding friction on a floor contact, as a multiple of the normal impulse
-  wallFriction: 0.5,  // and on a wall contact
-  hullPushOut: 0.7,  // how much of the penetration depth is corrected in one step...
-  hullMaxPushOut: 0.25,  // ...but never more than this many metres
   // --- rules
   roundSeconds: 90,  // s on the clock in Powerup Rush
   pickupRadius: 3.4,  // m: a powerup is collected this close to the car (horizontally)...
@@ -103,7 +99,7 @@ export const CAR_DEFAULTS_COMMON = {
   suspensionSpringK: 30000,  // N/m: used when the spring constant is not taken from the car's files
   suspensionSpringKFromFileEnabled: 1,  // 1: the spring constant is the one of the car's game files (when it has one) times suspensionSpringKFromFileRatio; 0: suspensionSpringK
   suspensionSpringKFromFileRatio: 1,  // the file's spring constant is multiplied by this
-  hullWallBounce: 0.1,  // restitution of the hull against walls and ceilings (floors do not bounce)
+  hullWallBounce: 0.01,  // restitution of the hull against walls and ceilings (floors do not bounce)
   driftMinSpeed: 8,  // m/s (for a car of 4.3 m: smaller cars scale it down): slower than this the car is never drifting
   driftSlipDeadZone: 0.12,  // radians of slip angle that is just cornering
   driftSlipRange: 0.45,  // radians more of slip angle for the measure to go from 0 to 1
@@ -113,11 +109,12 @@ export const CAR_DEFAULTS_COMMON = {
   reversePowerFraction: 0.4,  // ...and of the power
   handbrakeBrake: 0.85,  // the handbrake brakes the wheels it acts on with this part of the friction limit
   handbrakeGripLoss: 0.62,  // and takes this part of their sideways grip away (the car slides)
-  hullProbeRadius: 0.3,  // m, radius of the spheres that make the chassis collide with walls and ceilings (a small car has smaller ones: they never exceed what fits its hull)
   steerAngleCentrifugalKneeFactor: 0.3,  // how softly the steering angle at speed bends into its limit: the width of the knee as a fraction of steerAngleMax (0: a sharp corner)
   steerAngleCentrifugalLimitFactor: 0.7,  // multiplies the sideways force the tyres can hold before slipping, which limits the steering angle at speed (0: no turning at speed)
   steerAngleMax: 0.45,  // radians of front wheel turn at a standstill (full lock)
   steerResponse: 20,  // 1/s: how quickly the wheels follow the steering input
+  tyreForceLiftOffset: 0,  // m: the forces of the suspensions and the tyres (spring, damper, engine, brakes, grip) act this much higher than the road (on top of tyreForceLiftRadiusFraction): less body roll
+  tyreForceLiftRadiusFraction: 0,  // where those forces act, as a height above the road in tyre radii: 0: the contact point; 1: the middle of the tyre; 2: the top of the tyre
   tyreSurfaceFrictionEffectFactor: 1,  // how much the surface's WHEEL_FRICTION (grass 0.8, slippery rock 0, road 1) counts: 0 none, 1 as the game does
   tyreLoadDistributionSensitivity: 1,  // how the tyres share the weight of the car: 0: equally; 1: in proportion to what their suspensions carry (weight transfer decides what each tyre can hold)
   tyreLoadScalingSensitivity: 1,  // what the weight shared by the tyres adds up to: 0: the weight of the car (downforce and bumps add no grip); 1: what the suspensions really carry
@@ -149,11 +146,8 @@ export const CAR_DEFAULTS_PER_CAR: Record<CarId, ConfigSpecificCarType> = {
     engineTaperLength: 15,  // ...completely over this many m/s more
     engineTaperStartSpeed: 55,  // m/s: from here the engine's push fades out...
     gravity: 9.81,  // m/s^2
-    grip: 1.5,  // friction coefficient on the road: a tyre pushes with at most this times its load
+    grip: 2.1,  // friction coefficient on the road: a tyre pushes with at most this times its load
     handbrakeAllWheels: 0,
-    hullMiddleSphereScale: 1,  // the three hull spheres in the middle of the centre column are this many times wider
-    hullRearSphereScale: 1,  // the three hull spheres at the rear are this many times wider (for a spoiler)
-    hullSphereScale: 1.6,  // the hull spheres are this many times the size that fits the car (their bottoms stay at the hull's bottom)
     kangarooSpeed: 8,  // m/s added upwards per jump (about 3 m high from rest)
     massDefault: 1250,  // kg: used when the mass is not taken from the car's files (massFromFile 0, or the files do not say)
     massFromFile: 1,  // 1: the mass of the car's game files, when they have one; 0: mass
@@ -161,6 +155,7 @@ export const CAR_DEFAULTS_PER_CAR: Record<CarId, ConfigSpecificCarType> = {
     suspensionLengthMax: 0.4,  // m: fully extended (the wheel hangs in the air)
     suspensionLengthAtRest: 0.2,  // m: the spring length the car stands on at rest (its weight compresses the spring to this)
     suspensionLengthInLoadedModel: 0.3,  // m: the spring length the wheel positions of the car's model files correspond to (equal to suspensionLengthAtRest: the wheels are where the model has them at rest)
+    tyreForceLiftRadiusFraction: 0.5,  // the forces act at the middle of the tyre
     tyreLoadDistributionSensitivity: 0,
     tyreLoadScalingSensitivity: 0,
   },
@@ -183,9 +178,6 @@ export const CAR_DEFAULTS_PER_CAR: Record<CarId, ConfigSpecificCarType> = {
     engineTaperStartSpeed: 8,
     gravity: 5,
     grip: 1.5,
-    hullMiddleSphereScale: 1,
-    hullRearSphereScale: 1,  // for the spoiler
-    hullSphereScale: 1.6,
     kangarooSpeed: 2.4,  // m/s added upwards per jump (about 30 cm high)
     massDefault: 2,  // kg
     massFromFile: 0,  // the mass above, whatever the car's files say
