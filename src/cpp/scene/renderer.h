@@ -83,6 +83,7 @@ private:
     std::vector<GpuBatch> batches;
     std::vector<GpuBatch> collisionGpu;
     std::vector<std::vector<GpuBatch>> geomGpu;  // one per Scene::moverGeoms entry
+    std::vector<uint32_t> geomRevision;          // the BatchSet::revision of each that is on the GPU
     std::vector<unsigned> textures;
     std::vector<int> texFrame;  // texture shown for each scene texture: itself, or the current frame of its animation
 

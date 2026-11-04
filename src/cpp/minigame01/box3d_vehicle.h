@@ -32,10 +32,14 @@ public:
         float steer = 0;    // radians (front wheels)
         float load = 0;     // N
         float slip = 0;     // slip angle, radians
+        float blocked = 0;       // 0..1: how much a brake (or the handbrake) holds the wheel from turning
+        float roadSpeed = 0;     // m/s: how fast the road moves under the tyre
+        float slipSpeed = 0;     // m/s: how fast the tyre slides over the road, sideways and along (the wheel's own turning against the road's speed)
         float lateralForce = 0;  // N, across the wheel on the road (positive: towards the car's right); for the debug display
         float lateralLimit = 0;  // N, the most the tyre could push sideways (grip limit, handbrake included)
         float longitudinalForce = 0;  // N, along the wheel on the road (positive: forward); for the debug display
         float frictionLimit = 0;      // N, the most the tyre could push in any direction (the friction circle)
+        float gripFactor = 0;         // the tyre's grip on this road: the car's friction coefficient with the effect of the surface on it (what the load is multiplied by)
         Vec3f contactPoint;      // world position where the tyre touches the road (model metres), when grounded
         Vec3f force;             // N, world: what the suspension pushes the car with, at tyreForceOrigin; for the debug display
         Vec3f tyreForceOrigin;   // world position where the forces of the wheel act, the suspension's and the tyre's: at contactPoint

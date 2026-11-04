@@ -414,7 +414,11 @@ void Renderer::setScene(const Scene* s, float radius) {
     uploadSet(s->batches, batches);
     uploadSet(s->collision.batches, collisionGpu);
     geomGpu.resize(s->moverGeoms.size());
-    for (size_t i = 0; i < s->moverGeoms.size(); i++) uploadSet(s->moverGeoms[i].batches, geomGpu[i], s->moverGeoms[i].lit);
+    geomRevision.assign(s->moverGeoms.size(), 0);
+    for (size_t i = 0; i < s->moverGeoms.size(); i++) {
+        uploadSet(s->moverGeoms[i].batches, geomGpu[i], s->moverGeoms[i].lit);
+        geomRevision[i] = s->moverGeoms[i].revision;
+    }
     glBindVertexArray(0);
 
     sceneRadius = std::max(1.0f, radius);
@@ -609,6 +613,21 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         for (const TexAnim& a : scene->texAnims)
             if (a.texture >= 0 && a.texture < (int)texFrame.size() && !a.frames.empty() && a.fps > 0)
                 texFrame[a.texture] = a.frames[(size_t)std::floor(vp.time * a.fps) % a.frames.size()];
+        // the geometries that were changed since they were uploaded (the skid marks): their data goes up again
+        for (size_t g = 0; g < scene->moverGeoms.size() && g < geomGpu.size(); g++) {
+            if (scene->moverGeoms[g].revision == geomRevision[g]) continue;
+            geomRevision[g] = scene->moverGeoms[g].revision;
+            for (GpuBatch& b : geomGpu[g]) {
+                if (!b.src) continue;
+                glBindVertexArray(b.vao);
+                glBindBuffer(GL_ARRAY_BUFFER, b.vbo);
+                glBufferData(GL_ARRAY_BUFFER, b.src->verts.size() * sizeof(SceneVertex), b.src->verts.data(), GL_DYNAMIC_DRAW);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, b.ibo);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, b.src->idx.size() * 4, b.src->idx.data(), GL_DYNAMIC_DRAW);
+                b.count = (int)b.src->idx.size();
+            }
+            glBindVertexArray(0);
+        }
         // model matrices of the moving objects at the current time
         std::vector<Mat4f> models(scene->movers.size(), Mat4f::identity());
         std::vector<char> shown(scene->movers.size(), 0);

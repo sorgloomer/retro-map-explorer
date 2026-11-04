@@ -111,6 +111,7 @@ struct CollisionMesh {
 struct BatchSet {
     std::vector<Batch> batches;
     bool lit = false;  // drawn with the lighting shader (needs normals: the renderer derives them)
+    uint32_t revision = 0;   // bumped when the vertices or the indices of the batches are changed after the renderer has them: it uploads them again
 
     Batch& batchFor(int tex, Blend blend, bool twoSided = false) {
         uint64_t key = ((uint64_t)(uint32_t)(tex + 1) << 9) | (twoSided ? 256u : 0u) | blend;

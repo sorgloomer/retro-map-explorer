@@ -111,11 +111,12 @@ function LateralForces() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [playing]);
+  if (!shown) return null;   // (the legend at the bottom opens it)
   return (
-    <div class={'gh-debug' + (shown ? '' : ' closed')}>
+    <div class="gh-debug">
       <div class="gd-head">
         <button type="button" class="gd-title" onClick={(e) => { toggleDebugPanel(); e.currentTarget.blur(); }}
-          title="Show or hide the debug panel (L)">{shown ? '▾' : '▸'} debug <kbd>L</kbd></button>
+          title="Show or hide the debug panel (L)">▾ debug <kbd>L</kbd></button>
       </div>
       {shown && (
         <div class="gd-configrow">
@@ -260,6 +261,23 @@ function ParamsEditor() {
   );
 }
 
+/** Presses a key of the game once, as if it was typed: the legend at the bottom is clickable. */
+function pressKey(code: string, key: string) {
+  const fire = (type: 'keydown' | 'keyup') => window.dispatchEvent(new KeyboardEvent(type, { code, key, bubbles: true }));
+  fire('keydown');
+  setTimeout(() => fire('keyup'), 150);
+}
+
+/** A key of the legend with what it does: clicking it presses the key (or does what the click says). */
+function LegendKey(props: { code: string; k: string; label: string; onPress?: () => void; children?: ComponentChildren }) {
+  const press = props.onPress ?? (() => pressKey(props.code, props.k));
+  return (
+    <button type="button" class="gh-leg" title={'Click to press ' + props.label} onClick={(e) => { press(); e.currentTarget.blur(); }}>
+      <kbd>{props.label}</kbd>{props.children ? ' ' : null}{props.children}
+    </button>
+  );
+}
+
 export function GameHud() {
   const on = useUi((s) => s.gameMode);
   const hud = useUi((s) => s.hud);
@@ -298,8 +316,11 @@ export function GameHud() {
         </div>
       </div>
       <p class="gh-help">
-        <kbd>W</kbd><kbd>S</kbd> gas / brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> handbrake · <kbd>R</kbd> upright ·
-        <kbd>C</kbd> camera · <kbd>1</kbd> afterburner · <kbd>2</kbd> kangaroo · <kbd>8</kbd> lift 1 m and roll 90° · <kbd>9</kbd> side thrust · <kbd>Esc</kbd> exit — or use a gamepad (RT / LT, left stick, A, Y, Back)
+        <LegendKey code="KeyW" k="w" label="W" /><LegendKey code="KeyS" k="s" label="S" /> gas / brake · <LegendKey code="KeyA" k="a" label="A" /><LegendKey code="KeyD" k="d" label="D" /> steer ·{' '}
+        <LegendKey code="Space" k=" " label="Space">handbrake</LegendKey> · <LegendKey code="KeyR" k="r" label="R">upright</LegendKey> ·{' '}
+        <LegendKey code="KeyC" k="c" label="C">camera</LegendKey> · <LegendKey code="Digit1" k="1" label="1">afterburner</LegendKey> · <LegendKey code="Digit2" k="2" label="2">kangaroo</LegendKey> ·{' '}
+        <LegendKey code="Digit8" k="8" label="8">lift 1 m and roll 90°</LegendKey> · <LegendKey code="Digit9" k="9" label="9">side thrust</LegendKey> ·{' '}
+        <LegendKey code="KeyL" k="l" label="L" onPress={toggleDebugPanel}>debug</LegendKey> · <LegendKey code="Escape" k="Escape" label="Esc">exit</LegendKey> — or use a gamepad (RT / LT, left stick, A, Y, Back)
       </p>
     </div>
   );

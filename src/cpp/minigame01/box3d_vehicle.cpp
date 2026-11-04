@@ -339,12 +339,13 @@ void Box3dVehicle::substep(float stepSeconds, const VehicleInput& in) {
 
     // --- steering: the angle that the grip allows at this speed (the wheels turn to it smoothly): the one of a circle with no slip at the
     // most that the tyres can turn the car, plus the slip at which the tyre gives all its grip
-    const float gripAccelerationLimitForSteering = C.steerAngleCentrifugalLimitFactor * grip_ * gravity();
+    const float gripAccelerationLimitForSteering = grip_ * gravity();
     const float wheelBase = std::abs(0.5f * (wheelRest[0].z + wheelRest[1].z) - 0.5f * (wheelRest[2].z + wheelRest[3].z));
     const float minTurnRadiusAtCurrentSpeed = speed * speed / gripAccelerationLimitForSteering;
     const float steerAngleFromMinTurnRadius = std::atan2(wheelBase, minTurnRadiusAtCurrentSpeed);
     const float steerAnglePlateauSlip = P.tyreSlipCurve > 0.5f ? std::atan(P.tyreSlipFull) : 0.0f;
-    const float steerAngleMaxAtCurrentSpeed = smoothlimit(steerAngleFromMinTurnRadius + steerAnglePlateauSlip, C.steerAngleMax, C.steerAngleCentrifugalKneeFactor);
+    const float steerAngleTotalMax = (steerAngleFromMinTurnRadius + steerAnglePlateauSlip) * C.steerAngleCentrifugalLimitFactor;
+    const float steerAngleMaxAtCurrentSpeed = smoothlimit(steerAngleTotalMax, C.steerAngleMax, C.steerAngleCentrifugalKneeFactor);
     const float targetSteerAngle = clamp(in.steer, -1.0f, 1.0f) * steerAngleMaxAtCurrentSpeed;
     steerAngle += (targetSteerAngle - steerAngle) * std::min(1.0f, stepSeconds * C.steerResponse);
 
@@ -552,8 +553,12 @@ void Box3dVehicle::substep(float stepSeconds, const VehicleInput& in) {
             else wheelSpeed_[i] *= 1.0f - 0.3f * stepSeconds;
             wheel.spin += wheelSpeed_[i] * stepSeconds;
             wheel.slip = 0;
+            wheel.slipSpeed = 0;
+            wheel.roadSpeed = 0;
+            wheel.blocked = 0;
             wheel.lateralForce = wheel.lateralLimit = 0;
             wheel.longitudinalForce = wheel.frictionLimit = 0;
+            wheel.gripFactor = 0;
             wheel.tyreForce = Vec3f();
             wheel.force = Vec3f();
             wheel.sliding = false;
@@ -602,7 +607,9 @@ void Box3dVehicle::substep(float stepSeconds, const VehicleInput& in) {
             mix(tyreLoadDynamicAverage, tyreLoadDynamic, tyreLoadDistributionSensitivity),
             tyreLoadScalingSensitivity
         );
-        const float frictionLimit = grip_ * (1.0f + (c.roadFriction - 1.0f) * C.tyreSurfaceFrictionEffectFactor) * frictionLoad;  // N: the most the tyre can push with, in any direction
+        const float gripFactor = grip_ * (1.0f + (c.roadFriction - 1.0f) * C.tyreSurfaceFrictionEffectFactor);
+        wheel.gripFactor = gripFactor;
+        const float frictionLimit = gripFactor * frictionLoad;  // N: the most the tyre can push with, in any direction
         float brakingForce = brakeInput * P.brakeForce * frictionLimit;
         if (handbrakeActsHere) brakingForce = std::max(brakingForce, handbrakeInput * C.handbrakeBrake * frictionLimit);
         const float rollingDirection = longitudinalSpeed > 0 ? 1.0f : -1.0f;  // brakes and resistance act against the motion
@@ -645,6 +652,12 @@ void Box3dVehicle::substep(float stepSeconds, const VehicleInput& in) {
         wheel.frictionLimit = frictionLimit;
         wheel.lateralLimit = lateralFrictionLimit;
         wheel.sliding = isSliding;
+        wheel.roadSpeed = std::sqrt(lateralSpeed * lateralSpeed + longitudinalSpeed * longitudinalSpeed);
+        const float spinAgainstRoad = wheelSpeed_[i] * wheelRadii[i] - longitudinalSpeed;
+        wheel.slipSpeed = std::sqrt(lateralSpeed * lateralSpeed + spinAgainstRoad * spinAgainstRoad);
+        // a tyre that brakes with all the grip it has slides, even where the wheel's own turning (the look of it) still follows the road
+        if (std::max(brakeInput, handbrakeActsHere ? handbrakeInput : 0.0f) > 0.3f && std::fabs(longitudinalForce) >= 0.95f * longitudinalFrictionLimit)
+            wheel.slipSpeed = std::max(wheel.slipSpeed, std::fabs(longitudinalSpeed));
         wheel.slip = std::atan2(std::fabs(lateralSpeed), std::fabs(longitudinalSpeed) + 1.0f);  // slip angle, radians (+1: no jump near standstill)
         largestSlipAngle = std::max(largestSlipAngle, wheel.slip);
         wheelDriveForce_[i] = clamp(driveDemand, -longitudinalFrictionLimit, longitudinalFrictionLimit);
@@ -659,6 +672,7 @@ void Box3dVehicle::substep(float stepSeconds, const VehicleInput& in) {
         const bool slidingSideways = frictionLimit > 0 && (std::fabs(lateralForce) > kSidewaysSlideFraction * frictionLimit || wheel.slip > C.driftSlipDeadZone);
         const bool againstDrive = driveDemand * longitudinalSpeed < 0;
         const bool noBurnout = C.tractionControl > 0.5f && !slidingSideways && !againstDrive;
+        wheel.blocked = blocked;
         float target = longitudinalSpeed / wheelRadii[i] * (1.0f - blocked);
         if (!noBurnout && std::fabs(driveDemand) > frictionLimit) {
             const float slipSpeed = (std::fabs(driveDemand) / std::max(frictionLimit, 1.0f) - 1.0f) * kBurnoutSlip * sizeScale_;

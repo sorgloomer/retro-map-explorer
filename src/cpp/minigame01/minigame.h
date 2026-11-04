@@ -9,6 +9,7 @@
 #include "minigame01/input.h"
 #include "minigame01/box3d_level.h"
 #include "minigame01/box3d_props.h"
+#include "minigame01/skidmarks.h"
 #include "minigame01/box3d_vehicle.h"
 
 namespace minigame01 {
@@ -82,6 +83,7 @@ private:
     std::vector<char> iconCatShown;   // their visibility in the viewer
     Box3dLevel physicsLevel;   // the level in the physics engine
     Box3dProps props_;         // the movable objects of the level in it
+    SkidMarks skid_;           // the marks of the sliding tyres
     CarModel car;
     Box3dVehicle vehicle;
     Input input;
