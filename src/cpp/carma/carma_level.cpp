@@ -475,7 +475,10 @@ void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
         auto toBody = [&](Vec3f p) { return fixX(p - centre); };
         BatchSet body;
         std::vector<Vec3f> meshPoints;
+        std::vector<uint32_t> meshTriangles;
         for (const Batch& bt : mesh.batches) {
+            const uint32_t firstPoint = (uint32_t)meshPoints.size();
+            for (uint32_t index : bt.idx) meshTriangles.push_back(firstPoint + index);
             std::vector<SceneVertex> vs = bt.verts;
             for (SceneVertex& sv : vs) {
                 const Vec3f p = toBody(Vec3f(sv.x, sv.y, sv.z));
@@ -494,9 +497,11 @@ void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
         kind.mass = collision.mass > 1.0f ? collision.mass : 0.0f;   // 0: the physics works it out from the volume
         if (collision.points.size() >= 4) {   // the collider of the game's files
             for (const Vec3f& p : collision.points) kind.collider.push_back(toBody(p));
+            kind.colliderTriangles = collision.triangles;
             kind.colliderFromFile = true;
         } else {                              // none: the visible mesh is the collider
             kind.collider = std::move(meshPoints);
+            kind.colliderTriangles = std::move(meshTriangles);
         }
         out.propTypes.push_back(std::move(kind));
         return (int)out.propTypes.size() - 1;

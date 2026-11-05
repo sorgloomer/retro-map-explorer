@@ -49,7 +49,7 @@ public:
     // The player's own view of the chase camera: turns it around the car (radians), and makes it closer or farther (factor)
     void orbitCamera(float dYaw, float dPitch);
     void zoomCamera(float factor);
-    void showColliders(bool on) { showColliders_ = on; collidersChanged_ = true; }  // debug: the collision shapes of the car, red where they touch the level, and of the movable objects
+    void showColliders(int mode) { showColliders_ = mode; collidersChanged_ = true; }   // 0 off, 1 the convex pieces of the physics, 2 the shapes of the game's files;  // debug: the collision shapes of the car, red where they touch the level, and of the movable objects
     void showForces(bool on) { showForces_ = on; }  // debug: an arrow per wheel for the force it pushes the car with
     const Box3dVehicle& vehicleState() const { return vehicle; }  // for the debug display
     // The parameters changed: the car's mass, centre of mass, inertia and probes follow (the car stays where it is).
@@ -90,14 +90,15 @@ private:
     // body, FL, FR, RL, RR, then the debug arrows: the four suspensions' forces, then gravity, air drag, downforce, afterburner, then the
     // four tyres' forces (the hull contact arrows are in hullArrowMovers)
     int carMover[17] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
-    bool showForces_ = false, showColliders_ = false, collidersChanged_ = false;   // (the last: the objects have to be told in the next frame)
+    bool showForces_ = false, collidersChanged_ = false;
+    int showColliders_ = 0;   // (the last: the objects have to be told in the next frame)
     std::vector<int> hullArrowMovers;  // a grey arrow for each hull sphere that is pushed by the level (debug)
     int hullArrowGeom = -1;
     std::vector<int> sphereMovers;  // one per collision sphere of the car (debug)
     int wheelGeoms[4][2] = {{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}};   // the same for the tyres that the Box3D car casts down (per wheel: its own size)
-    int hullDotMover = -1;          // little white dots on the vertices of that hull (debug)
     int hullMover = -1;            // the convex hull of the chassis, when the physics has one (debug)
     int hullGeoms[2] = {-1, -1};    // the same colours
+    int rawHullGeoms[2] = {-1, -1}; // the same for the hull as the car's file has it
     std::vector<Pickup> pickups;
     Hud hud_;
     Vec3f startPos;

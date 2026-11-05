@@ -144,7 +144,8 @@ public:
         bool found = false;
         float mass = 0;                      // kg
         Vec3f centreOfMass;                  // in the space of the mesh (raw: not mirrored)
-        std::vector<Vec3f> points;           // the convex polyhedron of the collider, in the space of the mesh (raw: not mirrored)
+        std::vector<Vec3f> points;           // the polyhedron of the collider, in the space of the mesh (raw: not mirrored)
+        std::vector<uint32_t> triangles;     // its faces as triangles over the points
     };
     // With `pieces` set, the meshes of the hierarchy are not put in the scene: each mesh node is one piece, its mesh as it is (raw) and the
     // matrix that places it (a breakable's mesh and where it stands in the level).

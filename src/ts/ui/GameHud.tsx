@@ -200,14 +200,20 @@ function LateralForces() {
             </Info>
           </label>
           <label class="gd-forces">
-            <input type="checkbox" checked={colliders} onChange={(e) => setDebugColliders(e.currentTarget.checked)} /> draw colliders
+            draw colliders
+            <select class="gd-select" value={colliders} onChange={(e) => setDebugColliders(Number(e.currentTarget.value))}>
+              <option value={0}>no</option>
+              <option value={1}>physics pieces</option>
+              <option value={2}>file shapes</option>
+            </select>
             <Info>
-              The shapes that collide. The car's hull and tyres are drawn over the car:{' '}
+              The shapes that collide, drawn solid instead of the meshes of the car and of the movable objects (and the breakables).{' '}
+              <b>physics pieces</b>: the convex pieces that the physics engine has. The car's hull and tyres:{' '}
               <span class="gd-key" style={{ color: '#3cdc5a' }}>■ green</span> free,{' '}
-              <span class="gd-key" style={{ color: '#ff3c3c' }}>■ red</span> touching the level (during the last frame). The movable objects
-              (and the breakables) are drawn instead of their meshes, as solid shapes:{' '}
+              <span class="gd-key" style={{ color: '#ff3c3c' }}>■ red</span> touching the level (during the last frame). The objects:{' '}
               <span class="gd-key" style={{ color: '#5aaaff' }}>■ blue</span> at rest,{' '}
-              <span class="gd-key" style={{ color: '#ffaa3c' }}>■ orange</span> moving.
+              <span class="gd-key" style={{ color: '#ffaa3c' }}>■ orange</span> moving.{' '}
+              <b>file shapes</b>: the polyhedra of the game's collision files as they are (they can be concave); the tyres are as before.
             </Info>
           </label>
         </div>

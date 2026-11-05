@@ -639,8 +639,8 @@ EMSCRIPTEN_KEEPALIVE const char* rme_config_apply(const char* json) {
     return error.c_str();
 }
 
-// Debug: draws the collision shapes of the car (red where they touch the level).
-EMSCRIPTEN_KEEPALIVE void rme_game_show_colliders(int on) { app.mg.showColliders(on != 0); }
+// Debug: draws the collision shapes (mode 1: what the physics has, red where they touch the level; mode 2: the shapes of the game's files; 0: off).
+EMSCRIPTEN_KEEPALIVE void rme_game_show_colliders(int mode) { app.mg.showColliders(mode < 0 ? 0 : mode > 2 ? 2 : mode); }
 
 // Debug: draws an arrow per wheel for the force it pushes the car with.
 EMSCRIPTEN_KEEPALIVE void rme_game_show_forces(int on) { app.mg.showForces(on != 0); }

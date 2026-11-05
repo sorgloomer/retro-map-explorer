@@ -1,4 +1,6 @@
 #include "minigame01/minigame.h"
+#include "minigame01/collider_shapes.h"
+#include "minigame01/convex_decomposition.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -181,83 +183,36 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
             scene.movers[sphereMovers.back()].lit = true;
         }
     }
-    // the convex hull of the chassis as the physics engine made it: its triangles, green or red (translucent), one mover, in car space
+    // the hull of the chassis: the convex pieces that the physics engine has (green, red when they touched the level), and the polyhedra of the
+    // car's file as they are, in car space: one mover that has the one or the other
     {
-        std::vector<Vec3f> hullVertices;
-        std::vector<uint32_t> hullIndices;
-        if (vehicle.colliderMesh(hullVertices, hullIndices)) {
-            auto makeHull = [&](uint8_t r, uint8_t g, uint8_t b) {
-                // The renderer shades it with the level's light. Flat, so that the facets can be told apart: every triangle has its
-                // own vertices and the normal of its face, pointing away from the hull's middle whichever way the triangle is wound.
-                Vec3f middle(0, 0, 0);
-                for (const Vec3f& p : hullVertices) middle = middle + p;
-                if (!hullVertices.empty()) middle = middle * (1.0f / (float)hullVertices.size());
-                std::vector<SceneVertex> verts;
-                std::vector<Vec3f> normals;
-                std::vector<uint32_t> indices;
-                for (size_t k = 0; k + 2 < hullIndices.size(); k += 3) {
-                    const Vec3f& p0 = hullVertices[hullIndices[k]];
-                    const Vec3f& p1 = hullVertices[hullIndices[k + 1]];
-                    const Vec3f& p2 = hullVertices[hullIndices[k + 2]];
-                    Vec3f normal = cross(p1 - p0, p2 - p0);
-                    const float length = std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
-                    if (length > 1e-12f) normal = normal * (1.0f / length);
-                    const Vec3f centre = (p0 + p1 + p2) * (1.0f / 3.0f);
-                    const Vec3f outward = centre - middle;
-                    if (normal.x * outward.x + normal.y * outward.y + normal.z * outward.z < 0) normal = normal * -1.0f;
-                    for (const Vec3f* p : {&p0, &p1, &p2}) {
-                        SceneVertex v;
-                        v.x = p->x; v.y = p->y; v.z = p->z;
-                        v.r = r; v.g = g; v.b = b; v.a = 255;
-                        v.u = v.v = 0;
-                        indices.push_back((uint32_t)verts.size());
-                        verts.push_back(v);
-                        normals.push_back(normal);
-                    }
+        const std::vector<Box3dVehicle::HullPiece>& hullPieces = vehicle.colliderPieces();
+        if (!hullPieces.empty()) {
+            std::vector<ColliderPiece> pieces;
+            for (const Box3dVehicle::HullPiece& piece : hullPieces) {
+                ColliderPiece shape;
+                shape.points = piece.vertices;
+                shape.indices = piece.indices;
+                pieces.push_back(std::move(shape));
+            }
+            std::vector<ColliderPiece> raw;
+            if (!vehicle.rawHullTriangles().empty())
+                for (SurfaceComponent& component : splitSurfaceIntoComponents(vehicle.rawHullPoints(), vehicle.rawHullTriangles())) {
+                    ColliderPiece shape;
+                    shape.points = std::move(component.points);
+                    shape.indices = std::move(component.triangles);
+                    shape.closed = true;
+                    raw.push_back(std::move(shape));
                 }
-                BatchSet hull;
-                hull.lit = true;
-                hull.appendIndexed(-1, BLEND_OPAQUE, verts.data(), verts.size(), indices.data(), indices.size(), true, normals.data());
-                scene.moverGeoms.push_back(hull);
-                return (int)scene.moverGeoms.size() - 1;
-            };
-            hullGeoms[0] = makeHull(60, 220, 90);
-            hullGeoms[1] = makeHull(255, 60, 60);
+            const struct { uint8_t r, g, b; } colours[2] = {{60, 220, 90}, {255, 60, 60}};
+            for (int touched = 0; touched < 2; touched++) {
+                scene.moverGeoms.push_back(solidColliderShape(pieces, 1.0f, colours[touched].r, colours[touched].g, colours[touched].b, 1));
+                hullGeoms[touched] = (int)scene.moverGeoms.size() - 1;
+                scene.moverGeoms.push_back(solidColliderShape(raw.empty() ? pieces : raw, 1.0f, colours[touched].r, colours[touched].g, colours[touched].b, 2));
+                rawHullGeoms[touched] = (int)scene.moverGeoms.size() - 1;
+            }
             hullMover = addMover(hullGeoms[0]);
             scene.movers[hullMover].lit = true;
-            // the vertices of the hull: a little white octahedron on each, sized by the hull (one mover, unlit, opaque)
-            {
-                Vec3f low = hullVertices[0], high = hullVertices[0];
-                for (const Vec3f& p : hullVertices) {
-                    low = Vec3f(std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z));
-                    high = Vec3f(std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z));
-                }
-                const float dot = 0.008f * std::max(high.x - low.x, std::max(high.y - low.y, high.z - low.z));
-                std::vector<bool> used(hullVertices.size(), false);
-                for (uint32_t index : hullIndices) used[index] = true;   // (the points that no face uses are not part of the shape)
-                std::vector<SceneVertex> dotVerts;
-                std::vector<uint32_t> dotIndices;
-                const uint32_t octahedron[24] = {0, 2, 4, 2, 1, 4, 1, 3, 4, 3, 0, 4, 2, 0, 5, 1, 2, 5, 3, 1, 5, 0, 3, 5};
-                for (size_t k = 0; k < hullVertices.size(); k++) {
-                    if (!used[k]) continue;
-                    const Vec3f& p = hullVertices[k];
-                    const Vec3f corners[6] = {Vec3f(dot, 0, 0), Vec3f(-dot, 0, 0), Vec3f(0, dot, 0), Vec3f(0, -dot, 0), Vec3f(0, 0, dot), Vec3f(0, 0, -dot)};
-                    const uint32_t base = (uint32_t)dotVerts.size();
-                    for (const Vec3f& c : corners) {
-                        SceneVertex v;
-                        v.x = p.x + c.x; v.y = p.y + c.y; v.z = p.z + c.z;
-                        v.r = v.g = v.b = v.a = 255;
-                        v.u = v.v = 0;
-                        dotVerts.push_back(v);
-                    }
-                    for (uint32_t corner : octahedron) dotIndices.push_back(base + corner);
-                }
-                BatchSet dots;
-                dots.appendIndexed(-1, BLEND_OPAQUE, dotVerts.data(), dotVerts.size(), dotIndices.data(), dotIndices.size(), true);
-                scene.moverGeoms.push_back(dots);
-                hullDotMover = addMover((int)scene.moverGeoms.size() - 1);
-                scene.movers[hullDotMover].lit = false;
-            }
         }
     }
     worldFloor = scene.bmin.y / scale - tuning().worldFloorBelow;
@@ -279,7 +234,6 @@ void MiniGame::forget() {
     for (int& m : carMover) m = -1;
     sphereMovers.clear();
     hullMover = -1;
-    hullDotMover = -1;
     hullArrowMovers.clear();
     input.releaseAll();
 }
@@ -405,7 +359,6 @@ void MiniGame::stop(Scene& scene) {
     for (int m : sphereMovers)
         if (m >= 0 && m < (int)scene.movers.size()) scene.movers[m].hidden = true;
     if (hullMover >= 0 && hullMover < (int)scene.movers.size()) scene.movers[hullMover].hidden = true;
-    if (hullDotMover >= 0 && hullDotMover < (int)scene.movers.size()) scene.movers[hullDotMover].hidden = true;
     for (int m : hullArrowMovers)
         if (m >= 0 && m < (int)scene.movers.size()) scene.movers[m].hidden = true;
     for (Pickup& p : pickups)
@@ -549,7 +502,7 @@ void MiniGame::syncMovers(Scene& scene) {
         return m;
     };
     scene.movers[carMover[0]].model = toLevel(M);
-    scene.movers[carMover[0]].hidden = showColliders_;   // (the colliders are drawn instead of the car)
+    scene.movers[carMover[0]].hidden = showColliders_ != 0;   // (the colliders are drawn instead of the car)
     for (int i = 0; i < 4; i++) {
         const Box3dVehicle::Wheel& w = vehicle.wheel(i);
         float cs = std::cos(w.steer), sn = std::sin(w.steer);
@@ -564,12 +517,12 @@ void MiniGame::syncMovers(Scene& scene) {
         L.m[12] = w.centre.x; L.m[13] = w.centre.y; L.m[14] = w.centre.z;
         Mover& m = scene.movers[carMover[1 + i]];
         m.model = toLevel(Mat4f::mul(M, L));
-        m.hidden = showColliders_;
+        m.hidden = showColliders_ != 0;
     }
     // the collision shapes of the car: the spheres at their centres in the car, the hull; red when they touched the level during the last frame
     for (size_t i = 0; i < sphereMovers.size(); i++) {
         Mover& m = scene.movers[sphereMovers[i]];
-        m.hidden = !showColliders_ || (int)i >= vehicle.probeCount();
+        m.hidden = showColliders_ == 0 || (int)i >= vehicle.probeCount();
         if (m.hidden) continue;
         const Vec3f c = vehicle.probeCentre((int)i);
         // the tyre that is cast: at the wheel's place, its axle turned by the steering (it does not spin)
@@ -583,16 +536,11 @@ void MiniGame::syncMovers(Scene& scene) {
     }
     if (hullMover >= 0) {
         Mover& m = scene.movers[hullMover];
-        m.hidden = !showColliders_;
+        m.hidden = showColliders_ == 0;
         if (!m.hidden) {
-            m.geom = hullGeoms[vehicle.hullTouched() ? 1 : 0];
+            m.geom = (showColliders_ == 2 ? rawHullGeoms : hullGeoms)[vehicle.hullTouched() ? 1 : 0];
             m.model = toLevel(M);
         }
-    }
-    if (hullDotMover >= 0) {
-        Mover& m = scene.movers[hullDotMover];
-        m.hidden = !showColliders_;
-        if (!m.hidden) m.model = toLevel(M);
     }
     // the force arrows: from the contact point along the force, one car weight per tuning length (params), thin
     const CarSettings& C = carSettings();

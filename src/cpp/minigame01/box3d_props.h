@@ -19,8 +19,9 @@ public:
     void reset(Scene& scene);
     // The movers of the bodies that moved in the last physics step go where their bodies are.
     void sync(Scene& scene);
-    // Debug: draws the colliders (solid, blue at rest, orange moving) instead of the meshes of the objects.
-    void showColliders(Scene& scene, bool on);
+    // Debug: draws the colliders (solid, blue at rest, orange moving) instead of the meshes of the objects: mode 1 the convex pieces that the
+    // physics has, mode 2 the shapes as the game's files have them, 0 the meshes.
+    void showColliders(Scene& scene, int mode);
     int count() const { return (int)bodies_.size(); }
 
 private:
@@ -30,7 +31,7 @@ private:
     };
     std::vector<Body> bodies_;   // one for every Scene::props
     float unitsPerMetre_ = 1;
-    bool showColliders_ = false;
+    int colliderMode_ = 0;
     void show(Scene& scene, size_t index, bool awake) const;   // what the mover of an object draws
 };
 

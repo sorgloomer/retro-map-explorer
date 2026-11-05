@@ -93,8 +93,16 @@ public:
     Vec3f hullArrowPoint(int i) const { return hullArrowPoint_[i]; }
     Vec3f hullArrowForce(int i) const { return hullArrowForce_[i]; }
     bool hullArrowOn(int i) const { return i < hullArrowCount_; }
-    // The convex hull of the car, its collision shape: its triangles (car space), and whether it touched the level.
-    bool colliderMesh(std::vector<Vec3f>& vertices, std::vector<uint32_t>& indices) const { vertices = hullVertices_; indices = hullIndices_; return !hullIndices_.empty(); }
+    // The collision shape of the car: convex pieces (the polyhedra of its collision file, each split into convex ones; a car whose hull is not
+    // convex has several), their triangles in car space, and whether it touched the level.
+    struct HullPiece {
+        std::vector<Vec3f> vertices;   // car space
+        std::vector<uint32_t> indices; // the faces as triangles
+    };
+    const std::vector<HullPiece>& colliderPieces() const { return hullPieces_; }
+    // The hull as the car's collision file has it (the polyhedra, as they are): points in car space and the faces as triangles; none for a car that has no faces.
+    const std::vector<Vec3f>& rawHullPoints() const { return hullPoints_; }
+    const std::vector<uint32_t>& rawHullTriangles() const { return modelHullIndices_; }
     bool hullTouched() const { return hullTouched_; }
     // The shape of a tyre that is cast down to find the road under it: polygons of kWheelCastSides corners in the plane that the wheel rolls in
     // (a corner straight up), kWheelCastRings of them evenly spaced across the tyre (the outer two at +- sideOffset), each a little smaller than
@@ -162,8 +170,8 @@ private:
     Vec3f inertia;                  // about the centre of mass: right, up, forward
     std::vector<Vec3f> hullPoints_;                  // what the hull is made of (car space)
     std::vector<uint32_t> modelHullIndices_;         // the faces of the hull of the car's files, as triangles over hullPoints_ (none: the engine's hull is drawn)
-    std::vector<Vec3f> hullVertices_;                // the hull as it is drawn: its points...
-    std::vector<uint32_t> hullIndices_;              // ...and its faces as triangles
+    std::vector<std::vector<Vec3f>> hullParts_;      // the points of the convex pieces of the hull (made once, when the model is set: it takes a while for a concave one)
+    std::vector<HullPiece> hullPieces_;              // the convex pieces that the hull is made of, as they are drawn
     Vec3f hullArrowPoint_[kMaxHullArrows], hullArrowForce_[kMaxHullArrows];
     int hullArrowCount_ = 0;
     float wheelSpeed_[kWheelCount] = {0, 0, 0, 0};   // rad/s, how the wheels turn (see substep)

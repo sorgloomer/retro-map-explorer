@@ -207,9 +207,11 @@ struct Scene : BatchSet {
         std::string name;                 // the hierarchy file it comes from
         int geom = -1;                    // index into moverGeoms (body space)
         float mass = 0;                   // kg; 0: the game's files do not say (the physics works it out from the volume)
-        std::vector<Vec3f> collider;      // points of the convex hull that is its collider, body space (level units)
+        std::vector<Vec3f> collider;      // points of its collider, body space (level units)...
+        std::vector<uint32_t> colliderTriangles;   // ...and the triangles of its surface over them (three indices each): the physics splits it into convex pieces
         bool colliderFromFile = false;    // from the game's collision file (.dcol); else the points of its visible mesh
-        int colliderGeom[2] = {-1, -1};   // index into moverGeoms: the collider as a solid shape (body space), at rest and moving; made by the physics
+        int colliderGeom[2] = {-1, -1};   // index into moverGeoms: the collider as the physics has it (convex pieces) as a solid shape (body space), at rest and moving; made by the physics
+        int rawGeom[2] = {-1, -1};        // the same for the shape as the game's file has it (the polyhedra, as they are)
     };
     struct Prop {
         int type = 0;                     // index into propTypes

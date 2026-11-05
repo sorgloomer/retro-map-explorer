@@ -1,5 +1,8 @@
 #include "minigame01/box3d_level.h"
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <map>
 #include <cstdint>
 #include "minigame01/params.h"
 
@@ -91,7 +94,42 @@ bool Box3dLevel::build(const Scene& scene, float unitsPerMetre, bool bothSides) 
                 highestSurface = std::max(highestSurface, poly.material);
             }
             for (int s = 0; s <= highestSurface; s++) part.friction.push_back(source.frictionOf((uint8_t)s));
+            // The polygons that touch no other polygon (the walls of a fence, a pane of glass) are meant to be solid from both sides: the game draws
+            // them two sided, and nothing in its collision files says it (the flags of a polygon are its surface and which of its edges have a
+            // neighbour). Such a polygon is recorded a second time the other way round, in a mesh of its own: in the mesh of the level, the two would
+            // share all their edges, and the edges of a fence would count as inner ones, which a tyre does not catch on.
+            MeshPart back;
+            back.vertices = part.vertices;
+            back.friction = part.friction;
+            back.clockWise = false;   // (the level's meshes are clockwise: this is the other side of the same polygons)
+            {
+                std::map<std::array<long, 3>, int> weldedId;   // vertices at one place (to a centimetre) are one vertex
+                std::vector<int> weld(source.verts.size());
+                for (size_t i = 0; i < source.verts.size(); i++) {
+                    const Vec3f& v = source.verts[i];
+                    const std::array<long, 3> key = {std::lround(v.x * 100.0f), std::lround(v.y * 100.0f), std::lround(v.z * 100.0f)};
+                    weld[i] = weldedId.emplace(key, (int)weldedId.size()).first->second;
+                }
+                std::map<std::pair<int, int>, int> edgeUses;
+                auto edgeOf = [&](const uint32_t* corner, int n, int i) {
+                    const int a = weld[corner[i]], b = weld[corner[(i + 1) % n]];
+                    return std::make_pair(std::min(a, b), std::max(a, b));
+                };
+                for (const CollisionMesh::Poly& poly : source.polys)
+                    for (int i = 0; i < poly.n; i++) edgeUses[edgeOf(&source.corners[poly.first], poly.n, i)]++;
+                for (const CollisionMesh::Poly& poly : source.polys) {
+                    const uint32_t* corner = &source.corners[poly.first];
+                    bool touches = false;
+                    for (int i = 0; i < poly.n && !touches; i++) touches = edgeUses[edgeOf(corner, poly.n, i)] > 1;
+                    if (touches) continue;
+                    for (int k = 2; k < poly.n; k++) {
+                        back.indices.insert(back.indices.end(), {(int32_t)corner[0], (int32_t)corner[k - 1], (int32_t)corner[k]});
+                        back.surface.push_back(poly.material);
+                    }
+                }
+            }
             parts.push_back(std::move(part));
+            if (!back.indices.empty()) parts.push_back(std::move(back));
         }
     } else {
         // no collision files: the level as it is drawn (one surface type, plain road)

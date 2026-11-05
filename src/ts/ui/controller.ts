@@ -434,7 +434,7 @@ export async function startGame(mode: number): Promise<void> {
   try {
     ok = await call('rme_game_start', 'number', ['number', 'number'], [mode, carToDrive()], true);
     call('rme_game_show_forces', null, ['number'], [state.debugForces ? 1 : 0]);
-    call('rme_game_show_colliders', null, ['number'], [state.debugColliders ? 1 : 0]);
+    call('rme_game_show_colliders', null, ['number'], [state.debugColliders]);
   } catch (e) {
     console.error(e);
     setStatus('Could not start the game: ' + errorMessage(e), true);
@@ -507,10 +507,10 @@ export function chooseCar(car: number): void {
   }
 }
 /** Draws or hides the collision shapes of the car (remembered); the ones touching the level are red. */
-export function setDebugColliders(on: boolean): void {
-  update({ debugColliders: on });
-  store.set('rme.debugColliders.v1', on ? '1' : '0');
-  call('rme_game_show_colliders', null, ['number'], [on ? 1 : 0]);
+export function setDebugColliders(mode: number): void {
+  update({ debugColliders: mode });
+  store.set('rme.debugColliders.v1', String(mode));
+  call('rme_game_show_colliders', null, ['number'], [mode]);
 }
 /** Draws or hides the arrows of the forces the wheels push the car with (remembered). */
 export function setDebugForces(on: boolean): void {

@@ -96,6 +96,25 @@ void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int
                     memcpy(p, &cd[64 + (size_t)i * 12], 12);
                     collision->points[i] = Vec3f(p[0], p[1], p[2]);
                 }
+                // the faces follow the points: a count, then for each face its plane normal (3 floats), the number of its corners and their indices
+                size_t at = 64 + (size_t)pointCount * 12;
+                uint32_t faceCount = 0;
+                if (at + 4 <= cd.size()) {
+                    memcpy(&faceCount, &cd[at], 4);
+                    at += 4;
+                }
+                for (uint32_t face = 0; face < faceCount && at + 16 <= cd.size(); face++) {
+                    uint32_t corners = 0;
+                    memcpy(&corners, &cd[at + 12], 4);
+                    if (corners < 3 || corners > 64 || at + 16 + (size_t)corners * 4 > cd.size()) break;
+                    std::vector<uint32_t> index(corners);
+                    memcpy(index.data(), &cd[at + 16], (size_t)corners * 4);
+                    bool valid = true;
+                    for (uint32_t c : index) valid = valid && c < pointCount;
+                    if (valid)
+                        for (uint32_t k = 2; k < corners; k++) collision->triangles.insert(collision->triangles.end(), {index[0], index[k - 1], index[k]});
+                    at += 16 + (size_t)corners * 4;
+                }
             }
             // The centre of mass is the vector (5..7) from the origin of the mesh, as the file has it (it can lie outside the mesh: that is how
             // an object is kept upright).

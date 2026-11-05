@@ -165,6 +165,8 @@ body.playing #canvas { cursor: default; }
 .gh-debug { position: absolute; left: 12px; top: 58px; padding: 8px 10px; font: 11px/1.5 ui-monospace, Consolas, monospace;
   background: rgba(18, 22, 30, .7); border: 1px solid var(--border); border-radius: 8px; min-width: 250px; }
 .gd-configrow { margin: 2px 0 4px; }
+#gameHud select.gd-select { pointer-events: auto; font: inherit; font-size: 11px; color: inherit; background: rgba(255, 255, 255, .08); border: 1px solid var(--border); border-radius: 4px; padding: 0 2px; }
+#gameHud select.gd-select option { color: #000; }
 .gd-section { margin: 2px 0 2px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
 .gd-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 #gameHud button.gd-config { position: static; pointer-events: auto; width: auto; margin: 0; padding: 1px 7px; font: inherit; font-size: 11px;

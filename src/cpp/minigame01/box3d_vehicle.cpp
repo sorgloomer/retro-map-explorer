@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include "math/functions.h"
+#include "minigame01/convex_decomposition.h"
 
 namespace minigame01 {
 
@@ -119,6 +120,11 @@ void Box3dVehicle::init(const CarModel& m) {
     hullPoints_ = m.hullPoints;
     wheelWidth_ = m.wheelWidth;
     modelHullIndices_ = m.hullTriangleIndices;
+    // The hull is the polyhedra of the car's collision file, each split into convex pieces (a convex one is one piece).
+    hullParts_.clear();
+    if (!modelHullIndices_.empty() && hullPoints_.size() >= 4)
+        for (const SurfaceComponent& component : splitSurfaceIntoComponents(hullPoints_, modelHullIndices_))
+            for (std::vector<Vec3f>& piece : decomposeIntoConvexPieces(component.points, component.triangles, exactSurfaceSettings())) hullParts_.push_back(std::move(piece));
     centreOfMass = Vec3f();
     applyTuning();
     reset(Vec3f(), 0);
@@ -200,27 +206,35 @@ void Box3dVehicle::applyTuning() {
         const Vec3f lo = hasHullBox ? hullBoxMin : bmin, hi = hasHullBox ? hullBoxMax : bmax;
         for (int corner = 0; corner < 8; corner++) points.push_back({(corner & 1) ? hi.x : lo.x, (corner & 2) ? hi.y : lo.y, (corner & 4) ? hi.z : lo.z});
     }
-    b3HullData* hull = b3CreateHull(points.data(), (int)points.size(), kMaxHullVertices);
     b3ShapeDef shape = b3DefaultShapeDef();
     shape.baseMaterial.friction = P.floorFriction;   // against the level: this times the surface's multiplier
     shape.baseMaterial.restitution = C.hullWallBounce;
     shape.filter.categoryBits = kCarCategory;
-    if (hull) {
-        b3CreateHullShape(chassis, &shape, hull);
-        if (!modelHullIndices_.empty() && hullPoints_.size() >= 4) {   // the faces of the car's own file, as they are
-            hullVertices_ = hullPoints_;
-            hullIndices_ = modelHullIndices_;
-        } else {
-            hullTriangles(hull, hullVertices_, hullIndices_);
+    hullPieces_.clear();
+    // The convex pieces of the hull (see init); a car that has no faces (the body mesh of a Re-Volt car) has the convex hull of its points.
+    std::vector<b3HullData*> hulls;
+    for (const std::vector<Vec3f>& piece : hullParts_) {
+        std::vector<b3Vec3> piecePoints;
+        for (const Vec3f& p : piece) piecePoints.push_back(toBox(p));
+        b3HullData* hull = piecePoints.size() >= 4 ? b3CreateHull(piecePoints.data(), (int)piecePoints.size(), kMaxHullVertices) : nullptr;
+        if (hull) hulls.push_back(hull);
+    }
+    if (hulls.empty()) {
+        b3HullData* hull = b3CreateHull(points.data(), (int)points.size(), kMaxHullVertices);
+        if (hull) hulls.push_back(hull);
+    }
+    if (!hulls.empty()) {
+        for (b3HullData* hull : hulls) {
+            b3CreateHullShape(chassis, &shape, hull);
+            hullPieces_.emplace_back();
+            hullTriangles(hull, hullPieces_.back().vertices, hullPieces_.back().indices);
+            b3DestroyHull(hull);
         }
-        b3DestroyHull(hull);
     } else {   // (the points could not make a hull: the box of the car)
         const Vec3f lo = hasHullBox ? hullBoxMin : bmin, hi = hasHullBox ? hullBoxMax : bmax;
         const Vec3f half = (hi - lo) * 0.5f, middle = (hi + lo) * 0.5f;
         b3BoxHull box = b3MakeOffsetBoxHull(half.x, half.y, half.z, toBox(middle));
         b3CreateHullShape(chassis, &shape, &box.base);
-        hullVertices_.clear();
-        hullIndices_.clear();
     }
     b3MassData data;
     data.mass = mass;
