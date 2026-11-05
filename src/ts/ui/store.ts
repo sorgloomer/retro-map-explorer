@@ -72,10 +72,12 @@ export interface UiState {
     wheels: { lat: number; limit: number; lon: number; fric: number; slide: number; g: number; slip: number; load: number }[];  // front left, front right, rear left, rear right
     toy: number;
     lights: { inRange: number; max: number; colours: string[] };  // the point lights that reach the car, and how many the shader can use
+    profile: { n: string; avg: number; peak: number }[];  // how long the parts of a frame take (ms): the average and the recent peak
   };
   car: number;           // the car to drive: 0 = the Carmageddon Eagle, 1 = the Re-Volt RC Bandit (a rookie RC car)
   debugColliders: number;  // the collision shapes are drawn in the game instead of the meshes: 0 no, 1 as the physics has them (convex pieces), 2 as the game's files have them
   debugForces: boolean;  // the wheel force arrows are drawn in the game
+  debugShadows: boolean;  // the shadows and the ambient occlusion are on
   debugPanel: boolean;   // the lateral force panel of the game is shown (not just its title)
   paramsOpen: boolean;   // the minigame parameter editor is open
   paramsText: string | null;   // the text the editor opens with, when it is not the configuration in use (the saved one that could not be loaded)
@@ -111,10 +113,12 @@ export const state: UiState = {
     wheels: [],
     toy: 0,
     lights: { inRange: 0, max: 0, colours: [] },
+    profile: [],
   },
   car: store.get('rme.car.v1') === '1' ? 1 : 0,
   debugColliders: Math.max(0, Math.min(2, Number(store.get('rme.debugColliders.v1')) || 0)),
   debugForces: store.get('rme.debugForces.v1') === '1',
+  debugShadows: store.get('rme.debugShadows.v1') !== '0',
   debugPanel: store.get('rme.debugPanel.v1') === '1',
   paramsOpen: false,
   paramsText: null,

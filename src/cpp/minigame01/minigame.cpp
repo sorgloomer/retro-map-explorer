@@ -1,4 +1,5 @@
 #include "minigame01/minigame.h"
+#include "profiler.h"
 #include "minigame01/collider_shapes.h"
 #include "minigame01/convex_decomposition.h"
 #include <algorithm>
@@ -47,6 +48,7 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
     }
     vehicle.attach(physicsLevel);
     props_.build(scene, physicsLevel.world(), scale);
+    movers_.build(scene, physicsLevel.world(), scale, 0);
     vehicle.init(car);
     int g0 = (int)scene.moverGeoms.size();
     scene.moverGeoms.push_back(car.body);
@@ -226,6 +228,7 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
 void MiniGame::forget() {
     vehicle.detach();
     props_.destroy();
+    movers_.destroy();
     skid_.forget();
     effects_.forget();
     physicsLevel.destroy();
@@ -357,6 +360,7 @@ void MiniGame::stop(Scene& scene) {
     props_.reset(scene);
     skid_.show(scene, false);
     effects_.show(scene, false);
+    scene.softShadows = false;
     input.releaseAll();
     for (size_t i = 0; i < iconCats.size() && i < iconCatShown.size(); i++) scene.cats[iconCats[i]].visible = iconCatShown[i] != 0;
     for (int m : carMover)
@@ -498,6 +502,7 @@ void MiniGame::syncMovers(Scene& scene) {
     if (collidersChanged_) {
         collidersChanged_ = false;
         props_.showColliders(scene, showColliders_);
+        movers_.showColliders(scene, showColliders_);
     }
     scene.carBrightness = carSettings().rendererCarBrightness;
     Mat4f M = vehicle.modelMatrix();
@@ -587,8 +592,9 @@ void MiniGame::syncMovers(Scene& scene) {
     }
 }
 
-void MiniGame::update(float dt, const Controls& c, Scene& scene) {
+void MiniGame::update(float dt, const Controls& c, Scene& scene, double animTime, float animScale) {
     if (!running || !isPrepared) return;
+    prof::Scope gameTimer(prof::GAME_UPDATE);
     const Params& P = tuning();
     const CarSettings& C = carSettings();
     dt = std::min(dt, P.maxFrameSeconds);
@@ -606,10 +612,29 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     vi.sideThrust = c.sideThrust;
     vi.jump = c.kangaroo;
     vi.lift = c.lift;
-    vehicle.step(dt, vi);
-    props_.sync(scene);
-    skid_.update(scene, vehicle, scale);
-    effects_.update(scene, dt, vehicle, physicsLevel, skid_, cam.forward(), c.afterburner, scale);
+    {
+        prof::Scope timer(prof::MOVERS);
+        movers_.update(scene, animTime, dt * animScale);
+    }
+    {
+        prof::Scope timer(prof::VEHICLE);
+        vehicle.step(dt, vi);
+    }
+    {
+        prof::Scope timer(prof::PROPS_SYNC);
+        props_.sync(scene);
+    }
+    {
+        prof::Scope timer(prof::SKID);
+        skid_.update(scene, vehicle, scale);
+    }
+    scene.softShadows = shadows_;   // the renderer's shadow maps and occlusion round the car
+    scene.shadowCentre = vehicle.position() * scale;
+    scene.shadowUnit = scale;
+    {
+        prof::Scope timer(prof::EFFECTS);
+        effects_.update(scene, dt, vehicle, physicsLevel, skid_, cam.forward(), c.afterburner, scale);
+    }
 
     // last safe spot (wheels down, upright), for falling out of the world
     safeTimer += dt;
@@ -645,6 +670,7 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     hud_.speedKmh = vehicle.worldSpeed() * 3.6f;  // in the world's metres, not the car's
     hud_.messageAge += dt;
     syncMovers(scene);
+    prof::Scope cameraTimer(prof::CAMERA);
     updateCamera(dt, false);
 }
 

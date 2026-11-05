@@ -202,6 +202,10 @@ body.playing #canvas { cursor: default; }
 .gd-num.gd-susp { min-width: 38px; color: #9ec5ff; }  /* the suspension force: blue, to tell it from the lateral numbers */
 .gd-total { margin-top: 2px; color: var(--muted); }
 /* on-screen driving buttons, only on devices whose main pointer is a finger */
+#gameHud button.gd-fold { position: static; pointer-events: auto; width: 100%; text-align: left; background: none; border: 0; padding: 2px 0; cursor: pointer; color: inherit; font: inherit; }
+.gd-profile { margin-bottom: 6px; }
+.gd-prow { display: flex; gap: 8px; align-items: baseline; font-size: 12px; }
+.gd-prow .gd-pname { flex: 1; white-space: pre; color: var(--muted); }
 .gh-touch, .gh-overbtns { display: none; }
 @media (pointer: coarse) {
   .gh-touch { display: flex; position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px calc(16px + env(safe-area-inset-bottom)); justify-content: space-between; align-items: flex-end; gap: 12px; }

@@ -79,7 +79,31 @@ private:
 
     const Scene* scene = nullptr;
     int lost = 0;
-    unsigned progWorld = 0, progLit = 0, progMarker = 0, progLine = 0;
+    unsigned progWorld = 0, progLit = 0, progMarker = 0, progLine = 0, progDepth = 0;
+    unsigned progWorldInst = 0, progDepthInst = 0, progLitInst = 0;   // the same with the model matrix per instance (attributes 4 to 7), for many objects of a geometry in one call
+    struct GeomBounds { Vec3f centre; float radius = 0; bool valid = false; };   // a sphere round a geometry (its own space)
+    std::vector<GeomBounds> geomBounds_;
+    std::vector<unsigned> geomInst_;   // per geometry: the buffer of the model matrices of its instances
+    unsigned instanceBuffer(int geom);
+    // the shadow maps (depth only): the sun's, seen from the sun over the area round the car, and one from straight above for the ambient occlusion
+    // Two cascades of the sun's: a near one (a 56 m square, finest) and a far one (twenty times as wide), and the occlusion map from above. The level is
+    // in all of them, and does not move: it is drawn into a map of its own (the "static" ones) only when the car has moved on to another cell of a
+    // grid; each frame the near maps start as a copy of that, and the objects that move are drawn on top.
+    static constexpr int kNearSize = 2048, kFarSize = 2048, kAoSize = 1024;
+    struct DepthTarget { unsigned fbo = 0, tex = 0; };
+    DepthTarget nearStatic_, near_, far_, aoStatic_, ao_;
+    bool nearValid_ = false, farValid_ = false, aoValid_ = false;
+    int nearKey_[3] = {0, 0, 0}, farKey_[3] = {0, 0, 0}, aoKey_[3] = {0, 0, 0};
+    Vec3f keySun_;
+    void makeDepthTarget(DepthTarget& target, int size);
+    // GPU timers (EXT_disjoint_timer_query_webgl2, when the browser has it): 0 the shadow maps, 1 the picture. A few queries each, read when they are ready.
+    bool gpuOk_ = false;
+    unsigned gpuQuery_[2][4] = {};
+    int gpuHead_[2] = {0, 0}, gpuPending_[2] = {0, 0};
+    bool gpuActive_[2] = {false, false};
+    void gpuBegin(int which);
+    void gpuEnd(int which);
+    void gpuCollect();
     std::vector<GpuBatch> batches;
     std::vector<GpuBatch> collisionGpu;
     std::vector<std::vector<GpuBatch>> geomGpu;  // one per Scene::moverGeoms entry

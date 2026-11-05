@@ -1,10 +1,84 @@
 #include "./renderer.h"
+#include "scene/mover_pose.h"
+#include "profiler.h"
 #include <GLES3/gl3.h>
 #include <emscripten/html5.h>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <unordered_map>
 
 namespace {
+
+const char* kShadowChunk = R"(
+uniform sampler2D uShadowMap, uShadowMap2, uAoMap;   // the near and the far cascade of the sun's, and the occlusion from above
+uniform mat4 uShadowVP, uShadowVP2, uAoVP;
+uniform float uShadowOn;                 // 1: this surface gets shadows and occlusion
+uniform vec3 uShadowDir;                 // unit vector towards the sun
+uniform vec4 uCas0, uCas1;               // of a cascade: the size of a texel (world), the bias, the radius of the search for blockers (uv), the penumbra per unit of depth
+uniform vec2 uCasUV0, uCasUV1;           // the least and the most of the radius of the soft edge (uv)
+uniform float uShadowStrength;
+uniform float uAoTop, uAoDepth, uAoUV, uUnit, uAoStrength;
+const vec2 kDisk[16] = vec2[16](vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725), vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
+  vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464), vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379),
+  vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.47373420), vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188),
+  vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590), vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790));
+float noiseAngle() { return 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); }
+
+// How much of the sun one cascade lets reach a point (1: all of it): percentage-closer soft shadows. The blockers are looked for near the point, and
+// the farther they are from it the wider the penumbra, so that a shadow is sharp where an object touches the ground and soft away from it. `edge` is how
+// far inside the map the point is (negative: outside).
+float pcss(sampler2D map, mat4 vp, vec4 c, vec2 limits, vec3 wp, vec3 n, out float edge) {
+  vec3 p = wp + n * (c.x * 2.5);
+  vec3 s = (vp * vec4(p, 1.0)).xyz * 0.5 + 0.5;
+  edge = min(min(s.x, 1.0 - s.x), min(s.y, 1.0 - s.y));
+  if (edge < 0.0 || s.z > 1.0) return 1.0;
+  float ref = s.z - c.y;
+  float a = noiseAngle();
+  mat2 R = mat2(cos(a), sin(a), -sin(a), cos(a));
+  float sum = 0.0, count = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float d = texture(map, s.xy + R * kDisk[i] * c.z).r;
+    if (d < ref) { sum += d; count += 1.0; }
+  }
+  if (count < 0.5) return 1.0;
+  float radius = clamp((s.z - sum / count) * c.w, limits.x, limits.y);
+  float lit = 0.0;
+  for (int i = 0; i < 16; i++) lit += (texture(map, s.xy + R * kDisk[i] * radius).r < ref) ? 0.0 : 1.0;
+  return lit / 16.0;
+}
+
+// The sun's: the near cascade where the point is inside it, the far one beyond, and the two blended at the edge of the near one.
+float sunVisibility(vec3 wp, vec3 n) {
+  if (uShadowOn < 0.5) return 1.0;
+  float e0;
+  float v0 = pcss(uShadowMap, uShadowVP, uCas0, uCasUV0, wp, n, e0);
+  if (e0 > 0.08) return v0;
+  float e1;
+  float v1 = pcss(uShadowMap2, uShadowVP2, uCas1, uCasUV1, wp, n, e1);
+  return mix(v1, v0, smoothstep(0.0, 0.08, max(e0, 0.0)));
+}
+
+// Ambient occlusion from above: the nearest surfaces seen from straight above, round the point: what is higher than the point (but not far higher)
+// shuts out some of the sky. It darkens the road under and beside the car and the objects, and the foot of walls; only for surfaces that face up.
+float ambientOcclusion(vec3 wp, vec3 n) {
+  if (uShadowOn < 0.5) return 1.0;
+  vec2 uv = (uAoVP * vec4(wp, 1.0)).xy * 0.5 + 0.5;
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 1.0;
+  float a = noiseAngle();
+  mat2 R = mat2(cos(a), sin(a), -sin(a), cos(a));
+  float occ = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float ring = 0.3 + 0.7 * float(i % 4) / 3.0;
+    float d = texture(uAoMap, uv + R * kDisk[i] * (uAoUV * ring)).r;
+    float dh = (uAoTop - d * uAoDepth - wp.y) / uUnit;   // metres: how far the surface that is seen from above is over the point
+    occ += smoothstep(0.12, 0.5, dh) * (1.0 - smoothstep(1.5, 3.0, dh));
+  }
+  float faceUp = smoothstep(0.3, 0.8, n.y);
+  float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+  return 1.0 - uAoStrength * (occ / 12.0) * faceUp * smoothstep(0.0, 0.08, edge);
+}
+)";
 
 const char* kWorldVS = R"(#version 300 es
 layout(location=0) in vec3 aPos;
@@ -12,24 +86,32 @@ layout(location=1) in vec4 aCol;
 layout(location=2) in vec2 aUV;
 uniform mat4 uVP;
 uniform mat4 uModel;
-out vec4 vCol; out vec2 vUV;
-void main(){ vCol=aCol; vUV=aUV; gl_Position=uVP*(uModel*vec4(aPos,1.0)); }
+out vec4 vCol; out vec2 vUV; out vec3 vWorld;
+void main(){ vCol=aCol; vUV=aUV; vec4 w = uModel*vec4(aPos,1.0); vWorld = w.xyz; gl_Position=uVP*w; }
 )";
 
 const char* kWorldFS = R"(#version 300 es
 precision highp float;
-in vec4 vCol; in vec2 vUV;
+in vec4 vCol; in vec2 vUV; in vec3 vWorld;
 uniform sampler2D uTex;
 uniform float uTextured, uCutout, uExposure, uWire, uFade;
 uniform float uBlendAdd;
 out vec4 o;
+//SHADOW_CHUNK
 void main(){
   vec4 t = uTextured > 0.5 ? texture(uTex, vUV) : vec4(0.8,0.8,0.8,1.0);
   if (uCutout > 0.5 && t.a < 0.02) discard;  // partial alpha is handled by alpha-to-coverage
   if (uBlendAdd > 0.5) {
     o = vec4(t.rgb * vCol.rgb * (uExposure * vCol.a * t.a * uFade), 1.0);
   } else {
-    o = vec4(t.rgb * vCol.rgb * uExposure, vCol.a * t.a * uFade);
+    float shade = 1.0;
+    if (uShadowOn > 0.5) {
+      vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+      if (dot(n, uShadowDir) < 0.0) n = -n;
+      float vis = sunVisibility(vWorld, n);
+      shade = mix(1.0 - uShadowStrength, 1.0, vis) * ambientOcclusion(vWorld, vec3(n.x, abs(n.y), n.z));
+    }
+    o = vec4(t.rgb * vCol.rgb * (uExposure * shade), vCol.a * t.a * uFade);
   }
 }
 )";
@@ -66,7 +148,7 @@ uniform vec3 uLightPos[MAX_LIGHTS];
 uniform vec3 uLightCol[MAX_LIGHTS];
 uniform vec2 uLightRad[MAX_LIGHTS];             // inner radius (full intensity up to it), outer radius (zero from it)
 out vec4 o;
-
+//SHADOW_CHUNK
 
 float lightcurve(float cos_theta) {
   return smoothstep(-0.5, 0.5, cos_theta);
@@ -77,7 +159,7 @@ void main(){
   if (uCutout > 0.5 && t.a < 0.02) discard;
   vec3 n = length(vN) > 1e-6 ? normalize(vN) : vec3(0.0, 1.0, 0.0);
   // if (dot(n, uCam - vWorld) < 0.0) n = -n; // normal flipping does not work entirely with interpolated normals
-  vec3 light = uAmbient + uSunColor * lightcurve(dot(n, uSunDir));
+  vec3 light = uAmbient * ambientOcclusion(vWorld, n) + uSunColor * (lightcurve(dot(n, uSunDir)) * sunVisibility(vWorld, n));
   for (int i = 0; i < MAX_LIGHTS; i++) {
     if (i >= uNumLights) break;
     vec3 L = uLightPos[i] - vWorld;
@@ -91,6 +173,23 @@ void main(){
     o = vec4(t.rgb * vCol.rgb * light * uExposure, vCol.a * t.a * uFade);
   }
 }
+)";
+
+const char* kDepthVS = R"(#version 300 es
+layout(location=0) in vec3 aPos;
+layout(location=2) in vec2 aUV;
+uniform mat4 uVP;
+uniform mat4 uModel;
+out vec2 vUV;
+void main(){ vUV = aUV; gl_Position = uVP * (uModel * vec4(aPos, 1.0)); }
+)";
+
+const char* kDepthFS = R"(#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform sampler2D uTex;
+uniform float uTextured, uCutout;
+void main(){ if (uCutout > 0.5 && uTextured > 0.5 && texture(uTex, vUV).a < 0.5) discard; }
 )";
 
 const char* kMarkerVS = R"(#version 300 es
@@ -156,6 +255,33 @@ out vec4 o;
 void main(){ o = uColor; }
 )";
 
+// The six planes of a view volume (a camera's or a light's), from its view-projection matrix; a sphere is tested against them.
+struct Frustum {
+    float plane[6][4];
+    void set(const Mat4f& m) {
+        auto row = [&](int r, float out[4]) { for (int c = 0; c < 4; c++) out[c] = m.m[c * 4 + r]; };
+        float r0[4], r1[4], r2[4], r3[4];
+        row(0, r0); row(1, r1); row(2, r2); row(3, r3);
+        for (int c = 0; c < 4; c++) {
+            plane[0][c] = r3[c] + r0[c];   // left
+            plane[1][c] = r3[c] - r0[c];   // right
+            plane[2][c] = r3[c] + r1[c];   // bottom
+            plane[3][c] = r3[c] - r1[c];   // top
+            plane[4][c] = r3[c] + r2[c];   // near
+            plane[5][c] = r3[c] - r2[c];   // far
+        }
+        for (auto& p : plane) {
+            const float l = std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+            if (l > 1e-9f) for (float& v : p) v /= l;
+        }
+    }
+    bool sphereVisible(const Vec3f& c, float r) const {
+        for (const auto& p : plane)
+            if (p[0] * c.x + p[1] * c.y + p[2] * c.z + p[3] < -r) return false;
+        return true;
+    }
+};
+
 void pushV(std::vector<float>& v, Vec3f p, Vec3f n) {
     v.insert(v.end(), {p.x, p.y, p.z, n.x, n.y, n.z});
 }
@@ -216,12 +342,96 @@ bool Renderer::init(const char* canvasSelector) {
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context(canvasSelector, &attr);
     if (ctx <= 0) return false;
     emscripten_webgl_make_context_current(ctx);
-    progWorld = compile(kWorldVS, kWorldFS);
-    progLit = compile(kLitVS, kLitFS);
+    auto withShadows = [](const char* source) {
+        std::string text = source;
+        const size_t at = text.find("//SHADOW_CHUNK");
+        if (at != std::string::npos) text.replace(at, 14, kShadowChunk);
+        return text;
+    };
+    progWorld = compile(kWorldVS, withShadows(kWorldFS).c_str());
+    progLit = compile(kLitVS, withShadows(kLitFS).c_str());
+    progDepth = compile(kDepthVS, kDepthFS);
+    // the variants with the model matrix per instance: the uniform is an attribute (a matrix takes the locations 4 to 7)
+    auto instanced = [](const char* source) {
+        std::string text = source;
+        const std::string declaration = "uniform mat4 uModel;";
+        const size_t at = text.find(declaration);
+        if (at != std::string::npos) text.replace(at, declaration.size(), "layout(location=4) in mat4 aModel;");
+        for (size_t from = 0; (from = text.find("uModel", from)) != std::string::npos;) text.replace(from, 6, "aModel");
+        return text;
+    };
+    progWorldInst = compile(instanced(kWorldVS).c_str(), withShadows(kWorldFS).c_str());
+    progDepthInst = compile(instanced(kDepthVS).c_str(), kDepthFS);
+    progLitInst = compile(instanced(kLitVS).c_str(), withShadows(kLitFS).c_str());
+    gpuOk_ = emscripten_webgl_enable_extension(ctx, "EXT_disjoint_timer_query_webgl2") != 0;
+    if (gpuOk_)
+        for (int w = 0; w < 2; w++) glGenQueries(4, gpuQuery_[w]);
+    makeDepthTarget(nearStatic_, kNearSize);
+    makeDepthTarget(near_, kNearSize);
+    makeDepthTarget(far_, kFarSize);
+    makeDepthTarget(aoStatic_, kAoSize);
+    makeDepthTarget(ao_, kAoSize);
     progMarker = compile(kMarkerVS, kMarkerFS);
     progLine = compile(kLineVS, kLineFS);
     buildShapes();
     return true;
+}
+
+// A depth-only target: a depth texture (read as plain numbers, not compared) that a pass draws into.
+void Renderer::makeDepthTarget(DepthTarget& target, int size) {
+    unsigned& fbo = target.fbo;
+    unsigned& tex = target.tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, size, size, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex, 0);
+    const GLenum none = GL_NONE;
+    glDrawBuffers(1, &none);
+    glReadBuffer(GL_NONE);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) fprintf(stderr, "shadow map target is not complete\n");
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+namespace {
+constexpr unsigned kTimeElapsed = 0x88BF;   // GL_TIME_ELAPSED_EXT
+constexpr unsigned kGpuDisjoint = 0x8FBB;   // GL_GPU_DISJOINT_EXT
+}
+
+void Renderer::gpuBegin(int which) {
+    if (!gpuOk_ || gpuPending_[which] >= 4) { gpuActive_[which] = false; return; }
+    glBeginQuery(kTimeElapsed, gpuQuery_[which][(gpuHead_[which] + gpuPending_[which]) % 4]);
+    gpuActive_[which] = true;
+}
+
+void Renderer::gpuEnd(int which) {
+    if (!gpuActive_[which]) return;
+    glEndQuery(kTimeElapsed);
+    gpuActive_[which] = false;
+    gpuPending_[which]++;
+}
+
+void Renderer::gpuCollect() {
+    if (!gpuOk_) return;
+    for (int which = 0; which < 2; which++)
+        while (gpuPending_[which] > 0) {
+            const unsigned id = gpuQuery_[which][gpuHead_[which]];
+            GLuint available = 0;
+            glGetQueryObjectuiv(id, GL_QUERY_RESULT_AVAILABLE, &available);
+            if (!available) break;
+            GLint disjoint = 0;
+            glGetIntegerv(kGpuDisjoint, &disjoint);
+            GLuint nanoseconds = 0;
+            glGetQueryObjectuiv(id, GL_QUERY_RESULT, &nanoseconds);
+            if (!disjoint) prof::Profiler::get().sample(which == 0 ? prof::GPU_SHADOWS : prof::GPU_MAIN, (double)nanoseconds * 1e-6);
+            gpuHead_[which] = (gpuHead_[which] + 1) % 4;
+            gpuPending_[which]--;
+        }
 }
 
 void Renderer::buildShapes() {
@@ -314,6 +524,10 @@ void Renderer::buildShapes() {
 }
 
 void Renderer::clearScene() {
+    for (unsigned b : geomInst_) if (b) glDeleteBuffers(1, &b);
+    geomInst_.clear();
+    geomBounds_.clear();
+    nearValid_ = farValid_ = aoValid_ = false;
     freeSet(batches);
     freeSet(collisionGpu);
     for (auto& set : geomGpu) freeSet(set);
@@ -340,6 +554,28 @@ void Renderer::freeSet(std::vector<GpuBatch>& set) {
         glDeleteBuffers(1, &b.ibo);
     }
     set.clear();
+}
+
+unsigned Renderer::instanceBuffer(int geom) {
+    if (geom < 0 || geom >= (int)geomInst_.size()) return 0;
+    if (geomInst_[geom]) return geomInst_[geom];
+    unsigned buffer = 0;
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    const Mat4f identity = Mat4f::identity();
+    glBufferData(GL_ARRAY_BUFFER, sizeof identity.m, identity.m, GL_DYNAMIC_DRAW);   // (one matrix: a draw of one object reads it too)
+    for (const GpuBatch& b : geomGpu[geom]) {
+        glBindVertexArray(b.vao);
+        glBindBuffer(GL_ARRAY_BUFFER, buffer);
+        for (int k = 0; k < 4; k++) {
+            glEnableVertexAttribArray(4 + k);
+            glVertexAttribPointer(4 + k, 4, GL_FLOAT, GL_FALSE, 64, (void*)(size_t)(16 * k));
+            glVertexAttribDivisor(4 + k, 1);
+        }
+    }
+    glBindVertexArray(0);
+    geomInst_[geom] = buffer;
+    return buffer;
 }
 
 void Renderer::uploadSet(const std::vector<Batch>& src, std::vector<GpuBatch>& dst, bool lit) {
@@ -420,6 +656,23 @@ void Renderer::setScene(const Scene* s, float radius) {
         geomRevision[i] = s->moverGeoms[i].revision;
     }
     glBindVertexArray(0);
+    // a sphere round every geometry of the movers, to leave out what is out of view
+    geomBounds_.assign(s->moverGeoms.size(), GeomBounds());
+    for (size_t i = 0; i < s->moverGeoms.size(); i++) {
+        Vec3f lo(1e30f, 1e30f, 1e30f), hi(-1e30f, -1e30f, -1e30f);
+        bool any = false;
+        for (const Batch& b : s->moverGeoms[i].batches)
+            for (const SceneVertex& v : b.verts) {
+                lo = Vec3f(std::min(lo.x, v.x), std::min(lo.y, v.y), std::min(lo.z, v.z));
+                hi = Vec3f(std::max(hi.x, v.x), std::max(hi.y, v.y), std::max(hi.z, v.z));
+                any = true;
+            }
+        if (!any) continue;
+        geomBounds_[i].centre = (lo + hi) * 0.5f;
+        geomBounds_[i].radius = 0.5f * length(hi - lo) + 1e-3f;
+        geomBounds_[i].valid = true;
+    }
+    geomInst_.assign(s->moverGeoms.size(), 0u);
 
     sceneRadius = std::max(1.0f, radius);
     markerBase = sceneRadius * 0.0035f;
@@ -574,6 +827,8 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
     glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     if (!scene) return;
+    gpuCollect();
+    int drawCalls = 0, instancedDraws = 0, moversDrawn = 0, moversCulled = 0;
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -585,6 +840,10 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
 
         glUniformMatrix4fv(glGetUniformLocation(progWorld, "uVP"), 1, GL_FALSE, vp.viewProj.m);
         glUniform1i(glGetUniformLocation(progWorld, "uTex"), 0);
+        glUseProgram(progWorldInst);
+        glUniformMatrix4fv(glGetUniformLocation(progWorldInst, "uVP"), 1, GL_FALSE, vp.viewProj.m);
+        glUniform1i(glGetUniformLocation(progWorldInst, "uTex"), 0);
+        glUseProgram(progWorld);
 
         GLint locExposure = glGetUniformLocation(progWorld, "uExposure");
         GLint locBlendAdd = glGetUniformLocation(progWorld, "uBlendAdd");
@@ -595,12 +854,18 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
         GLint locFade = glGetUniformLocation(progWorld, "uFade");
 
         // the lit program (the car): its own uniforms, kept in step with the world program's exposure and fade
-        struct WorldLocs { GLint exposure, blendAdd, textured, cutout, model, wire, fade; };
-        const WorldLocs worldLocs{locExposure, locBlendAdd, locTextured, locCutout, locModel, locWire, locFade};
+        struct WorldLocs { GLint exposure, blendAdd, textured, cutout, model, wire, fade, shadowOn; };
+        const WorldLocs worldLocs{locExposure, locBlendAdd, locTextured, locCutout, locModel, locWire, locFade, glGetUniformLocation(progWorld, "uShadowOn")};
         const WorldLocs litLocs{glGetUniformLocation(progLit, "uExposure"), glGetUniformLocation(progLit, "uBlendAdd"),
                                 glGetUniformLocation(progLit, "uTextured"), glGetUniformLocation(progLit, "uCutout"),
                                 glGetUniformLocation(progLit, "uModel"), glGetUniformLocation(progLit, "uWire"),
-                                glGetUniformLocation(progLit, "uFade")};
+                                glGetUniformLocation(progLit, "uFade"), glGetUniformLocation(progLit, "uShadowOn")};
+        const WorldLocs instLocs{glGetUniformLocation(progWorldInst, "uExposure"), glGetUniformLocation(progWorldInst, "uBlendAdd"),
+                                 glGetUniformLocation(progWorldInst, "uTextured"), glGetUniformLocation(progWorldInst, "uCutout"), -1,
+                                 glGetUniformLocation(progWorldInst, "uWire"), glGetUniformLocation(progWorldInst, "uFade"), glGetUniformLocation(progWorldInst, "uShadowOn")};
+        const WorldLocs litInstLocs{glGetUniformLocation(progLitInst, "uExposure"), glGetUniformLocation(progLitInst, "uBlendAdd"),
+                                    glGetUniformLocation(progLitInst, "uTextured"), glGetUniformLocation(progLitInst, "uCutout"), -1,
+                                    glGetUniformLocation(progLitInst, "uWire"), glGetUniformLocation(progLitInst, "uFade"), glGetUniformLocation(progLitInst, "uShadowOn")};
         float curExposure = opt.exposure, curFade = 1.0f;
         auto setExposure = [&](float v) { curExposure = v; glUniform1f(locExposure, v); };
         auto setFade = [&](float v) { curFade = v; glUniform1f(locFade, v); };
@@ -653,36 +918,6 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 shown[i] = 1;
                 continue;
             }
-            if (!m.keys.empty()) {  // animated prop: looping translate / rotate steps
-                float total = 0;
-                for (const AnimKey& k : m.keys) total += k.dur;
-                float tt = total > 0 ? std::fmod(vp.time, total) : 0;
-                if (tt < 0) tt += total;
-                Vec3f off;
-                Mat4f R = Mat4f::identity();
-                float start = 0;
-                for (const AnimKey& k : m.keys) {
-                    float f = k.dur > 0 ? std::min(1.0f, std::max(0.0f, (tt - start) / k.dur)) : 1.0f;
-                    off = off + k.trans * f;
-                    if (k.rotDeg != 0) {
-                        float a = k.rotDeg * f * 0.0174532925f, cs = std::cos(a), sn = std::sin(a), t = 1 - cs;
-                        Vec3f ax = normalize(k.axis);
-                        Mat4f Q = Mat4f::identity();
-                        Q.m[0] = cs + ax.x * ax.x * t;      Q.m[4] = ax.x * ax.y * t - ax.z * sn; Q.m[8] = ax.x * ax.z * t + ax.y * sn;
-                        Q.m[1] = ax.y * ax.x * t + ax.z * sn; Q.m[5] = cs + ax.y * ax.y * t;      Q.m[9] = ax.y * ax.z * t - ax.x * sn;
-                        Q.m[2] = ax.z * ax.x * t - ax.y * sn; Q.m[6] = ax.z * ax.y * t + ax.x * sn; Q.m[10] = cs + ax.z * ax.z * t;
-                        R = Mat4f::mul(Q, R);
-                    }
-                    start += k.dur;
-                }
-                const Vec3f& c = m.pivot;
-                R.m[12] = c.x - (R.m[0] * c.x + R.m[4] * c.y + R.m[8] * c.z) + off.x;
-                R.m[13] = c.y - (R.m[1] * c.x + R.m[5] * c.y + R.m[9] * c.z) + off.y;
-                R.m[14] = c.z - (R.m[2] * c.x + R.m[6] * c.y + R.m[10] * c.z) + off.z;
-                models[i] = R;
-                shown[i] = 1;
-                continue;
-            }
             if (m.fixed) {  // powerup icon: spin on the spot
                 float a = vp.time * 1.4f + m.phase;
                 Mat4f& M = models[i];
@@ -695,23 +930,208 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 shown[i] = 1;
                 continue;
             }
-            if (m.length <= 0) continue;
-            float d = std::fmod(m.speed * vp.time + m.phase * m.length, m.length);
-            if (d < 0) d += m.length;
-            Vec3f pos, dir;
-            if (!m.sample(d, pos, dir)) continue;
-            // The game's followers (helicopter noses, energy arches) are modelled along local +X.
-            Vec3f f = normalize(dir);
-            Vec3f up = std::fabs(f.y) > 0.99f ? Vec3f(0, 0, 1) : Vec3f(0, 1, 0);
-            Vec3f z = normalize(cross(f, up));
-            Vec3f u = cross(z, f);
-            Mat4f& M = models[i];
-            M.m[0] = f.x; M.m[1] = f.y; M.m[2] = f.z;
-            M.m[4] = u.x; M.m[5] = u.y; M.m[6] = u.z;
-            M.m[8] = z.x; M.m[9] = z.y; M.m[10] = z.z;
-            M.m[12] = pos.x; M.m[13] = pos.y; M.m[14] = pos.z;
-            shown[i] = 1;
+            if (moverPoseAt(m, vp.time, models[i])) shown[i] = 1;   // the animated props and the path followers
         }
+
+        // Whether a mover is inside a view volume (the camera's, or a light's): a sphere round its geometry, moved and scaled by its matrix. Not for what
+        // changes shape (the skid marks, the effects), the car (it is where the light probe is) and the debug markers.
+        auto moverVisible = [&](size_t i, const Frustum& frustum) {
+            const Mover& m = scene->movers[i];
+            if (m.staticModel || m.alwaysOnTop || m.lightProbe || m.geom < 0 || m.geom >= (int)geomBounds_.size() || !geomBounds_[m.geom].valid) return true;
+            const GeomBounds& bounds = geomBounds_[m.geom];
+            const Mat4f& M = models[i];
+            auto columnLength = [&](int c) { return std::sqrt(M.m[c * 4] * M.m[c * 4] + M.m[c * 4 + 1] * M.m[c * 4 + 1] + M.m[c * 4 + 2] * M.m[c * 4 + 2]); };
+            const float scale = std::max(columnLength(0), std::max(columnLength(1), columnLength(2)));
+            return frustum.sphereVisible(M.transformPoint(bounds.centre), bounds.radius * scale);
+        };
+        // The model matrices of some movers of one geometry, into its instance buffer.
+        auto uploadInstances = [&](int geom, const std::vector<int>& movers) {
+            std::vector<float> data;
+            data.reserve(movers.size() * 16);
+            for (int i : movers) data.insert(data.end(), models[(size_t)i].m, models[(size_t)i].m + 16);
+            glBindVertexArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, instanceBuffer(geom));
+            glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(data.size() * sizeof(float)), data.data(), GL_DYNAMIC_DRAW);
+        };
+        Frustum viewFrustum;
+        viewFrustum.set(vp.viewProj);
+        std::vector<char> inView(scene->movers.size(), 0);
+        for (size_t i = 0; i < scene->movers.size(); i++) {
+            if (!shown[i]) continue;
+            inView[i] = moverVisible(i, viewFrustum) ? 1 : 0;
+            if (inView[i]) moversDrawn++; else moversCulled++;
+        }
+
+        // The shadow maps: what the car and the movable objects (the external movers) block of the sun, seen from the sun, and the level and
+        // those seen from straight above, both over the area round the car. The main pass reads them.
+        bool shadowsOn = false;
+        if (scene->softShadows && progDepth && near_.fbo && far_.fbo && ao_.fbo) {
+            shadowsOn = true;
+            gpuBegin(0);
+            const float unit = std::max(1e-3f, scene->shadowUnit);
+            Vec3f sun = normalize(scene->lighting.sunDir);
+            if (sun.y < 0.15f) sun = normalize(Vec3f(sun.x, 0.15f, sun.z));
+            const Vec3f centre = scene->shadowCentre;
+            const Vec3f across = normalize(cross(Vec3f(0, 1, 0), sun)), upward = cross(sun, across);
+            // an orthographic view along the sun's light over a square of side 2 * half, round (cu, cv) across and upward and cw along the light, as deep as range
+            auto sunMatrix = [&](float cu, float cv, float cw, float half, float range) {
+                Mat4f m = Mat4f::identity();
+                const float farW = cw + range * 0.5f;   // (depth grows towards the ground)
+                m.m[0] = across.x / half;  m.m[4] = across.y / half;  m.m[8] = across.z / half;  m.m[12] = -cu / half;
+                m.m[1] = upward.x / half;  m.m[5] = upward.y / half;  m.m[9] = upward.z / half;  m.m[13] = -cv / half;
+                m.m[2] = -sun.x * 2.0f / range; m.m[6] = -sun.y * 2.0f / range; m.m[10] = -sun.z * 2.0f / range; m.m[14] = 2.0f * farW / range - 1.0f;
+                return m;
+            };
+            const GLint depthVP = glGetUniformLocation(progDepth, "uVP"), depthModel = glGetUniformLocation(progDepth, "uModel");
+            const GLint depthTextured = glGetUniformLocation(progDepth, "uTextured"), depthCutout = glGetUniformLocation(progDepth, "uCutout");
+            const GLint depthInstVP = glGetUniformLocation(progDepthInst, "uVP");
+            const GLint depthInstTextured = glGetUniformLocation(progDepthInst, "uTextured"), depthInstCutout = glGetUniformLocation(progDepthInst, "uCutout");
+            auto beginDepth = [&](const DepthTarget& target, int size, const Mat4f& vpm, bool clear) {
+                glBindFramebuffer(GL_FRAMEBUFFER, target.fbo);
+                glViewport(0, 0, size, size);
+                glDepthMask(GL_TRUE);
+                if (clear) glClear(GL_DEPTH_BUFFER_BIT);
+                glDisable(GL_BLEND);
+                glDisable(GL_CULL_FACE);
+                glUseProgram(progDepthInst);
+                glUniformMatrix4fv(depthInstVP, 1, GL_FALSE, vpm.m);
+                glUniform1i(glGetUniformLocation(progDepthInst, "uTex"), 0);
+                glUseProgram(progDepth);
+                glUniformMatrix4fv(depthVP, 1, GL_FALSE, vpm.m);
+                glUniform1i(glGetUniformLocation(progDepth, "uTex"), 0);
+            };
+            auto drawDepth = [&](const std::vector<GpuBatch>& set, const Mat4f& model, bool cutouts, int instances = 0) {
+                const bool inst = instances > 1;
+                glUseProgram(inst ? progDepthInst : progDepth);
+                if (!inst) glUniformMatrix4fv(depthModel, 1, GL_FALSE, model.m);
+                for (const GpuBatch& b : set) {
+                    if (b.blend == BLEND_ALPHA || b.blend == BLEND_ADD || (b.blend == BLEND_CUTOUT && !cutouts)) continue;
+                    const bool hasTex = b.tex >= 0;
+                    glUniform1f(inst ? depthInstTextured : depthTextured, hasTex ? 1.f : 0.f);
+                    glUniform1f(inst ? depthInstCutout : depthCutout, b.blend == BLEND_CUTOUT ? 1.f : 0.f);
+                    if (hasTex) { glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, textures[texFrame[b.tex]]); }
+                    glBindVertexArray(b.vao);
+                    if (inst) { glDrawElementsInstanced(GL_TRIANGLES, b.count, GL_UNSIGNED_INT, nullptr, instances); instancedDraws++; }
+                    else glDrawElements(GL_TRIANGLES, b.count, GL_UNSIGNED_INT, nullptr);
+                    drawCalls++;
+                }
+            };
+            auto drawMoversDepth = [&](bool cutouts, const Mat4f& lightVP) {   // what moves: the car and the movable objects that are in the light's view
+                Frustum lightFrustum;
+                lightFrustum.set(lightVP);
+                std::unordered_map<int, std::vector<int>> groups;   // by geometry: the ones that can be drawn together
+                for (size_t i = 0; i < scene->movers.size(); i++) {
+                    const Mover& m = scene->movers[i];
+                    if (!shown[i] || !m.external || m.alwaysOnTop || !moverVisible(i, lightFrustum)) continue;
+                    groups[m.geom].push_back((int)i);
+                }
+                for (const auto& group : groups) {
+                    if (group.second.size() >= 2) {
+                        uploadInstances(group.first, group.second);
+                        drawDepth(geomGpu[group.first], Mat4f::identity(), cutouts, (int)group.second.size());
+                    } else {
+                        drawDepth(geomGpu[group.first], models[(size_t)group.second[0]], cutouts);
+                    }
+                }
+                glBindVertexArray(0);
+            };
+            auto copyDepth = [&](const DepthTarget& from, const DepthTarget& to, int size) {
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, from.fbo);
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, to.fbo);
+                glBlitFramebuffer(0, 0, size, size, 0, 0, size, size, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+            };
+            const bool sunMoved = length(sun - keySun_) > 1e-4f;
+            if (sunMoved) { nearValid_ = farValid_ = false; keySun_ = sun; }
+
+            // the near cascade: 56 m, on a grid of cells of a quarter of that; the level is drawn again when the car is in another cell
+            const float nearHalf = 28.0f * unit, nearRange = 120.0f * unit, nearStep = 14.0f * unit;
+            const int nearCell[3] = {(int)std::floor(dot(centre, across) / nearStep), (int)std::floor(dot(centre, upward) / nearStep), (int)std::floor(dot(centre, sun) / nearStep)};
+            const Mat4f nearVP = sunMatrix(((float)nearCell[0] + 0.5f) * nearStep, ((float)nearCell[1] + 0.5f) * nearStep, ((float)nearCell[2] + 0.5f) * nearStep, nearHalf, nearRange);
+            if (!nearValid_ || std::memcmp(nearCell, nearKey_, sizeof nearCell) != 0) {
+                prof::Scope timer(prof::SHADOW_LEVEL);
+                beginDepth(nearStatic_, kNearSize, nearVP, true);
+                drawDepth(batches, Mat4f::identity(), true);
+                std::memcpy(nearKey_, nearCell, sizeof nearCell);
+                nearValid_ = true;
+            }
+            {
+                prof::Scope timer(prof::SHADOW_MOVING);
+                copyDepth(nearStatic_, near_, kNearSize);
+                beginDepth(near_, kNearSize, nearVP, false);
+                drawMoversDepth(true, nearVP);
+            }
+
+            // the far cascade: twenty times as wide, the level only, drawn again when the car has gone a long way
+            const float farHalf = 280.0f * unit, farRange = 1400.0f * unit, farStep = 64.0f * unit;
+            const int farCell[3] = {(int)std::floor(dot(centre, across) / farStep), (int)std::floor(dot(centre, upward) / farStep), (int)std::floor(dot(centre, sun) / farStep)};
+            const Mat4f farVP = sunMatrix(((float)farCell[0] + 0.5f) * farStep, ((float)farCell[1] + 0.5f) * farStep, ((float)farCell[2] + 0.5f) * farStep, farHalf, farRange);
+            if (!farValid_ || std::memcmp(farCell, farKey_, sizeof farCell) != 0) {
+                prof::Scope timer(prof::SHADOW_LEVEL);
+                beginDepth(far_, kFarSize, farVP, true);
+                drawDepth(batches, Mat4f::identity(), true);
+                std::memcpy(farKey_, farCell, sizeof farCell);
+                farValid_ = true;
+            }
+
+            // the occlusion from above: x and z across, the height as the depth (down is deeper); the same way, with a grid
+            const float aoHalf = 12.0f * unit, aoDepth = 36.0f * unit, aoStep = 6.0f * unit;
+            const int aoCell[3] = {(int)std::floor(centre.x / aoStep), (int)std::floor(centre.z / aoStep), (int)std::floor(centre.y / aoStep)};
+            const float aoCx = ((float)aoCell[0] + 0.5f) * aoStep, aoCz = ((float)aoCell[1] + 0.5f) * aoStep;
+            const float aoTop = ((float)aoCell[2] + 0.5f) * aoStep + aoDepth * 0.5f;
+            Mat4f aoVP = Mat4f::identity();
+            for (int k = 0; k < 16; k++) aoVP.m[k] = 0.0f;
+            aoVP.m[0] = 1.0f / aoHalf;  aoVP.m[12] = -aoCx / aoHalf;
+            aoVP.m[9] = 1.0f / aoHalf;  aoVP.m[13] = -aoCz / aoHalf;
+            aoVP.m[6] = -2.0f / aoDepth; aoVP.m[14] = 2.0f * aoTop / aoDepth - 1.0f;
+            aoVP.m[15] = 1.0f;
+            if (!aoValid_ || std::memcmp(aoCell, aoKey_, sizeof aoCell) != 0) {
+                prof::Scope timer(prof::SHADOW_LEVEL);
+                beginDepth(aoStatic_, kAoSize, aoVP, true);
+                drawDepth(batches, Mat4f::identity(), false);
+                std::memcpy(aoKey_, aoCell, sizeof aoCell);
+                aoValid_ = true;
+            }
+            {
+                prof::Scope timer(prof::SHADOW_MOVING);
+                copyDepth(aoStatic_, ao_, kAoSize);
+                beginDepth(ao_, kAoSize, aoVP, false);
+                drawMoversDepth(false, aoVP);
+            }
+
+            glBindVertexArray(0);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, vp.width, vp.height);
+            // what the shaders of the level and the car read
+            glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, near_.tex);
+            glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, ao_.tex);
+            glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, far_.tex);
+            glActiveTexture(GL_TEXTURE0);
+            const float nearTexel = 2.0f * nearHalf / (float)kNearSize, farTexel = 2.0f * farHalf / (float)kFarSize;
+            for (unsigned prog : {progWorld, progLit, progWorldInst, progLitInst}) {
+                glUseProgram(prog);
+                auto at = [&](const char* name) { return glGetUniformLocation(prog, name); };
+                glUniform1i(at("uShadowMap"), 1);
+                glUniform1i(at("uAoMap"), 2);
+                glUniform1i(at("uShadowMap2"), 3);
+                glUniformMatrix4fv(at("uShadowVP"), 1, GL_FALSE, nearVP.m);
+                glUniformMatrix4fv(at("uShadowVP2"), 1, GL_FALSE, farVP.m);
+                glUniformMatrix4fv(at("uAoVP"), 1, GL_FALSE, aoVP.m);
+                glUniform3f(at("uShadowDir"), sun.x, sun.y, sun.z);
+                glUniform4f(at("uCas0"), nearTexel, 1.5f * nearTexel / nearRange + 0.0004f, 0.5f * unit / (2.0f * nearHalf), nearRange * 0.06f / (2.0f * nearHalf));
+                glUniform2f(at("uCasUV0"), 1.5f / (float)kNearSize, 0.7f * unit / (2.0f * nearHalf));
+                glUniform4f(at("uCas1"), farTexel, 1.5f * farTexel / farRange + 0.0002f, 2.0f * unit / (2.0f * farHalf), farRange * 0.06f / (2.0f * farHalf));
+                glUniform2f(at("uCasUV1"), 1.5f / (float)kFarSize, 6.0f * unit / (2.0f * farHalf));
+                glUniform1f(at("uShadowStrength"), 0.4f);
+                glUniform1f(at("uAoTop"), aoTop);
+                glUniform1f(at("uAoDepth"), aoDepth);
+                glUniform1f(at("uAoUV"), 1.4f * unit / (2.0f * aoHalf));
+                glUniform1f(at("uUnit"), unit);
+                glUniform1f(at("uAoStrength"), 0.7f);
+            }
+            glUseProgram(progWorld);
+            gpuEnd(0);
+        }
+        gpuBegin(1);
 
         // Lighting of the lit meshes (the car): the sun and ambient light, and the point lights that reach it, nearest first.
         lightsInRange_ = 0;
@@ -747,29 +1167,32 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                     col[k * 3] = pl.color.x; col[k * 3 + 1] = pl.color.y; col[k * 3 + 2] = pl.color.z;
                     rad[k * 2] = pl.inner; rad[k * 2 + 1] = pl.outer;
                 }
-                glUseProgram(progLit);
-                glUniformMatrix4fv(glGetUniformLocation(progLit, "uVP"), 1, GL_FALSE, vp.viewProj.m);
-                glUniform1i(glGetUniformLocation(progLit, "uTex"), 0);
-                glUniform3f(glGetUniformLocation(progLit, "uCam"), vp.eye.x, vp.eye.y, vp.eye.z);
-                glUniform3f(glGetUniformLocation(progLit, "uAmbient"), li.ambient.x, li.ambient.y, li.ambient.z);
-                glUniform3f(glGetUniformLocation(progLit, "uSunDir"), li.sunDir.x, li.sunDir.y, li.sunDir.z);
-                glUniform3f(glGetUniformLocation(progLit, "uSunColor"), li.sunColor.x * scene->carBrightness, li.sunColor.y * scene->carBrightness, li.sunColor.z * scene->carBrightness);
-                glUniform1i(glGetUniformLocation(progLit, "uNumLights"), n);
-                glUniform3fv(glGetUniformLocation(progLit, "uLightPos"), kMaxLights, pos);
-                glUniform3fv(glGetUniformLocation(progLit, "uLightCol"), kMaxLights, col);
-                glUniform2fv(glGetUniformLocation(progLit, "uLightRad"), kMaxLights, rad);
+                for (unsigned prog : {progLit, progLitInst}) {
+                glUseProgram(prog);
+                glUniformMatrix4fv(glGetUniformLocation(prog, "uVP"), 1, GL_FALSE, vp.viewProj.m);
+                glUniform1i(glGetUniformLocation(prog, "uTex"), 0);
+                glUniform3f(glGetUniformLocation(prog, "uCam"), vp.eye.x, vp.eye.y, vp.eye.z);
+                glUniform3f(glGetUniformLocation(prog, "uAmbient"), li.ambient.x, li.ambient.y, li.ambient.z);
+                glUniform3f(glGetUniformLocation(prog, "uSunDir"), li.sunDir.x, li.sunDir.y, li.sunDir.z);
+                glUniform3f(glGetUniformLocation(prog, "uSunColor"), li.sunColor.x * scene->carBrightness, li.sunColor.y * scene->carBrightness, li.sunColor.z * scene->carBrightness);
+                glUniform1i(glGetUniformLocation(prog, "uNumLights"), n);
+                glUniform3fv(glGetUniformLocation(prog, "uLightPos"), kMaxLights, pos);
+                glUniform3fv(glGetUniformLocation(prog, "uLightCol"), kMaxLights, col);
+                glUniform2fv(glGetUniformLocation(prog, "uLightRad"), kMaxLights, rad);
+                }
                 glUseProgram(progWorld);
             }
         }
 
-        auto drawSet = [&](const std::vector<GpuBatch>& set, int pass, const Mat4f& model, bool lit = false) {
-            const WorldLocs& L = lit ? litLocs : worldLocs;
-            if (lit) {
-                glUseProgram(progLit);
+        auto drawSet = [&](const std::vector<GpuBatch>& set, int pass, const Mat4f& model, bool lit = false, int instances = 0) {
+            const bool inst = instances > 1;
+            const WorldLocs& L = lit ? (inst ? litInstLocs : litLocs) : (inst ? instLocs : worldLocs);
+            if (lit || inst) {
+                glUseProgram(lit ? (inst ? progLitInst : progLit) : (inst ? progWorldInst : progWorld));
                 glUniform1f(L.exposure, curExposure);
                 glUniform1f(L.fade, curFade);
             }
-            glUniformMatrix4fv(L.model, 1, GL_FALSE, model.m);
+            if (!inst) glUniformMatrix4fv(L.model, 1, GL_FALSE, model.m);
             glUniform1f(L.wire, 0.f);
             for (const GpuBatch& b : set) {
                 bool blended = b.blend == BLEND_ALPHA || b.blend == BLEND_ADD;
@@ -781,6 +1204,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                 if (b.blend == BLEND_ADD) glBlendFunc(GL_SRC_ALPHA, GL_ONE);
                 else glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
                 bool hasTex = opt.textured && b.tex >= 0;
+                glUniform1f(L.shadowOn, (shadowsOn && (b.blend == BLEND_OPAQUE || b.blend == BLEND_CUTOUT)) ? 1.0f : 0.0f);
                 glUniform1f(L.blendAdd, b.blend == BLEND_ADD ? 1.0f : 0.0f);
                 glUniform1f(L.textured, hasTex ? 1.f : 0.f);
                 glUniform1f(L.cutout, b.blend == BLEND_CUTOUT ? 1.f : 0.f);
@@ -792,9 +1216,11 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
                     glBindTexture(GL_TEXTURE_2D, textures[texFrame[b.tex]]);
                 }
                 glBindVertexArray(b.vao);
-                glDrawElements(GL_TRIANGLES, b.count, GL_UNSIGNED_INT, nullptr);
+                if (inst) { glDrawElementsInstanced(GL_TRIANGLES, b.count, GL_UNSIGNED_INT, nullptr, instances); instancedDraws++; }
+                else glDrawElements(GL_TRIANGLES, b.count, GL_UNSIGNED_INT, nullptr);
+                drawCalls++;
             }
-            if (lit) glUseProgram(progWorld);
+            if (lit || inst) glUseProgram(progWorld);
         };
         auto drawWire = [&]() {
             glUniformMatrix4fv(locModel, 1, GL_FALSE, Mat4f::identity().m);
@@ -835,7 +1261,7 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             glDepthFunc(GL_GREATER);
             for (int pass = 0; pass < 2; pass++)
                 for (size_t i = 0; i < scene->movers.size(); i++)
-                    if (shown[i] && scene->movers[i].powerupMesh) {
+                    if (shown[i] && inView[i] && scene->movers[i].powerupMesh) {
                         setExposure(scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
                         drawSet(geomGpu[scene->movers[i].geom], pass, models[i], scene->movers[i].lit);
                     }
@@ -846,6 +1272,36 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             cull = levelCull;
             if (!cull) glDisable(GL_CULL_FACE);
         };
+        // The movers that are drawn: those in view; the ones of one geometry (that are not lit) together, in one instanced call.
+        struct Group { int geom; bool external, halo, lit; std::vector<int> movers; };
+        std::vector<Group> groups;
+        {
+            std::unordered_map<long long, int> groupOf;
+            for (size_t i = 0; i < scene->movers.size(); i++) {
+                const Mover& m = scene->movers[i];
+                if (!shown[i] || !inView[i] || m.alwaysOnTop) continue;
+                const long long key = ((long long)m.geom << 3) | (m.lit ? 4 : 0) | (m.external ? 2 : 0) | (m.billboard ? 1 : 0);
+                auto found = groupOf.find(key);
+                if (found == groupOf.end()) {
+                    found = groupOf.emplace(key, (int)groups.size()).first;
+                    groups.push_back({m.geom, m.external, m.billboard, m.lit, {}});
+                }
+                groups[(size_t)found->second].movers.push_back((int)i);
+            }
+        }
+        // which: 0 all of them, 1 the external ones only, 2 all but those
+        auto drawMovers = [&](int pass, int which) {
+            for (const Group& group : groups) {
+                if ((which == 1 && !group.external) || (which == 2 && group.external)) continue;
+                setExposure(group.halo ? opt.haloExposure : opt.exposure);
+                if (group.movers.size() >= 2) {
+                    uploadInstances(group.geom, group.movers);
+                    drawSet(geomGpu[group.geom], pass, Mat4f::identity(), group.lit, (int)group.movers.size());
+                } else {
+                    drawSet(geomGpu[group.geom], pass, models[(size_t)group.movers[0]], group.lit);
+                }
+            }
+        };
         for (int pass = 0; pass < 2; pass++) {
             if (pass == 1) {
                 glEnable(GL_BLEND);
@@ -854,24 +1310,20 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
             // The minigame car's see-through parts (windows) go in before the level's, writing depth: the level's blended surfaces
             // (water) then blend over them where they are nearer, and are rejected where they are behind. Drawn after the
             // water instead, the windows would paint over it as if nothing was in between.
-            if (pass == 1)
-                for (size_t i = 0; i < scene->movers.size(); i++) {
-                    if (!shown[i] || !scene->movers[i].external || scene->movers[i].alwaysOnTop) continue;
-                    setExposure(opt.exposure);
-                    glDepthMask(GL_TRUE);
-                    drawSet(geomGpu[scene->movers[i].geom], pass, models[i], scene->movers[i].lit);
-                    glDepthMask(GL_FALSE);
-                }
+            if (pass == 1) {
+                glDepthMask(GL_TRUE);
+                drawMovers(pass, 1);
+                glDepthMask(GL_FALSE);
+            }
             setExposure(opt.exposure);  // the movers below change it: reset for the level in every pass
             if (opt.wireframe) { if (pass == 0) drawWire(); }
-            else drawSet(batches, pass, Mat4f::identity());
-            if (pass == 0 && opt.xrayEnabled() && opt.powerupMeshes) drawPowerupGhosts();
-            for (size_t i = 0; i < scene->movers.size(); i++) {
-                if (!shown[i] || scene->movers[i].alwaysOnTop) continue;  // those are drawn last, below
-                if (pass == 1 && scene->movers[i].external) continue;  // drawn before the level's blended surfaces
-                setExposure(scene->movers[i].billboard ? opt.haloExposure : opt.exposure);
-                drawSet(geomGpu[scene->movers[i].geom], pass, models[i], scene->movers[i].lit);
+            else {
+                prof::Scope timer(prof::RENDER_LEVEL);
+                drawSet(batches, pass, Mat4f::identity());
             }
+            if (pass == 0 && opt.xrayEnabled() && opt.powerupMeshes) drawPowerupGhosts();
+            prof::Scope moversTimer(prof::RENDER_MOVERS);
+            drawMovers(pass, pass == 1 ? 2 : 0);   // (the external ones of the blended pass went in before the level's blended surfaces)
         }
         setExposure(opt.exposure);
         glDepthMask(GL_TRUE);
@@ -926,10 +1378,19 @@ void Renderer::render(const ViewParams& vp, const RenderOptions& opt, int highli
     }
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_TRUE);
+    {
+        prof::Profiler& profiler = prof::Profiler::get();
+        profiler.sample(prof::COUNT_DRAWS, drawCalls);
+        profiler.sample(prof::COUNT_INSTANCED, instancedDraws);
+        profiler.sample(prof::COUNT_MOVERS_DRAWN, moversDrawn);
+        profiler.sample(prof::COUNT_MOVERS_CULLED, moversCulled);
+    }
+    prof::Scope marksTimer(prof::RENDER_MARKS);
     drawLines(vp, opt, false);
     drawMarkers(vp, opt, false, highlightMarker);
     glDisable(GL_BLEND);
     if (vp.showPivot) drawPivot(vp, opt);
+    gpuEnd(1);
 }
 
 // Bright marker at the orbit / pan pivot, drawn on top of everything while the mouse button is held.

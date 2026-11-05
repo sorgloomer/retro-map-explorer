@@ -1,4 +1,5 @@
 #include "minigame01/box3d_vehicle.h"
+#include "profiler.h"
 #include <algorithm>
 #include <cmath>
 #include "math/functions.h"
@@ -466,7 +467,7 @@ void Box3dVehicle::substep(float stepSeconds, const VehicleInput& in) {
             c.contactPoint = fromBox(closest.point);
             c.bottomedBy = -rawLength;
             const b3BodyId ground = b3Shape_GetBody(closest.shape);
-            if (b3Body_GetType(ground) == b3_dynamicBody) {
+            if (b3Body_GetType(ground) != b3_staticBody) {   // (a movable object, or a moving one of the level: the tyre moves with it)
                 c.groundBody = ground;
                 c.groundVelocity = fromBox(b3Body_GetWorldPointVelocity(ground, toBox(c.contactPoint)));
             }
@@ -733,7 +734,10 @@ void Box3dVehicle::substep(float stepSeconds, const VehicleInput& in) {
     // --- the whole car's forces, the damping of the spin (the car tumbles almost freely in the air), and the engine moves the body
     b3Body_ApplyForceToCenter(chassis, toBox(dragForce_ + downforce_ + thrustForce_), true);
     b3Body_SetAngularDamping(chassis, spinDamping);
-    b3World_Step(world, stepSeconds, kWorldSubSteps);
+    {
+        prof::Scope timer(prof::WORLD_STEP);
+        b3World_Step(world, stepSeconds, kWorldSubSteps);
+    }
     readState();
 
     // --- the hull against the level: whether it touched, and the forces for the grey arrows

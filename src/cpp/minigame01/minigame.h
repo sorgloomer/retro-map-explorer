@@ -9,6 +9,7 @@
 #include "minigame01/input.h"
 #include "minigame01/box3d_level.h"
 #include "minigame01/box3d_props.h"
+#include "minigame01/box3d_movers.h"
 #include "minigame01/skidmarks.h"
 #include "minigame01/effects.h"
 #include "minigame01/box3d_vehicle.h"
@@ -40,7 +41,8 @@ public:
     void stop(Scene& scene);                              // hides the car and brings the pickups back
     bool active() const { return running; }
 
-    void update(float dt, const Controls& controls, Scene& scene);
+    // `animTime`: the clock of the page's animations (the moving objects follow it), `animScale`: how fast it runs against the real time.
+    void update(float dt, const Controls& controls, Scene& scene, double animTime = 0, float animScale = 1);
     Camera camera() const { return cam; }
     // World units per metre of the level (the physics runs in metres; Re-Volt's units are much smaller than a metre).
     float unitsPerMetre() const { return scale; }
@@ -51,6 +53,7 @@ public:
     void orbitCamera(float dYaw, float dPitch);
     void zoomCamera(float factor);
     void showColliders(int mode) { showColliders_ = mode; collidersChanged_ = true; }   // 0 off, 1 the convex pieces of the physics, 2 the shapes of the game's files;  // debug: the collision shapes of the car, red where they touch the level, and of the movable objects
+    void showShadows(bool on) { shadows_ = on; }   // the real-time shadows and ambient occlusion (on by default)
     void showForces(bool on) { showForces_ = on; }  // debug: an arrow per wheel for the force it pushes the car with
     const Box3dVehicle& vehicleState() const { return vehicle; }  // for the debug display
     // The parameters changed: the car's mass, centre of mass, inertia and probes follow (the car stays where it is).
@@ -84,6 +87,7 @@ private:
     std::vector<char> iconCatShown;   // their visibility in the viewer
     Box3dLevel physicsLevel;   // the level in the physics engine
     Box3dProps props_;         // the movable objects of the level in it
+    Box3dMovers movers_;       // the moving objects (behemoths, lifts, path followers): kinematic bodies
     SkidMarks skid_;           // the marks of the sliding tyres
     Effects effects_;          // the flame of the afterburner, the dust of the tyres, the shadow of the car
     CarModel car;
@@ -92,7 +96,7 @@ private:
     // body, FL, FR, RL, RR, then the debug arrows: the four suspensions' forces, then gravity, air drag, downforce, afterburner, then the
     // four tyres' forces (the hull contact arrows are in hullArrowMovers)
     int carMover[17] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
-    bool showForces_ = false, collidersChanged_ = false;
+    bool showForces_ = false, collidersChanged_ = false, shadows_ = true;
     int showColliders_ = 0;   // (the last: the objects have to be told in the next frame)
     std::vector<int> hullArrowMovers;  // a grey arrow for each hull sphere that is pushed by the level (debug)
     int hullArrowGeom = -1;

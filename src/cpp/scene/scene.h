@@ -168,6 +168,14 @@ struct Mover {
     bool alwaysOnTop = false;  // drawn last without a depth test: visible through everything (debug markers)
     bool hidden = false;       // not drawn (collected pickups, the parked car)
     Mat4f model = Mat4f::identity();
+    // The collider that the game's collision files (.dcol) of the object give, in the space of its geometry (level units): the points of its polyhedra
+    // with the faces as triangles, and its spheres. None: the physics makes a collider from the mesh.
+    struct Collider {
+        struct Sphere { Vec3f centre; float radius = 0; };
+        std::vector<Vec3f> points;
+        std::vector<uint32_t> triangles;
+        std::vector<Sphere> spheres;
+    } collider;
 
     void finish() {
         cum.assign(path.size(), 0.0f);
@@ -225,6 +233,11 @@ struct Scene : BatchSet {
     };
     std::vector<PropType> propTypes;
     std::vector<Prop> props;
+    // The real-time shadows and ambient occlusion of the minigame (renderer.cpp): the car and the movable objects cast them, on the level and on each
+    // other. Set while the game runs: the area round the car that has them (level units) and how big a metre is.
+    bool softShadows = false;
+    Vec3f shadowCentre;
+    float shadowUnit = 1.0f;   // level units per metre
     Lighting lighting;  // for the meshes marked `lit`; defaults when the game has no light data
     float carBrightness = 1.0f;  // multiplies the colour of the sun for the lit meshes (the minigame's car); set by the minigame from the car's settings
     // The game's own collision meshes, read on first use (ensureCollision): the physics and the collision overlay need them,

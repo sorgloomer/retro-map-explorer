@@ -7,6 +7,7 @@ namespace minigame01 {
 namespace {
 
 constexpr float kTwoPi = 6.2831853f;
+constexpr bool kBlobShadow = false;
 constexpr float kDustSlipSpeed = 2.0f;        // m/s (for a car of 4.3 m): a tyre that slides faster than this over the road kicks up dust...
 constexpr float kDustFullSlipSpeed = 10.0f;   // m/s (the same): ...and a tyre that slides this fast, as much as it can
 constexpr float kDustMarkingMinimum = 0.35f;  // the least dust of a tyre that marks the road (the same as the skid marks)
@@ -220,7 +221,8 @@ void Effects::update(Scene& scene, float dt, const Box3dVehicle& car, const Box3
     clearVertices(alpha, 0, kShadowVertices);
     float distance;
     Vec3f normal;
-    if (level.rayCast(car.position(), Vec3f(0, -1, 0), kShadowMaxDistance * s, distance, normal)) {
+    // (the renderer's shadow maps do the shadow of the car: this oval is only for trying it without them)
+    if (kBlobShadow && !scene.softShadows && level.rayCast(car.position(), Vec3f(0, -1, 0), kShadowMaxDistance * s, distance, normal)) {
         if (normal.y < 0) normal = normal * -1.0f;
         const Vec3f ground = car.position() + Vec3f(0, -distance, 0) + normal * (kShadowLift * s);
         const float height = std::max(0.0f, distance - car.halfHeight());

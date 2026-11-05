@@ -1,4 +1,5 @@
 // Application shell: game registry, camera + input, main loop and the JS-facing API.
+#include "profiler.h"
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <cmath>
@@ -331,7 +332,7 @@ void pushGameHud() {
         if (window.RME && window.RME.onGameHud) window.RME.onGameHud($0, $1, $2, $3, $4, $5, $6, UTF8ToString($7), $8);
     }, (double)h.speedKmh, h.score, h.driftScore, (double)h.timeLeft, h.collected, h.total, h.state, h.message, (double)h.messageAge);
     // the tyres' sideways forces, for the debug panel: [{lat, limit, lon, fric, slide, g, slip, load}] for FL, FR, RL, RR
-    char json[2048];
+    char json[6144];
     int len = 0;
     len += snprintf(json + len, sizeof json - len, R"({"toy":%d,"wheels":[)", v.isToy() ? 1 : 0);
     for (int i = 0; i < 4; i++) {
@@ -352,13 +353,26 @@ void pushGameHud() {
         tw.x, tw.y, tw.z, th.x, th.y, th.z, sp.x, sp.y, sp.z, app.renderer.lightsInRange(), Renderer::kMaxLights);
     const std::vector<unsigned>& lightColours = app.renderer.lightColours();
     for (size_t i = 0; i < lightColours.size() && i < 24; i++) len += snprintf(json + len, sizeof json - len, "%s\"#%06x\"", i ? "," : "", lightColours[i]);
-    len += snprintf(json + len, sizeof json - len, "]}}");
+    len += snprintf(json + len, sizeof json - len, "]},\"profile\":[");
+    {
+        bool first = true;
+        for (int s = 0; s < prof::SECTION_COUNT; s++) {
+            if (!prof::Profiler::get().seen((prof::Section)s)) continue;
+            len += snprintf(json + len, sizeof json - len, "%s{\"n\":\"%s\",\"avg\":%.3f,\"peak\":%.3f}", first ? "" : ",", prof::name((prof::Section)s),
+                            prof::Profiler::get().average((prof::Section)s), prof::Profiler::get().peak((prof::Section)s));
+            first = false;
+        }
+    }
+    len += snprintf(json + len, sizeof json - len, "]}");
     EM_ASM({ if (window.RME && window.RME.onGameDebug) window.RME.onGameDebug(UTF8ToString($0)); }, json);
 }
 
 void frame() {
+    prof::Profiler::get().endFrame();   // (what the last frame took goes into the averages)
+    prof::Scope frameTimer(prof::FRAME);
     double now = emscripten_get_now();
     float dt = app.lastTime > 0 ? (float)std::min(0.1, (now - app.lastTime) / 1000.0) : 0.016f;
+    if (app.lastTime > 0) prof::Profiler::get().sample(prof::FRAME_INTERVAL, now - app.lastTime);
     app.lastTime = now;
 
     double cw, ch;
@@ -372,10 +386,14 @@ void frame() {
     app.canvasH = (int)ch;
 
     if (app.gameMode) {
-        minigame01::Controls ctl = app.mg.inputRef().update(dt);
+        minigame01::Controls ctl;
+        {
+            prof::Scope timer(prof::INPUT);
+            ctl = app.mg.inputRef().update(dt);
+        }
         if (app.mg.inputRef().exitRequested()) stopGame();
         else if (app.scene) {
-            app.mg.update(dt, ctl, *app.scene);
+            app.mg.update(dt, ctl, *app.scene, app.animTime, app.animScale);
             app.cam = app.mg.camera();
             if (++app.hudTick % 3 == 0) pushGameHud();
         }
@@ -421,7 +439,10 @@ void frame() {
         app.scene->ensureCollision();
         app.renderer.uploadCollision();
     }
-    app.renderer.render(vp, app.opt, app.hover);
+    {
+        prof::Scope timer(prof::RENDER);
+        app.renderer.render(vp, app.opt, app.hover);
+    }
 }
 
 // ----- input
@@ -644,6 +665,8 @@ EMSCRIPTEN_KEEPALIVE void rme_game_show_colliders(int mode) { app.mg.showCollide
 
 // Debug: draws an arrow per wheel for the force it pushes the car with.
 EMSCRIPTEN_KEEPALIVE void rme_game_show_forces(int on) { app.mg.showForces(on != 0); }
+// The shadows and the ambient occlusion of the game (the renderer's shadow maps).
+EMSCRIPTEN_KEEPALIVE void rme_game_shadows(int on) { app.mg.showShadows(on != 0); }
 
 // An on-screen button of the minigame went down / up (control = minigame01::Input::Touch).
 EMSCRIPTEN_KEEPALIVE void rme_game_touch(int control, int down) {

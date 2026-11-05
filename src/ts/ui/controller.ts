@@ -434,6 +434,7 @@ export async function startGame(mode: number): Promise<void> {
   try {
     ok = await call('rme_game_start', 'number', ['number', 'number'], [mode, carToDrive()], true);
     call('rme_game_show_forces', null, ['number'], [state.debugForces ? 1 : 0]);
+    call('rme_game_shadows', null, ['number'], [state.debugShadows ? 1 : 0]);
     call('rme_game_show_colliders', null, ['number'], [state.debugColliders]);
   } catch (e) {
     console.error(e);
@@ -517,6 +518,12 @@ export function setDebugForces(on: boolean): void {
   update({ debugForces: on });
   store.set('rme.debugForces.v1', on ? '1' : '0');
   call('rme_game_show_forces', null, ['number'], [on ? 1 : 0]);
+}
+/** Turns the shadows and the ambient occlusion on or off (remembered). */
+export function setDebugShadows(on: boolean): void {
+  update({ debugShadows: on });
+  store.set('rme.debugShadows.v1', on ? '1' : '0');
+  call('rme_game_shadows', null, ['number'], [on ? 1 : 0]);
 }
 /** Shows or hides the lateral force panel (remembered). */
 export function toggleDebugPanel(): void {

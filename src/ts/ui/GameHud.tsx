@@ -1,7 +1,7 @@
 // The overlay of the driving minigame: back button, score, time, speed and the end-of-round message.
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { TOUCH, getGameParamsJsonText, gameStick, gameTouch, saveGameParamsJsonText, setDebugColliders, setDebugForces, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
+import { TOUCH, getGameParamsJsonText, gameStick, gameTouch, saveGameParamsJsonText, setDebugColliders, setDebugForces, setDebugShadows, setParamsEditor, stopGame, toggleDebugPanel } from './controller.ts';
 import { useUi } from './store.ts';
 import {mapSum} from "../utils/math.ts";
 import {ConfigError} from "../config/config.ts";
@@ -97,6 +97,22 @@ function Info({ children }: { children: ComponentChildren }) {
   );
 }
 
+/** Whether a section of the debug panel is open: remembered (per section) between visits. */
+function useSection(name: string): [boolean, (open: boolean) => void] {
+  const key = 'rme.debugSection.' + name;
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(key) !== '0'; } catch { return true; } });
+  return [open, (value: boolean) => { setOpen(value); try { localStorage.setItem(key, value ? '1' : '0'); } catch { /* it is not kept */ } }];
+}
+
+/** The heading of a section of the debug panel: a click opens or closes it. */
+function SectionHead({ open, toggle, children }: { open: boolean; toggle: () => void; children: ComponentChildren }) {
+  return (
+    <button type="button" class="gd-section gd-fold" aria-expanded={open} onClick={(e) => { toggle(); e.currentTarget.blur(); }}>
+      {open ? '▾ ' : '▸ '}{children}
+    </button>
+  );
+}
+
 /** One number of the table: a fixed width, aligned to the right, so the digits of the rows line up. */
 function Num({ v, digits = 1, unit = '' }: { v: number; digits?: number; unit?: string }) {
   return <span class="gd-n">{v.toFixed(digits)}{unit}</span>;
@@ -119,9 +135,12 @@ const TORQUE_UNIT_LABEL_BIG = <>Nm⋅10<sup>3</sup></>;
 
 /** Debug panel: the sideways force of each tyre against its limit. A full bar is the grip limit; red: the tyre slides. */
 function LateralForces() {
-  const { wheels, torque, toy, lights } = useUi((s) => s.gameDebug);
+  const { wheels, torque, toy, lights, profile } = useUi((s) => s.gameDebug);
   const shown = useUi((s) => s.debugPanel);
   const forces = useUi((s) => s.debugForces);
+  const shadows = useUi((s) => s.debugShadows);
+  const [perfOpen, setPerfOpen] = useSection('performance');
+  const [tyresOpen, setTyresOpen] = useSection('tyres');
   // the forces are in kN, and in N for the toy car (the RC Bandit: its forces are a few newtons)
   const forceUnitDiv = toy ? 1 : 1000;
   const forceUnitLabel = toy ? 'N' : 'kN';
@@ -154,8 +173,35 @@ function LateralForces() {
             title="Edit the minigame's parameters as JSON">configure</button>
         </div>
       )}
-      {shown && <div class="gd-section">tyre forces</div>}
-      {shown && (
+      {shown && profile.length > 0 && (
+        <div class="gd-profile" title="How long the parts of a frame take, in milliseconds: the average, and the recent peak. The CPU times of rendering are the time to send the commands; the GPU works on them after (GPU rows: when the browser has timer queries).">
+          <SectionHead open={perfOpen} toggle={() => setPerfOpen(!perfOpen)}>performance (ms) <span class="gd-h">avg</span> <span class="gd-h">peak</span></SectionHead>
+          {perfOpen && profile.filter((p) => p.n === 'frame interval').map((p) => (
+            <div class="gd-prow" title="The time from one frame to the next, in milliseconds: the average and the longest of the recent frames (the page's own work, the GPU and the waiting for the display all count)"><span class="gd-pname">total frame time</span><Num v={p.avg} digits={2} /><Num v={p.peak} digits={2} /></div>
+          ))}
+          {perfOpen && profile.filter((p) => p.n.startsWith('#')).map((p) => (
+            <div class="gd-prow"><span class="gd-pname">{p.n.slice(1)} (count)</span><Num v={p.avg} digits={0} /><Num v={p.peak} digits={0} /></div>
+          ))}
+          {perfOpen && profile.filter((p) => p.n === 'frame interval').map((p) => (
+            <div class="gd-prow" title="Frames per second: the average, and the lowest of the recent frames"><span class="gd-pname">fps (average, lowest)</span><Num v={1000 / Math.max(p.avg, 1e-3)} digits={0} /><Num v={1000 / Math.max(p.peak, 1e-3)} digits={0} /></div>
+          ))}
+          {perfOpen && (() => {
+            const interval = profile.find((p) => p.n === 'frame interval');
+            const cpu = profile.find((p) => p.n.startsWith('frame ('));
+            if (!interval || !cpu) return null;
+            return (
+              <div class="gd-prow" title="The total frame time less the CPU work in the loop: the time the frame spends elsewhere, waiting for the GPU to finish the drawing, for the display (vsync or a frame rate cap), or in the browser's own work. A large number here with little CPU work means that the GPU, or the display, is the limit.">
+                <span class="gd-pname">waiting / GPU (total less CPU)</span><Num v={Math.max(0, interval.avg - cpu.avg)} digits={2} /><Num v={Math.max(0, interval.peak - cpu.avg)} digits={2} />
+              </div>
+            );
+          })()}
+          {perfOpen && profile.filter((p) => p.n !== 'frame interval' && !p.n.startsWith('#')).map((p) => (
+            <div class="gd-prow"><span class="gd-pname">{p.n}</span><Num v={p.avg} digits={2} /><Num v={p.peak} digits={2} /></div>
+          ))}
+        </div>
+      )}
+      {shown && <SectionHead open={tyresOpen} toggle={() => setTyresOpen(!tyresOpen)}>tyre forces</SectionHead>}
+      {shown && tyresOpen && (
         <div class="gd-table">
           <span class="gd-h gd-name" />
           <span class="gd-h" title="T: the wheel is on the ground">grounded</span>
@@ -191,7 +237,7 @@ function LateralForces() {
           ))}
         </div>
       )}
-      {shown && (
+      {shown && tyresOpen && (
         <div class="gd-sums gd-totals">
           <span class="gd-h">totals {forceUnitLabel}</span><span class="gd-h">lateral</span><span class="gd-h">longitudinal</span><span class="gd-h">suspension</span>
           <span class="gd-h" />
@@ -200,7 +246,7 @@ function LateralForces() {
           <span class="gd-pair gd-susp"><Num v={ mapSum(wheels, w => w.load) / forceUnitDiv} /></span>
         </div>
       )}
-      {shown && (
+      {shown && tyresOpen && (
         <div class="gd-sums" title="Torque about the centre of mass around the car's right (pitch), up (yaw) and forward (roll) axes. Gravity, air drag, downforce and the afterburner push at the centre of mass itself and turn nothing.">
           <span class="gd-h">hull torque [{torqueUnitLabel}]</span><span class="gd-h">pitch</span><span class="gd-h">yaw</span><span class="gd-h">roll</span>
           <span class="gd-h">from wheels</span>{torque.wheels.map((x) => <Num v={x / torqueUnitDiv} digits={torqueDigits} />)}
@@ -228,6 +274,10 @@ function LateralForces() {
               <span class="gd-key" style={{ color: '#ff961e' }}>■ afterburner, side thrust</span>{' '}
               <span class="gd-key" style={{ color: '#bebebe' }}>■ hull contact</span>
             </Info>
+          </label>
+          <label class="gd-forces">
+            <input type="checkbox" checked={shadows} onChange={(e) => setDebugShadows(e.currentTarget.checked)} /> shadows
+            <Info>The real-time shadows of the car and the objects, the shadows of the level and the ambient occlusion. Turn them off to see what they cost (see the performance numbers).</Info>
           </label>
           <label class="gd-forces">
             draw colliders

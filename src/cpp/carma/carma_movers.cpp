@@ -11,6 +11,38 @@
 
 namespace carma {
 
+namespace {
+// The collision data of a hierarchy where its geometry is: the same mirror (a mirrored X for the world, Z for a follower, none) and, for a
+// follower that is aligned, the alignment matrix (alignGeometry) as the meshes had.
+Mover::Collider placedCollider(const CarmaGame::DcolData& d, int mir, const float* al) {
+    Mover::Collider c;
+    auto place = [&](Vec3f p) {
+        if (mir != MIR_NONE && kMirrorX) {
+            if (mir == MIR_Z) p.z = -p.z;
+            else p.x = -p.x;
+        }
+        if (al) {
+            const float x = al[0] * p.x + al[1] * p.y + al[2] * p.z + al[3];
+            const float y = al[4] * p.x + al[5] * p.y + al[6] * p.z + al[7];
+            const float z = al[8] * p.x + al[9] * p.y + al[10] * p.z + al[11];
+            p = Vec3f(x, y, kMirrorX ? -z : z);
+        }
+        return p;
+    };
+    if (d.points.size() >= 4) {
+        for (const Vec3f& p : d.points) c.points.push_back(place(p));
+        c.triangles = d.triangles;
+    }
+    for (const CarmaGame::DcolData::Sphere& s : d.spheres) {
+        Mover::Collider::Sphere sphere;
+        sphere.centre = place(s.centre);
+        sphere.radius = s.radius;
+        c.spheres.push_back(sphere);
+    }
+    return c;
+}
+}  // namespace
+
 void CarmaGame::loadFollowers(const std::string& fname, Scene& out, int cat, int pathCat) {
     std::string txt;
     if (!readNamedText(fname, txt)) { missing.push_back("followers file " + fname); return; }
@@ -42,6 +74,7 @@ void CarmaGame::loadFollowers(const std::string& fname, Scene& out, int cat, int
         return s;
     };
     std::map<std::string, int> geomIdx;
+    std::map<std::string, Mover::Collider> colliderOf;   // per geometry: what the collision files of the hierarchy say, where the geometry is
     std::map<std::string, std::vector<Vec3f>> pathCache;
     std::set<std::string> drawnPaths;
     for (const Entry& e : list) {
@@ -62,8 +95,10 @@ void CarmaGame::loadFollowers(const std::string& fname, Scene& out, int cat, int
             out.moverGeoms.emplace_back();
             dst = &out.moverGeoms.back();
             int mc = 0;
-            emitHie(mb, mc, false, aligned ? MIR_NONE : MIR_Z);
+            DcolData collision;
+            emitHie(mb, mc, false, aligned ? MIR_NONE : MIR_Z, &collision);
             dst = nullptr;
+            colliderOf[gkey] = placedCollider(collision, aligned ? MIR_NONE : MIR_Z, aligned ? al : nullptr);
             int idx = (int)out.moverGeoms.size() - 1;
             if (mc == 0) { out.moverGeoms.pop_back(); idx = -1; }
             else if (aligned) alignGeometry(out.moverGeoms.back(), al);
@@ -92,6 +127,7 @@ void CarmaGame::loadFollowers(const std::string& fname, Scene& out, int cat, int
             for (size_t k = 0; k + 1 < pi->second.size(); k++) out.addLine(pathCat, pi->second[k], pi->second[k + 1]);
         Mover m;
         m.geom = gi->second;
+        m.collider = colliderOf[gkey];
         m.cat = cat;
         m.name = e.name;
         m.path = pi->second;
@@ -111,7 +147,7 @@ void CarmaGame::loadAnimProps(const std::string& fname, Scene& out, int cat, int
         if (q.empty() || !endsWith(vfs::lower(q[0]), ".txt")) continue;
         std::string dt;
         if (!readNamedText(q[0], dt)) { if (missing.size() < 6) missing.push_back(q[0]); continue; }
-        std::string hieName;
+        std::string hieName, collisionDescriptor;   // (the second quoted name of the file: the collision data of the prop)
         int stage = 0, nkeys = -1;
         std::vector<float> nums;
         for (const std::string& l2 : splitLines(dt)) {
@@ -119,6 +155,7 @@ void CarmaGame::loadAnimProps(const std::string& fname, Scene& out, int cat, int
             auto qq = quotedStrings(l);
             if (!qq.empty()) {
                 if (stage == 0) hieName = qq[0];
+                else if (stage == 1) collisionDescriptor = qq[0];
                 stage++;
                 continue;
             }
@@ -134,11 +171,31 @@ void CarmaGame::loadAnimProps(const std::string& fname, Scene& out, int cat, int
         out.moverGeoms.emplace_back();
         dst = &out.moverGeoms.back();
         int mc = 0;
-        emitHie(hieName, mc);
+        DcolData collision;
+        emitHie(hieName, mc, false, MIR_WORLD, &collision);
         dst = nullptr;
         if (mc == 0) { out.moverGeoms.pop_back(); continue; }
         Mover m;
         m.geom = (int)out.moverGeoms.size() - 1;
+        m.collider = placedCollider(collision, MIR_WORLD, nullptr);
+        // What the prop's descriptor names as its collision data: a descriptor with the static collision meshes (.scol) of it, which move with it (they are
+        // in the level's space, mirrored like the geometry). A mesh of polygons is a surface: the physics makes convex pieces of it.
+        if (!collisionDescriptor.empty()) {
+            std::string collisionText;
+            if (readNamedText(collisionDescriptor, collisionText))
+                for (const std::string& line : splitLines(collisionText))
+                    for (const std::string& name : quotedStrings(stripComment(line))) {
+                        if (!endsWith(vfs::lower(name), ".scol")) continue;
+                        std::vector<uint8_t> scol;
+                        CollisionMesh mesh;
+                        if (!readNamed(name, scol) || !parseCollisionMesh(scol, mesh)) continue;
+                        const uint32_t first = (uint32_t)m.collider.points.size();
+                        for (const Vec3f& v : mesh.verts) m.collider.points.push_back(v);
+                        for (const CollisionMesh::Poly& poly : mesh.polys)
+                            for (int k = 2; k < poly.n; k++)
+                                m.collider.triangles.insert(m.collider.triangles.end(), {first + mesh.corners[poly.first], first + mesh.corners[poly.first + (size_t)k - 1], first + mesh.corners[poly.first + (size_t)k]});
+                    }
+        }
         m.cat = cat;
         m.name = hieName;
         m.path = {Vec3f()};
