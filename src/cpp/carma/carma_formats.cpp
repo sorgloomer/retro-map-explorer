@@ -1,4 +1,5 @@
 #include "carma/carma_formats.h"
+#include <algorithm>
 #include <cstring>
 #include <sstream>
 #include "loader/binio.h"
@@ -34,7 +35,30 @@ bool Hie::parse(const std::string& text) {
     for (std::string& l : splitLines(text))
         if (!l.empty()) L.push_back(std::move(l));
     std::vector<std::string> it;
-    if (section(L, "Collision Data", it)) for (auto& s : it) collNames.push_back(unquote(s));
+    // The collision files are named in the first literals of the file (the lines that are not comments): "Version", the version, then (version 3
+    // only) the number of cull nodes and a line for each, then the number of collision files and a line with the name of each. A file that does
+    // not begin like that (two of the satellites) names none.
+    {
+        std::vector<std::string> literals;
+        for (const std::string& l : L) {
+            size_t a = l.find_first_not_of(" \t\r");
+            if (a == std::string::npos || l.compare(a, 2, "//") == 0) continue;
+            size_t b = l.find_last_not_of(" \t\r");
+            literals.push_back(l.substr(a, b - a + 1));
+        }
+        if (literals.size() >= 3 && literals[0] == "\"Version\"") {
+            const int version = atoi(literals[1].c_str());
+            size_t at = 2;
+            if (version == 3) {
+                const int cullNodes = atoi(literals[at].c_str());
+                at += 1 + (size_t)std::max(0, cullNodes);
+            }
+            if ((version == 2 || version == 3) && at < literals.size()) {
+                const int count = atoi(literals[at].c_str());
+                for (int i = 0; i < count && at + 1 + (size_t)i < literals.size(); i++) collNames.push_back(unquote(literals[at + 1 + (size_t)i]));
+            }
+        }
+    }
     if (section(L, "lines", it)) for (auto& s : it) lineNames.push_back(unquote(s));
     if (section(L, "textures", it)) for (auto& s : it) textures.push_back(unquote(s));
     if (section(L, "meshes", it)) for (auto& s : it) meshNames.push_back(unquote(s));

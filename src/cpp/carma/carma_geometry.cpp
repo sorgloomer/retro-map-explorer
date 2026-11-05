@@ -78,26 +78,49 @@ void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int
     Hie hie;
     if (!loadHie(base, pk, hie)) return;
     std::vector<uint8_t> data;
-    if (collision && !hie.collNames.empty()) {
-        int ce = pk->find(hie.collNames[0]);
-        std::vector<uint8_t> cd;
-        if (ce >= 0 && pk->extract(ce, cd) && cd.size() >= 28) {
-            // header: mass (float 0), the size (1..3), the centre of mass (5..7); then at byte 60 the number of points, and the points (x y z)
-            collision->found = true;
-            memcpy(&collision->mass, &cd[0], 4);
-            float centre[3];
-            memcpy(centre, &cd[20], 12);
+    if (collision) {
+        // Every collision file that the hierarchy names (and only those): the header has the mass (float 0), the size (1..3) and the centre of mass
+        // (5..7); at byte 56 the number of spheres, each a centre and a radius (4 floats); then the polyhedron: the number of points and the points
+        // (x y z), the number of faces and for each its plane normal (3 floats), the number of its corners and their indices, and the edges.
+        // The mass and the centre of mass are the first file's, the shapes of all are put together.
+        for (const std::string& name : hie.collNames) {
+            const int ce = pk->find(name);
+            std::vector<uint8_t> cd;
+            if (ce < 0 || !pk->extract(ce, cd) || cd.size() < 64) {
+                continue;
+            }
+            if (!collision->found) {
+                collision->found = true;
+                memcpy(&collision->mass, &cd[0], 4);
+                float centre[3];
+                memcpy(centre, &cd[20], 12);
+                // The centre of mass is the vector (5..7) from the origin of the mesh, as the file has it (it can lie outside the mesh: that is how
+                // an object is kept upright).
+                collision->centreOfMass = Vec3f(centre[0], centre[1], centre[2]);
+            }
+            uint32_t sphereCount = 0;
+            memcpy(&sphereCount, &cd[56], 4);
+            size_t at = 60;
+            if (sphereCount > 64 || at + (size_t)sphereCount * 16 + 4 > cd.size()) continue;
+            for (uint32_t k = 0; k < sphereCount; k++, at += 16) {
+                float v[4];
+                memcpy(v, &cd[at], 16);
+                DcolData::Sphere sphere;
+                sphere.centre = Vec3f(v[0], v[1], v[2]);
+                sphere.radius = v[3];
+                collision->spheres.push_back(sphere);
+            }
             uint32_t pointCount = 0;
-            if (cd.size() >= 64) memcpy(&pointCount, &cd[60], 4);
-            if (pointCount >= 4 && pointCount <= 4096 && cd.size() >= 64 + (size_t)pointCount * 12) {
-                collision->points.resize(pointCount);
+            memcpy(&pointCount, &cd[at], 4);
+            at += 4;
+            const uint32_t firstPoint = (uint32_t)collision->points.size();
+            if (pointCount > 0 && pointCount <= 4096 && cd.size() >= at + (size_t)pointCount * 12) {
                 for (uint32_t i = 0; i < pointCount; i++) {
                     float p[3];
-                    memcpy(p, &cd[64 + (size_t)i * 12], 12);
-                    collision->points[i] = Vec3f(p[0], p[1], p[2]);
+                    memcpy(p, &cd[at + (size_t)i * 12], 12);
+                    collision->points.push_back(Vec3f(p[0], p[1], p[2]));
                 }
-                // the faces follow the points: a count, then for each face its plane normal (3 floats), the number of its corners and their indices
-                size_t at = 64 + (size_t)pointCount * 12;
+                at += (size_t)pointCount * 12;
                 uint32_t faceCount = 0;
                 if (at + 4 <= cd.size()) {
                     memcpy(&faceCount, &cd[at], 4);
@@ -112,13 +135,10 @@ void CarmaGame::emitHie(const std::string& base, int& meshCount, bool water, int
                     bool valid = true;
                     for (uint32_t c : index) valid = valid && c < pointCount;
                     if (valid)
-                        for (uint32_t k = 2; k < corners; k++) collision->triangles.insert(collision->triangles.end(), {index[0], index[k - 1], index[k]});
+                        for (uint32_t k = 2; k < corners; k++) collision->triangles.insert(collision->triangles.end(), {firstPoint + index[0], firstPoint + index[k - 1], firstPoint + index[k]});
                     at += 16 + (size_t)corners * 4;
                 }
             }
-            // The centre of mass is the vector (5..7) from the origin of the mesh, as the file has it (it can lie outside the mesh: that is how
-            // an object is kept upright).
-            collision->centreOfMass = Vec3f(centre[0], centre[1], centre[2]);
         }
     }
     const bool flip = kMirrorX && mir != MIR_NONE;

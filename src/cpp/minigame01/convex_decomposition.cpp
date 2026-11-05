@@ -9,6 +9,7 @@ namespace minigame01 {
 
 namespace {
 
+constexpr float kWeldDistance = 2e-3f;         // points this near each other (of the longest side) are one
 constexpr size_t kMaxExactVertices = 100;     // a polyhedron with more vertices than this is made of boxes
 constexpr double kFlatness = 8e-3;           // how far (of the longest side) a point may be in front of a face of a convex solid: a face that is not flat is not a concavity
 constexpr double kFlatCosine = 0.9976;        // two faces that make an angle of less than 4 degrees are one
@@ -448,30 +449,69 @@ bool split(const Mesh& whole, Splitter& s, int depth, std::vector<Mesh>& out) {
     return false;
 }
 
-// The corners of the vertices (those at the same place are one), and the triangles over them without those that have collapsed.
+// The points of a polyhedron with those that are (nearly) at one place made one (the files have some that are doubled, or a hair apart, which would
+// make the surface not close), and the triangles over them without those that have collapsed.
 void weld(const std::vector<Vec3f>& vertices, const std::vector<uint32_t>& triangles, float longest, std::vector<Vec3f>& points, std::vector<uint32_t>& welded) {
-    const float cell = std::max(1e-6f, 1e-5f * longest);
-    std::map<std::array<long long, 3>, uint32_t> known;
+    const float tolerance = std::max(1e-6f, kWeldDistance * longest);
     std::vector<int> index(vertices.size(), -1);
-    for (size_t t = 0; t + 2 < triangles.size(); t += 3) {
-        uint32_t corner[3];
-        bool valid = true;
-        for (int k = 0; k < 3; k++) {
-            const uint32_t v = triangles[t + k];
-            if (v >= vertices.size()) { valid = false; break; }
-            if (index[v] < 0) {
-                const std::array<long long, 3> key = {std::llround(vertices[v].x / cell), std::llround(vertices[v].y / cell), std::llround(vertices[v].z / cell)};
-                auto found = known.find(key);
-                if (found == known.end()) {
-                    found = known.emplace(key, (uint32_t)points.size()).first;
-                    points.push_back(vertices[v]);
-                }
-                index[v] = (int)found->second;
-            }
-            corner[k] = (uint32_t)index[v];
+    std::map<std::array<long long, 3>, uint32_t> known;   // (for big surfaces: the cell of a point)
+    auto place = [&](uint32_t v) {
+        if (index[v] >= 0) return;
+        if (vertices.size() <= 256) {
+            for (size_t j = 0; j < points.size(); j++)
+                if (length(points[j] - vertices[v]) <= tolerance) { index[v] = (int)j; return; }
+        } else {
+            const std::array<long long, 3> key = {std::llround(vertices[v].x / tolerance), std::llround(vertices[v].y / tolerance), std::llround(vertices[v].z / tolerance)};
+            auto found = known.find(key);
+            if (found != known.end()) { index[v] = (int)found->second; return; }
+            known.emplace(key, (uint32_t)points.size());
         }
-        if (!valid || corner[0] == corner[1] || corner[1] == corner[2] || corner[0] == corner[2]) continue;
-        welded.insert(welded.end(), corner, corner + 3);
+        index[v] = (int)points.size();
+        points.push_back(vertices[v]);
+    };
+    for (size_t t = 0; t + 2 < triangles.size(); t += 3) {
+        if (triangles[t] >= vertices.size() || triangles[t + 1] >= vertices.size() || triangles[t + 2] >= vertices.size()) continue;
+        for (int k = 0; k < 3; k++) place(triangles[t + k]);
+        const uint32_t a = (uint32_t)index[triangles[t]], b = (uint32_t)index[triangles[t + 1]], c = (uint32_t)index[triangles[t + 2]];
+        if (a == b || b == c || a == c) continue;
+        welded.push_back(a); welded.push_back(b); welded.push_back(c);
+    }
+}
+
+// Closes the holes of a surface (a face that a file leaves out): the edges that only one triangle has make loops, which are covered. Loops that do
+// not make sense (an edge that has three triangles, a loop that branches, a big one) are left as they are.
+void closeHoles(const std::vector<Vec3f>& points, std::vector<uint32_t>& triangles, float longest) {
+    std::map<std::pair<uint32_t, uint32_t>, int> directed;
+    for (size_t t = 0; t + 2 < triangles.size(); t += 3)
+        for (int k = 0; k < 3; k++) directed[std::make_pair(triangles[t + k], triangles[t + (k + 1) % 3])]++;
+    std::map<uint32_t, uint32_t> next;   // along the edge of the cover: against the direction of the edges of the surface
+    for (const auto& e : directed) {
+        if (e.second != 1) return;                                                    // (an edge with more than one triangle on one side)
+        if (directed.count(std::make_pair(e.first.second, e.first.first))) continue;   // (it has its neighbour)
+        if (!next.emplace(e.first.second, e.first.first).second) return;             // (a point where the hole touches itself)
+    }
+    std::vector<D3> pool;
+    for (const Vec3f& p : points) pool.push_back(toD(p));
+    while (!next.empty()) {
+        std::vector<uint32_t> loop;
+        const uint32_t start = next.begin()->first;
+        uint32_t at = start;
+        for (;;) {
+            loop.push_back(at);
+            auto step = next.find(at);
+            if (step == next.end()) return;   // (it does not close)
+            const uint32_t to = step->second;
+            next.erase(step);
+            at = to;
+            if (at == start) break;
+        }
+        if (loop.size() < 3 || loop.size() > 16) continue;
+        D3 normal;   // (Newell: the normal of the loop, the way it goes round)
+        for (size_t i = 0; i < loop.size(); i++) normal = normal + cross(pool[loop[i]], pool[loop[(i + 1) % loop.size()]]);
+        if (norm(normal) < 1e-12) continue;
+        std::vector<Tri> cover;
+        if (!triangulateLoop(pool, loop, unit(normal), 1e-9 * (double)longest * longest, cover)) continue;
+        for (const Tri& c : cover) triangles.insert(triangles.end(), c.begin(), c.end());
     }
 }
 
@@ -621,20 +661,12 @@ std::vector<std::vector<Vec3f>> decomposeIntoConvexPieces(const std::vector<Vec3
     const Vec3f size = hi - lo;
     const float longest = std::max(size.x, std::max(size.y, size.z));
     if (longest < 1e-6f) return result;
-    // The faces that have no area (a quad whose corners are two points twice, and the like) are what holds two polyhedra of a file together at a
-    // point: they are not surface, and without them the polyhedra are apart again (the lamp post is a box and a wedge, which the file has as such).
-    std::vector<uint32_t> solid;
-    for (size_t t = 0; t + 2 < triangles.size(); t += 3) {
-        if (triangles[t] >= vertices.size() || triangles[t + 1] >= vertices.size() || triangles[t + 2] >= vertices.size()) continue;
-        const D3 a = toD(vertices[triangles[t]]);
-        if (norm(cross(toD(vertices[triangles[t + 1]]) - a, toD(vertices[triangles[t + 2]]) - a)) < 1e-9 * (double)longest * longest) continue;
-        solid.insert(solid.end(), triangles.begin() + (long)t, triangles.begin() + (long)t + 3);
-    }
-    for (const SurfaceComponent& whole : splitSurfaceIntoComponents(vertices, solid)) {
+    for (const SurfaceComponent& whole : splitSurfaceIntoComponents(vertices, triangles)) {
         // the points of a polyhedron that are at one place are one (the files have some that are doubled, which would make the surface not close)
         SurfaceComponent component;
         weld(whole.points, whole.triangles, longest, component.points, component.triangles);
         if (component.points.size() < 3) continue;
+        closeHoles(component.points, component.triangles, longest);
         Mesh mesh;
         for (const Vec3f& v : component.points) mesh.p.push_back(toD(v));
         for (size_t t = 0; t + 2 < component.triangles.size(); t += 3) mesh.t.push_back({component.triangles[t], component.triangles[t + 1], component.triangles[t + 2]});

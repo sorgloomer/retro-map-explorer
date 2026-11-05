@@ -146,6 +146,11 @@ public:
         Vec3f centreOfMass;                  // in the space of the mesh (raw: not mirrored)
         std::vector<Vec3f> points;           // the polyhedron of the collider, in the space of the mesh (raw: not mirrored)
         std::vector<uint32_t> triangles;     // its faces as triangles over the points
+        struct Sphere {
+            Vec3f centre;                    // (the space of the mesh, raw)
+            float radius = 0;
+        };
+        std::vector<Sphere> spheres;         // the spheres of the file (a polyhedron may or may not come with them)
     };
     // With `pieces` set, the meshes of the hierarchy are not put in the scene: each mesh node is one piece, its mesh as it is (raw) and the
     // matrix that places it (a breakable's mesh and where it stands in the level).

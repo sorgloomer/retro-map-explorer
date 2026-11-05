@@ -3,6 +3,7 @@
 #include "minigame01/collider_shapes.h"
 #include "minigame01/convex_decomposition.h"
 #include <algorithm>
+#include <string>
 #include <cmath>
 
 namespace minigame01 {
@@ -97,6 +98,33 @@ void thicken(std::vector<Vec3f>& points) {
     }
 }
 
+// A sphere as a piece of a shape for the display: a ball of rings and segments (the points are scaled by `scale`).
+void sphereShape(Vec3f centre, float radius, float scale, ColliderPiece& piece) {
+    constexpr int kSegments = 16, kRings = 10;
+    const float pi = 3.14159265f;
+    piece.points.clear();
+    piece.indices.clear();
+    piece.points.push_back(centre * scale + Vec3f(0, radius * scale, 0));
+    for (int ring = 1; ring < kRings; ring++) {
+        const float polar = pi * (float)ring / (float)kRings;
+        for (int segment = 0; segment < kSegments; segment++) {
+            const float azimuth = 2 * pi * (float)segment / (float)kSegments;
+            piece.points.push_back(centre * scale + Vec3f(std::sin(polar) * std::cos(azimuth), std::cos(polar), std::sin(polar) * std::sin(azimuth)) * (radius * scale));
+        }
+    }
+    piece.points.push_back(centre * scale - Vec3f(0, radius * scale, 0));
+    const uint32_t bottom = (uint32_t)piece.points.size() - 1;
+    auto at = [&](int ring, int segment) { return (uint32_t)(1 + (ring - 1) * kSegments + (segment % kSegments)); };
+    for (int segment = 0; segment < kSegments; segment++) {
+        piece.indices.insert(piece.indices.end(), {0u, at(1, segment + 1), at(1, segment)});
+        piece.indices.insert(piece.indices.end(), {bottom, at(kRings - 1, segment), at(kRings - 1, segment + 1)});
+        for (int ring = 1; ring + 1 < kRings; ring++) {
+            piece.indices.insert(piece.indices.end(), {at(ring, segment), at(ring, segment + 1), at(ring + 1, segment)});
+            piece.indices.insert(piece.indices.end(), {at(ring, segment + 1), at(ring + 1, segment + 1), at(ring + 1, segment)});
+        }
+    }
+}
+
 }  // namespace
 
 void Box3dProps::build(Scene& scene, b3WorldId world, float unitsPerMetre) {
@@ -108,6 +136,7 @@ void Box3dProps::build(Scene& scene, b3WorldId world, float unitsPerMetre) {
     std::vector<std::vector<b3HullData*>> hulls(scene.propTypes.size());
     std::vector<float> densities(scene.propTypes.size(), 1.0f);
     std::vector<b3MassData> massData(scene.propTypes.size());
+    std::vector<std::vector<b3Sphere>> spheres(scene.propTypes.size());   // the spheres of a collision file, in metres
     for (size_t t = 0; t < scene.propTypes.size(); t++) {
         const Scene::PropType type = scene.propTypes[t];   // (a copy: the scene's list grows below)
         std::vector<b3Vec3> points;
@@ -139,7 +168,8 @@ void Box3dProps::build(Scene& scene, b3WorldId world, float unitsPerMetre) {
                 else if (hull) b3DestroyHull(hull);
             }
         }
-        if (pieces.empty() && !points.empty()) {
+        for (const Scene::PropType::Sphere& sphere : type.colliderSpheres) spheres[t].push_back({{sphere.centre.x * toMetres, sphere.centre.y * toMetres, sphere.centre.z * toMetres}, sphere.radius * toMetres});
+        if (pieces.empty() && spheres[t].empty() && !points.empty()) {
             if (hi.x - lo.x < kThinnest) { const float c = 0.5f * (lo.x + hi.x); lo.x = c - 0.5f * kThinnest; hi.x = c + 0.5f * kThinnest; }
             if (hi.y - lo.y < kThinnest) { const float c = 0.5f * (lo.y + hi.y); lo.y = c - 0.5f * kThinnest; hi.y = c + 0.5f * kThinnest; }
             if (hi.z - lo.z < kThinnest) { const float c = 0.5f * (lo.z + hi.z); lo.z = c - 0.5f * kThinnest; hi.z = c + 0.5f * kThinnest; }
@@ -148,17 +178,25 @@ void Box3dProps::build(Scene& scene, b3WorldId world, float unitsPerMetre) {
             b3HullData* hull = b3CreateHull(corners, 8, 8);
             if (hull) pieces.push_back(hull);
         }
-        if (pieces.empty()) continue;
+        if (pieces.empty() && spheres[t].empty()) continue;
         // the collider as solid shapes, for the display (in body space, level units)
         std::vector<ColliderPiece> shapes(pieces.size());
         for (size_t p = 0; p < pieces.size(); p++) hullTriangles(pieces[p], shapes[p].points, shapes[p].indices);
+        for (const b3Sphere& sphere : spheres[t]) {
+            shapes.emplace_back();
+            sphereShape(Vec3f(sphere.center.x, sphere.center.y, sphere.center.z), sphere.radius, 1.0f, shapes.back());
+        }
         for (int state = 0; state < 2; state++) {
             scene.moverGeoms.push_back(state == 0 ? solidColliderShape(shapes, unitsPerMetre, 90, 160, 255, (uint32_t)t) : solidColliderShape(shapes, unitsPerMetre, 255, 160, 60, (uint32_t)t));
             scene.propTypes[t].colliderGeom[state] = (int)scene.moverGeoms.size() - 1;
         }
         // the shape as the game's file has it: its polyhedra as they are (concave ones too), in body space, level units already
-        if (type.colliderTriangles.size() >= 3) {
+        if (type.colliderTriangles.size() >= 3 || !type.colliderSpheres.empty()) {
             std::vector<ColliderPiece> raw;
+            for (const Scene::PropType::Sphere& sphere : type.colliderSpheres) {
+                raw.emplace_back();
+                sphereShape(sphere.centre, sphere.radius, 1.0f, raw.back());
+            }
             for (SurfaceComponent& component : splitSurfaceIntoComponents(type.collider, type.colliderTriangles)) {
                 ColliderPiece piece;
                 piece.points = std::move(component.points);
@@ -173,8 +211,11 @@ void Box3dProps::build(Scene& scene, b3WorldId world, float unitsPerMetre) {
         }
         // the mass: the files', else from the volume of the pieces (which are all of one density); the inertia is that of the pieces about the
         // origin of the body, which is the centre of mass that the files say (or the middle of the mesh), not the centroid of the pieces
+        std::vector<b3MassData> unit;   // of the pieces, at a density of 1
+        for (b3HullData* hull : pieces) unit.push_back(b3ComputeHullMass(hull, 1.0f));
+        for (const b3Sphere& sphere : spheres[t]) unit.push_back(b3ComputeSphereMass(&sphere, 1.0f));
         float volume = 0;
-        for (b3HullData* hull : pieces) volume += b3ComputeHullMass(hull, 1.0f).mass;   // (the mass at a density of 1)
+        for (const b3MassData& piece : unit) volume += piece.mass;   // (the mass at a density of 1)
         volume = std::max(volume, 1e-4f);
         const float mass = type.mass > 0 ? type.mass : std::min(kMaxMass, std::max(kMinMass, volume * kDefaultDensity));
         densities[t] = mass / volume;
@@ -182,21 +223,21 @@ void Box3dProps::build(Scene& scene, b3WorldId world, float unitsPerMetre) {
         total.mass = 0;
         total.center = {0, 0, 0};
         total.inertia = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
-        for (b3HullData* hull : pieces) {
-            const b3MassData piece = b3ComputeHullMass(hull, densities[t]);
-            const b3Vec3 d = piece.center;   // from the origin to the centroid of the piece (the parallel axis theorem)
-            const float dd = d.x * d.x + d.y * d.y + d.z * d.z, m = piece.mass;
+        for (const b3MassData& unitPiece : unit) {
+            const float d0 = densities[t];
+            const b3Vec3 d = unitPiece.center;   // from the origin to the centroid of the piece (the parallel axis theorem)
+            const float dd = d.x * d.x + d.y * d.y + d.z * d.z, m = unitPiece.mass * d0;
             total.mass += m;
-            total.inertia.cx = {total.inertia.cx.x + piece.inertia.cx.x + m * (dd - d.x * d.x), total.inertia.cx.y + piece.inertia.cx.y - m * d.x * d.y, total.inertia.cx.z + piece.inertia.cx.z - m * d.x * d.z};
-            total.inertia.cy = {total.inertia.cy.x + piece.inertia.cy.x - m * d.y * d.x, total.inertia.cy.y + piece.inertia.cy.y + m * (dd - d.y * d.y), total.inertia.cy.z + piece.inertia.cy.z - m * d.y * d.z};
-            total.inertia.cz = {total.inertia.cz.x + piece.inertia.cz.x - m * d.z * d.x, total.inertia.cz.y + piece.inertia.cz.y - m * d.z * d.y, total.inertia.cz.z + piece.inertia.cz.z + m * (dd - d.z * d.z)};
+            total.inertia.cx = {total.inertia.cx.x + unitPiece.inertia.cx.x * d0 + m * (dd - d.x * d.x), total.inertia.cx.y + unitPiece.inertia.cx.y * d0 - m * d.x * d.y, total.inertia.cx.z + unitPiece.inertia.cx.z * d0 - m * d.x * d.z};
+            total.inertia.cy = {total.inertia.cy.x + unitPiece.inertia.cy.x * d0 - m * d.y * d.x, total.inertia.cy.y + unitPiece.inertia.cy.y * d0 + m * (dd - d.y * d.y), total.inertia.cy.z + unitPiece.inertia.cy.z * d0 - m * d.y * d.z};
+            total.inertia.cz = {total.inertia.cz.x + unitPiece.inertia.cz.x * d0 - m * d.z * d.x, total.inertia.cz.y + unitPiece.inertia.cz.y * d0 - m * d.z * d.y, total.inertia.cz.z + unitPiece.inertia.cz.z * d0 + m * (dd - d.z * d.z)};
         }
         massData[t] = total;
     }
     bodies_.assign(scene.props.size(), Body());
     for (size_t i = 0; i < scene.props.size(); i++) {
         const Scene::Prop& prop = scene.props[i];
-        if (prop.type < 0 || prop.type >= (int)hulls.size() || hulls[prop.type].empty()) continue;
+        if (prop.type < 0 || prop.type >= (int)hulls.size() || (hulls[prop.type].empty() && spheres[prop.type].empty())) continue;
         b3BodyDef def = b3DefaultBodyDef();
         def.type = b3_dynamicBody;
         poseOf(prop.placement, toMetres, def.position, def.rotation);
@@ -208,6 +249,7 @@ void Box3dProps::build(Scene& scene, b3WorldId world, float unitsPerMetre) {
         shape.baseMaterial.restitution = kRestitution;
         shape.filter.categoryBits = kPropCategory;
         for (b3HullData* hull : hulls[prop.type]) b3CreateHullShape(body, &shape, hull);
+        for (const b3Sphere& sphere : spheres[prop.type]) b3CreateSphereShape(body, &shape, &sphere);
         b3Body_SetMassData(body, massData[prop.type]);   // (the body's origin is its centre of mass)
         bodies_[i].id = body;
     }

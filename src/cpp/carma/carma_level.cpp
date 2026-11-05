@@ -495,9 +495,10 @@ void CarmaGame::addProps(const KeyFile& kf, Scene& out) {
         out.moverGeoms.push_back(std::move(body));
         kind.geom = (int)out.moverGeoms.size() - 1;
         kind.mass = collision.mass > 1.0f ? collision.mass : 0.0f;   // 0: the physics works it out from the volume
-        if (collision.points.size() >= 4) {   // the collider of the game's files
+        if (collision.points.size() >= 4 || !collision.spheres.empty()) {   // the collider of the game's files
             for (const Vec3f& p : collision.points) kind.collider.push_back(toBody(p));
             kind.colliderTriangles = collision.triangles;
+            for (const DcolData::Sphere& sphere : collision.spheres) kind.colliderSpheres.push_back({toBody(sphere.centre), sphere.radius});
             kind.colliderFromFile = true;
         } else {                              // none: the visible mesh is the collider
             kind.collider = std::move(meshPoints);
