@@ -112,7 +112,7 @@ export const CAR_DEFAULTS_COMMON = {
   steerAngleCentrifugalKneeFactor: 0.3,  // how softly the steering angle at speed bends into its limit: the width of the knee as a fraction of steerAngleMax (0: a sharp corner)
   steerAngleCentrifugalLimitFactor: 0.7,  // multiplies the sideways force the tyres can hold before slipping, which limits the steering angle at speed (0: no turning at speed)
   steerAngleMax: 0.45,  // radians of front wheel turn at a standstill (full lock)
-  steerResponse: 20,  // 1/s: how quickly the wheels follow the steering input
+  steerResponse: 50,  // 1/s: how quickly the wheels follow the steering input
   tyreForceLiftOffset: 0,  // m: the forces of the suspensions and the tyres (spring, damper, engine, brakes, grip) act this much higher than the road (on top of tyreForceLiftRadiusFraction): less body roll
   tyreForceLiftRadiusFraction: 0,  // where those forces act, as a height above the road in tyre radii: 0: the contact point; 1: the middle of the tyre; 2: the top of the tyre
   tyreSurfaceFrictionEffectFactor: 1,  // how much the surface's WHEEL_FRICTION (grass 0.8, slippery rock 0, road 1) counts: 0 none, 1 as the game does

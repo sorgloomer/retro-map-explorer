@@ -21,12 +21,33 @@ BatchSet solidColliderShape(const std::vector<ColliderPiece>& pieces, float toUn
     std::vector<uint32_t> triangles;
     for (size_t pieceNumber = 0; pieceNumber < pieces.size(); pieceNumber++) {
         const ColliderPiece& piece = pieces[pieceNumber];
-        // this piece's colour: lighter or darker (0.65 to 1.25 times) and 15% off in every channel
-        const float light = 0.65f + 0.6f * chance(seed, (uint32_t)pieceNumber, 0);
-        auto channel = [&](uint8_t base, uint32_t which) {
-            return (uint8_t)std::min(255.0f, std::max(0.0f, (float)base * light * (0.85f + 0.3f * chance(seed, (uint32_t)pieceNumber, which))));
-        };
-        const uint8_t pieceR = channel(r, 1), pieceG = channel(g, 2), pieceB = channel(b, 3);
+        // this piece's colour: the hue turned by up to 100 degrees either way, the saturation and the lightness changed
+        const float light = 0.6f + 0.6f * chance(seed, (uint32_t)pieceNumber, 0);
+        const float saturation = 0.55f + 0.45f * chance(seed, (uint32_t)pieceNumber, 1);
+        const float turn = (chance(seed, (uint32_t)pieceNumber, 2) * 2.0f - 1.0f) * 100.0f;
+        float rgb[3];
+        {
+            const float rf = r / 255.0f, gf = g / 255.0f, bf = b / 255.0f;
+            const float maxc = std::max(rf, std::max(gf, bf)), minc = std::min(rf, std::min(gf, bf));
+            float hue = 0;
+            if (maxc > minc) {
+                const float d = maxc - minc;
+                if (maxc == rf) hue = std::fmod((gf - bf) / d + 6.0f, 6.0f);
+                else if (maxc == gf) hue = (bf - rf) / d + 2.0f;
+                else hue = (rf - gf) / d + 4.0f;
+                hue *= 60.0f;
+            }
+            hue = std::fmod(hue + turn + 360.0f, 360.0f);
+            const float s = (maxc > 0 ? (maxc - minc) / maxc : 0.0f) * saturation;
+            const float value = std::min(1.0f, maxc * light);
+            for (int k = 0; k < 3; k++) {
+                const float n = k == 0 ? 5.0f : k == 1 ? 3.0f : 1.0f;
+                const float h = std::fmod(n + hue / 60.0f, 6.0f);
+                const float f = std::max(0.0f, std::min(std::min(h, 4.0f - h), 1.0f));
+                rgb[k] = value - value * s * f;
+            }
+        }
+        const uint8_t pieceR = (uint8_t)(rgb[0] * 255.0f), pieceG = (uint8_t)(rgb[1] * 255.0f), pieceB = (uint8_t)(rgb[2] * 255.0f);
         Vec3f middle;
         for (const Vec3f& p : piece.points) middle += p;
         if (!piece.points.empty()) middle = middle * (1.0f / (float)piece.points.size());

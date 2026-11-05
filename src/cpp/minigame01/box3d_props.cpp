@@ -126,16 +126,8 @@ void Box3dProps::build(Scene& scene, b3WorldId world, float unitsPerMetre) {
             // the surface in convex pieces; an object that has no surface to split makes one hull of all its points
             std::vector<std::vector<Vec3f>> parts;
             if (type.colliderTriangles.size() >= 3) {
-                // A collision file has the object as several polyhedra (the ones that share an edge are one), which are not all convex: each
-                // is split into convex pieces (a convex one is one piece). The visible mesh of an object that has none is split as it is.
-                if (type.colliderFromFile) {
-                    for (const SurfaceComponent& component : splitSurfaceIntoComponents(metrePoints, type.colliderTriangles)) {
-                        std::vector<std::vector<Vec3f>> split = decomposeIntoConvexPieces(component.points, component.triangles, exactSurfaceSettings());
-                        for (std::vector<Vec3f>& piece : split) parts.push_back(std::move(piece));
-                    }
-                } else {
-                    parts = decomposeIntoConvexPieces(metrePoints, type.colliderTriangles);
-                }
+                // The object as several polyhedra (the ones that share an edge are one), each in convex pieces
+                parts = decomposeIntoConvexPieces(metrePoints, type.colliderTriangles);
             }
             if (parts.empty()) parts.push_back(metrePoints);
             for (std::vector<Vec3f>& part : parts) {

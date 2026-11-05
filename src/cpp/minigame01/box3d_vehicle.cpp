@@ -123,8 +123,7 @@ void Box3dVehicle::init(const CarModel& m) {
     // The hull is the polyhedra of the car's collision file, each split into convex pieces (a convex one is one piece).
     hullParts_.clear();
     if (!modelHullIndices_.empty() && hullPoints_.size() >= 4)
-        for (const SurfaceComponent& component : splitSurfaceIntoComponents(hullPoints_, modelHullIndices_))
-            for (std::vector<Vec3f>& piece : decomposeIntoConvexPieces(component.points, component.triangles, exactSurfaceSettings())) hullParts_.push_back(std::move(piece));
+        hullParts_ = decomposeIntoConvexPieces(hullPoints_, modelHullIndices_);
     centreOfMass = Vec3f();
     applyTuning();
     reset(Vec3f(), 0);
