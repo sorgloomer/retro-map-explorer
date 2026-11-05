@@ -10,6 +10,7 @@
 #include "minigame01/box3d_level.h"
 #include "minigame01/box3d_props.h"
 #include "minigame01/skidmarks.h"
+#include "minigame01/effects.h"
 #include "minigame01/box3d_vehicle.h"
 
 namespace minigame01 {
@@ -84,6 +85,7 @@ private:
     Box3dLevel physicsLevel;   // the level in the physics engine
     Box3dProps props_;         // the movable objects of the level in it
     SkidMarks skid_;           // the marks of the sliding tyres
+    Effects effects_;          // the flame of the afterburner, the dust of the tyres, the shadow of the car
     CarModel car;
     Box3dVehicle vehicle;
     Input input;

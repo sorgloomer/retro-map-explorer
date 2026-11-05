@@ -27,6 +27,36 @@ function TouchButton({ control, tap, class: cls, label, children }: { control: n
   );
 }
 
+/** The actions of the keys 1, 2, 3, 8, 9, R, Enter and L, for the two action buttons: the first picks the action, the second does it (while it is held, or once for a tap; the debug panel has no control of the game: it runs a function). */
+interface Action { name: string; control?: number; tap?: boolean; run?: () => void }
+const ACTIONS: Action[] = [
+  { name: 'Afterburner', control: TOUCH.afterburner, tap: false },
+  { name: 'Kangaroo', control: TOUCH.kangaroo, tap: true },
+  { name: 'Lift upright', control: TOUCH.lift, tap: false },
+  { name: 'Lift and roll', control: TOUCH.flip, tap: true },
+  { name: 'Side thrust', control: TOUCH.sideThrust, tap: false },
+  { name: 'Restore (R)', control: TOUCH.reset, tap: true },
+  { name: 'New round (Enter)', control: TOUCH.restart, tap: true },
+  { name: 'Debug (L)', run: toggleDebugPanel },
+];
+
+function ActionButtons() {
+  const [index, setIndex] = useState(0);
+  const action = ACTIONS[index];
+  return (
+    <div class="gt-act">
+      <button type="button" class="tbtn small" aria-label="Next action" onPointerDown={(e) => { e.preventDefault(); setIndex((index + 1) % ACTIONS.length); }}
+        onContextMenu={(e) => e.preventDefault()}>Next action ›</button>
+      {action.run ? (
+        <button type="button" class="tbtn small trigger" aria-label={'Trigger action: ' + action.name} onPointerDown={(e) => { e.preventDefault(); action.run?.(); }}
+          onContextMenu={(e) => e.preventDefault()}>{action.name}</button>
+      ) : (
+        <TouchButton control={action.control ?? 0} tap={action.tap} class="small trigger" label={'Trigger action: ' + action.name}>{action.name}</TouchButton>
+      )}
+    </div>
+  );
+}
+
 /** The square stick: the finger's position in it steers (left / right) and sets the throttle (up gas, down brake and reverse). */
 function TouchPad() {
   const knob = useRef<HTMLDivElement>(null);
@@ -312,6 +342,7 @@ export function GameHud() {
       <div class="gh-touch" hidden={hud.over}>
         <div class="gt-left">
           <TouchButton control={TOUCH.handbrake} class="big" label="Handbrake">Brake</TouchButton>
+          <ActionButtons />
         </div>
         <div class="gt-mid">
           <TouchButton control={TOUCH.camera} tap class="small" label="Camera">Cam</TouchButton>
@@ -324,7 +355,7 @@ export function GameHud() {
       <p class="gh-help">
         <LegendKey code="KeyW" k="w" label="W" /><LegendKey code="KeyS" k="s" label="S" /> gas / brake · <LegendKey code="KeyA" k="a" label="A" /><LegendKey code="KeyD" k="d" label="D" /> steer ·{' '}
         <LegendKey code="Space" k=" " label="Space">handbrake</LegendKey> · <LegendKey code="KeyR" k="r" label="R">upright</LegendKey> ·{' '}
-        <LegendKey code="KeyC" k="c" label="C">camera</LegendKey> · <LegendKey code="Digit1" k="1" label="1">afterburner</LegendKey> · <LegendKey code="Digit2" k="2" label="2">kangaroo</LegendKey> ·{' '}
+        <LegendKey code="KeyC" k="c" label="C">camera</LegendKey> · <LegendKey code="Digit1" k="1" label="1">afterburner</LegendKey> · <LegendKey code="Digit2" k="2" label="2">kangaroo</LegendKey> · <LegendKey code="Digit3" k="3" label="3">lift upright</LegendKey> ·{' '}
         <LegendKey code="Digit8" k="8" label="8">lift 1 m and roll 90°</LegendKey> · <LegendKey code="Digit9" k="9" label="9">side thrust</LegendKey> ·{' '}
         <LegendKey code="KeyL" k="l" label="L" onPress={toggleDebugPanel}>debug</LegendKey> · <LegendKey code="Escape" k="Escape" label="Esc">exit</LegendKey> — or use a gamepad (RT / LT, left stick, A, Y, Back)
       </p>

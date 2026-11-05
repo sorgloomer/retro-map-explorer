@@ -18,6 +18,8 @@ public:
     void show(Scene& scene, bool on);
     // Called once per frame after the car has moved: lays the marks of this frame (the car is in metres, the scene in `unitsPerMetre` per metre).
     void update(Scene& scene, const Box3dVehicle& car, float unitsPerMetre);
+    // Whether the tyre made a mark in the last frame.
+    bool marking(int wheel) const { return strip_[wheel].active; }
 
 private:
     static constexpr int kMaxQuads = 8192;

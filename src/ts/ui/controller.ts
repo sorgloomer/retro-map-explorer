@@ -525,7 +525,7 @@ export function toggleDebugPanel(): void {
 }
 
 /** Controls of the on-screen buttons; the numbers are minigame01::Input::Touch. */
-export const TOUCH = { handbrake: 0, reset: 1, camera: 2, restart: 3, exit: 4 } as const;
+export const TOUCH = { handbrake: 0, reset: 1, camera: 2, restart: 3, exit: 4, afterburner: 5, kangaroo: 6, lift: 7, flip: 8, sideThrust: 9 } as const;
 /** The on-screen stick: x steers (-1 left .. 1 right), y is the throttle (1 gas .. -1 brake / reverse). */
 export function gameStick(x: number, y: number): void {
   call('rme_game_stick', null, ['number', 'number'], [x, y]);

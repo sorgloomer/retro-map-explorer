@@ -218,6 +218,7 @@ bool MiniGame::prepare(Scene& scene, const CarModel& model, std::string& error) 
     worldFloor = scene.bmin.y / scale - tuning().worldFloorBelow;
     makePickupIcons(scene);
     skid_.build(scene);
+    effects_.build(scene);
     isPrepared = true;
     return true;
 }
@@ -226,6 +227,7 @@ void MiniGame::forget() {
     vehicle.detach();
     props_.destroy();
     skid_.forget();
+    effects_.forget();
     physicsLevel.destroy();
     isPrepared = false;
     running = false;
@@ -273,6 +275,8 @@ void MiniGame::newRound(Scene& scene) {
     props_.reset(scene);
     skid_.clear(scene);
     skid_.show(scene, true);
+    effects_.clear(scene);
+    effects_.show(scene, true);
     hud_ = Hud();
     const Params& P = tuning();
     hud_.timeLeft = P.roundSeconds;
@@ -352,6 +356,7 @@ void MiniGame::stop(Scene& scene) {
     running = false;
     props_.reset(scene);
     skid_.show(scene, false);
+    effects_.show(scene, false);
     input.releaseAll();
     for (size_t i = 0; i < iconCats.size() && i < iconCatShown.size(); i++) scene.cats[iconCats[i]].visible = iconCatShown[i] != 0;
     for (int m : carMover)
@@ -600,9 +605,11 @@ void MiniGame::update(float dt, const Controls& c, Scene& scene) {
     vi.afterburner = c.afterburner;
     vi.sideThrust = c.sideThrust;
     vi.jump = c.kangaroo;
+    vi.lift = c.lift;
     vehicle.step(dt, vi);
     props_.sync(scene);
     skid_.update(scene, vehicle, scale);
+    effects_.update(scene, dt, vehicle, physicsLevel, skid_, cam.forward(), c.afterburner, scale);
 
     // last safe spot (wheels down, upright), for falling out of the world
     safeTimer += dt;

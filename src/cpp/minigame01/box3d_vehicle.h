@@ -20,6 +20,7 @@ struct VehicleInput {
     float handbrake = 0;  // 0..1
     bool afterburner = false;  // thrust forward while true
     bool sideThrust = false;   // thrust to the car's right while true (same force as the afterburner)
+    bool lift = false;         // the righting lift (see Box3dVehicle::substep) while true
     bool jump = false;         // one upward impulse (kangaroo); the caller sets it for a single step per key press
 };
 
@@ -138,6 +139,8 @@ public:
     float drift() const { return drift_; }
     float impact() const { return impact_; }
     bool upsideDown() const { return axes[1].y < -0.3f; }
+    Vec3f boundsMin() const { return bmin; }   // of the model, car space
+    Vec3f boundsMax() const { return bmax; }
     float halfHeight() const { return (bmax.y - bmin.y) * 0.5f; }
     float boundingRadius() const { return 0.5f * length(bmax - bmin); }
 
@@ -186,6 +189,7 @@ private:
     int groundedCount = 0;
     float drift_ = 0, impact_ = 0;
     Vec3f gravityForce_, dragForce_, downforce_, thrustForce_;
+    float liftSeconds_ = 0, liftNotRightSeconds_ = 0;   // how long the righting lift has been on, and how long of that the car has not been on its wheels
     Vec3f torqueWheels_, torqueHull_;
 };
 

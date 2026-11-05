@@ -20,6 +20,14 @@ constexpr float kAirSpinFollow = 4.0f;          // 1/s: how fast a wheel in the 
 
 constexpr float kWheelCastWidthFactor = 1.17f;      // the shape of the tyre is this much wider than the width the car's files give
 constexpr float kWheelCastRounding = 0.125f;       // of the radius: the roundness of the tyre's edges (the cast shape is a cylinder swept by a sphere)
+constexpr float kLiftForceFactor = 1.12f;     // the righting lift is this much bigger than the weight of the car
+constexpr float kLiftAboveRoof = 0.35f;        // m (for a car of 4.3 m): the point of the lift is this far over the roof
+constexpr float kLiftRightCosine = 0.8f;       // the car is on its wheels when its up axis is this close to straight up (the cosine of the angle)
+constexpr float kLiftSpiralDelay = 2.0f;       // s: not on its wheels this long after the lift began, the point of the lift starts to move out
+constexpr float kLiftSpiralSpeed = 0.9f;       // m/s (for a car of 4.3 m): how fast it moves out...
+constexpr float kLiftSpiralMaxRadius = 4.0f;   // m (the same): ...to this far from the middle of the roof
+constexpr float kLiftSpiralTurnRate = 2.4f;    // rad/s: and round
+constexpr float kLiftSpinDamping = 2.5f;       // 1/s: the damping of the spin while the car is lifted
 constexpr float kWheelCastCrown = 0.02f;           // of the radius: how much taller the tread is in the middle than at the sides (the rings in between follow a parabola)
 
 inline b3Vec3 toBox(const Vec3f& v) { return {v.x, v.y, v.z}; }
@@ -699,9 +707,32 @@ void Box3dVehicle::substep(float stepSeconds, const VehicleInput& in) {
     // drift: 0 up to a slip angle that is just cornering, then rising to 1; never while slow
     drift_ = speed > C.driftMinSpeed ? clamp((largestSlipAngle - C.driftSlipDeadZone) / C.driftSlipRange, 0.0f, 1.0f) : 0.0f;
 
+    // --- the righting lift: a force a little bigger than the weight, straight up, at a point of the car's own that lies above its roof (outside the
+    // car). Held up by a point above its centre of mass the car hangs with that point on top, which is the right way up: it turns back by itself, if
+    // anything turns it (a car exactly upside down has no torque on it). So if the car is still not on its wheels two seconds after the lift began,
+    // the point goes out in a spiral round the roof, to find a place from which the force turns the car.
+    float spinDamping = groundedCount == 0 ? P.angularDampingAir : P.angularDampingGround;
+    if (in.lift) {
+        liftSeconds_ += stepSeconds;
+        liftNotRightSeconds_ = axes[1].y > kLiftRightCosine ? 0.0f : liftNotRightSeconds_ + stepSeconds;
+        float x = 0, z = 0;
+        if (liftNotRightSeconds_ > kLiftSpiralDelay) {
+            const float t = liftNotRightSeconds_ - kLiftSpiralDelay;
+            const float radius = std::min(kLiftSpiralMaxRadius, kLiftSpiralSpeed * t) * sizeScale_;
+            x = radius * std::cos(kLiftSpiralTurnRate * t);
+            z = radius * std::sin(kLiftSpiralTurnRate * t);
+        }
+        const float roof = bmax.y - centreOfMass.y + kLiftAboveRoof * sizeScale_;
+        const Vec3f point = pos + axes[0] * x + axes[1] * roof + axes[2] * z;
+        b3Body_ApplyForce(chassis, toBox(Vec3f(0, 1, 0) * (weight() * kLiftForceFactor)), toBox(point), true);
+        spinDamping = std::max(spinDamping, kLiftSpinDamping);   // (it swings like a pendulum: the damping settles it)
+    } else {
+        liftSeconds_ = liftNotRightSeconds_ = 0;
+    }
+
     // --- the whole car's forces, the damping of the spin (the car tumbles almost freely in the air), and the engine moves the body
     b3Body_ApplyForceToCenter(chassis, toBox(dragForce_ + downforce_ + thrustForce_), true);
-    b3Body_SetAngularDamping(chassis, groundedCount == 0 ? P.angularDampingAir : P.angularDampingGround);
+    b3Body_SetAngularDamping(chassis, spinDamping);
     b3World_Step(world, stepSeconds, kWorldSubSteps);
     readState();
 

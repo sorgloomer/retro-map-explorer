@@ -9,7 +9,7 @@ namespace minigame01 {
 
 namespace {
 
-enum Held { H_FWD, H_BACK, H_LEFT, H_RIGHT, H_HAND, H_AFTERBURNER, H_SIDE_THRUST };
+enum Held { H_FWD, H_BACK, H_LEFT, H_RIGHT, H_HAND, H_AFTERBURNER, H_SIDE_THRUST, H_LIFT };
 
 float approach(float v, float target, float rate, float dt) {
     float d = target - v;
@@ -34,6 +34,7 @@ bool Input::key(const char* code, bool down, bool repeat) {
     if (!strcmp(code, "Space")) { held[H_HAND] = down; return true; }
     if (!strcmp(code, "Digit1") || !strcmp(code, "Numpad1")) { held[H_AFTERBURNER] = down; return true; }
     if (!strcmp(code, "Digit2") || !strcmp(code, "Numpad2")) { if (down && !repeat) edgeKangaroo = true; return true; }
+    if (!strcmp(code, "Digit3") || !strcmp(code, "Numpad3")) { held[H_LIFT] = down; return true; }
     if (!strcmp(code, "Digit8") || !strcmp(code, "Numpad8")) { if (down && !repeat) edgeFlip = true; return true; }
     if (!strcmp(code, "Digit9") || !strcmp(code, "Numpad9")) { held[H_SIDE_THRUST] = down; return true; }
     if (!strcmp(code, "KeyR")) { if (down && !repeat) edgeReset = true; return true; }
@@ -55,6 +56,11 @@ void Input::touch(int control, bool down) {
         case T_CAMERA: if (down) edgeCamera = true; break;
         case T_RESTART: if (down) edgeRestart = true; break;
         case T_EXIT: if (down) exitFlag = true; break;
+        case T_AFTERBURNER: touchAfterburner = down; break;
+        case T_KANGAROO: if (down) edgeKangaroo = true; break;
+        case T_LIFT: touchLift = down; break;
+        case T_FLIP: if (down) edgeFlip = true; break;
+        case T_SIDE_THRUST: touchSideThrust = down; break;
         default: break;
     }
 }
@@ -62,7 +68,7 @@ void Input::touch(int control, bool down) {
 void Input::releaseAll() {
     std::memset(held, 0, sizeof held);
     touchSteer = touchThrottle = 0;
-    touchHandbrake = false;
+    touchHandbrake = touchAfterburner = touchLift = touchSideThrust = false;
     kbSteer = kbAccel = kbBrake = 0;
 }
 
@@ -92,9 +98,10 @@ Controls Input::update(float dt) {
     c.reset = edgeReset;
     c.restart = edgeRestart;
     c.toggleCamera = edgeCamera;
-    c.afterburner = held[H_AFTERBURNER];
+    c.afterburner = held[H_AFTERBURNER] || touchAfterburner;
     c.kangaroo = edgeKangaroo;
-    c.sideThrust = held[H_SIDE_THRUST];
+    c.sideThrust = held[H_SIDE_THRUST] || touchSideThrust;
+    c.lift = held[H_LIFT] || touchLift;
     c.flip = edgeFlip;
     edgeReset = edgeRestart = edgeCamera = edgeKangaroo = edgeFlip = false;
 
@@ -119,6 +126,7 @@ Controls Input::update(float dt) {
             if (rt > c.accel) c.accel = rt;
             if (lt > c.brake) c.brake = lt;
             if (down(0)) c.handbrake = 1.0f;
+            if (down(1)) c.lift = true;
             bool now[16];
             for (int b = 0; b < 16; b++) now[b] = down(b);
             if (now[3] && !prevButtons[3]) c.reset = true;
